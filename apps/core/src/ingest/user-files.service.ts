@@ -50,7 +50,6 @@ export interface AssetUploadMeta {
   sizeBytes: number;
 }
 
-
 @Injectable()
 export class UserFilesService {
   private readonly logger = new Logger(UserFilesService.name);

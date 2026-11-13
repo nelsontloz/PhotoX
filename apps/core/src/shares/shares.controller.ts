@@ -1,8 +1,19 @@
-import { Controller, Get, Post, Delete, Param, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Param,
+  Body,
+  Query,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ApiExtraModels, ApiTags, ApiOperation, ApiResponse, getSchemaPath } from '@nestjs/swagger';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
 import { SharesService } from './shares.service';
 import { CreateShareDto } from './dto/create-share.dto';
+import { ListSharesQueryDto } from './dto/list-shares-query.dto';
 import {
   AlbumShareModel,
   AssetShareModel,
@@ -32,10 +43,10 @@ export class SharesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List all shares created by a user' })
+  @ApiOperation({ summary: 'List shares created by a user (keyset page)' })
   @ApiResponse({ status: 200, description: 'Share list', type: ShareListResponseModel })
-  async list(@CurrentUserId() userId: string) {
-    return this.shares.list(userId);
+  async list(@CurrentUserId() userId: string, @Query() q: ListSharesQueryDto) {
+    return this.shares.list(userId, q);
   }
 
   @Delete(':id')

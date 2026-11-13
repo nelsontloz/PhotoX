@@ -25,6 +25,7 @@ import type {
   AdminUserRow,
   AdminUserUpdateResponse,
   AlbumDto,
+  AlbumListResponse,
   Asset,
   AssetDetectionDto,
   AssetDetectionsResponse,
@@ -306,16 +307,10 @@ export class AssetListResponseModel implements AssetListResponse {
   @ApiProperty({ type: [AssetModel] })
   items!: AssetModel[];
 
-  @ApiProperty({ type: Number })
+  @ApiProperty({ type: Number, description: 'Whole-match count, not a page size' })
   total!: number;
 
-  @ApiProperty({ type: Number })
-  limit!: number;
-
-  @ApiProperty({ type: Number })
-  offset!: number;
-
-  @ApiPropertyOptional({ type: String, nullable: true })
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'null on the last page' })
   nextCursor?: string | null;
 }
 
@@ -430,14 +425,8 @@ export class PersonListResponseModel implements PersonListResponse {
   @ApiProperty({ type: [PersonModel] })
   items!: PersonModel[];
 
-  @ApiProperty({ type: Number })
+  @ApiProperty({ type: Number, description: 'Whole-match count, not a page size' })
   total!: number;
-
-  @ApiProperty({ type: Number })
-  limit!: number;
-
-  @ApiProperty({ type: Number })
-  offset!: number;
 }
 
 export class PersonClusterResponseModel {
@@ -476,8 +465,8 @@ export class AlbumModel implements AlbumDto {
   updatedAt!: string;
 }
 
-/** GET /api/v1/albums — the service returns a bare `{items,total}` envelope. */
-export class AlbumListResponseModel {
+/** GET /api/v1/albums — offset-addressed: no cursor, `total` is the whole count. */
+export class AlbumListResponseModel implements AlbumListResponse {
   @ApiProperty({ type: [AlbumModel] })
   items!: AlbumModel[];
 
@@ -625,6 +614,12 @@ export class ShareListResponseModel implements ShareListResponse {
     ],
   })
   items!: ShareListItem[];
+
+  @ApiProperty({ type: Number, description: 'Whole-match count, not a page size' })
+  total!: number;
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'null on the last page' })
+  nextCursor?: string | null;
 }
 
 export class PublicShareInfoModel implements PublicShareInfo {
@@ -712,6 +707,12 @@ export class PublicAlbumShareResponseModel implements PublicAlbumShareResponse {
 export class PublicAlbumAssetsResponseModel implements PublicAlbumAssetsResponse {
   @ApiProperty({ type: [PublicShareAssetModel] })
   items!: PublicShareAssetModel[];
+
+  @ApiProperty({ type: Number, description: 'Whole-album count, not a page size' })
+  total!: number;
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'null on the last page' })
+  nextCursor?: string | null;
 }
 
 // --- ingest ------------------------------------------------------------------
@@ -846,14 +847,8 @@ export class AdminUserListResponseModel implements AdminUserListResponse {
   @ApiProperty({ type: [AdminUserRowModel] })
   items!: AdminUserRowModel[];
 
-  @ApiProperty({ type: Number })
+  @ApiProperty({ type: Number, description: 'Whole-match count, not a page size' })
   total!: number;
-
-  @ApiProperty({ type: Number })
-  limit!: number;
-
-  @ApiProperty({ type: Number })
-  offset!: number;
 }
 
 export class AdminUserBackupSyncModel implements AdminUserBackupSync {

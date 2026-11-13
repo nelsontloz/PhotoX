@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository, type FindOptionsRelations } from 'typeorm';
+import { In, Repository, type FindOptionsRelations, type SelectQueryBuilder } from 'typeorm';
+import { isUUID } from 'class-validator';
 import * as crypto from 'crypto';
 import { Share } from '../database/entities/share.entity';
 import { isPostgresUniqueViolation } from '../common/sql-errors';
@@ -9,8 +10,13 @@ import { FileRecord } from '../database/entities';
 import { Album } from '../database/entities/album.entity';
 import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { findOwnedOr404 } from '../common/asset-ownership';
+import { decodeCursor, encodeCursor, invalidCursor } from '../common/cursor';
 import { playableFileId } from '../assets/content-target';
 import { CreateShareDto } from './dto/create-share.dto';
+import type {
+  ListPublicAlbumAssetsQueryDto,
+  ListSharesQueryDto,
+} from './dto/list-shares-query.dto';
 import type {
   AlbumShareDto,
   AssetShareDto,
@@ -136,26 +142,59 @@ export class SharesService {
     }
   }
 
-  async list(userId: string): Promise<ShareListResponse> {
-    const rows = await this.shareRepo
-      .createQueryBuilder('share')
-      .leftJoinAndSelect('share.asset', 'asset')
-      .leftJoinAndSelect('asset.thumbnails', 'thumb')
-      .leftJoinAndSelect('share.album', 'album')
-      .where('share.userId = :userId', { userId })
-      .andWhere('(share.kind = :albumKind OR asset.isTrashed = false)', { albumKind: 'album' })
+  async list(userId: string, q: ListSharesQueryDto): Promise<ShareListResponse> {
+    const limit = q.limit ?? 20;
+    const filters = (qb: SelectQueryBuilder<Share>): SelectQueryBuilder<Share> =>
+      qb
+        .where('share.userId = :userId', { userId })
+        .andWhere('(share.kind = :albumKind OR asset.isTrashed = false)', { albumKind: 'album' });
+
+    const total = await filters(
+      this.shareRepo.createQueryBuilder('share').leftJoin('share.asset', 'asset'),
+    ).getCount();
+
+    const qb = filters(
+      this.shareRepo
+        .createQueryBuilder('share')
+        .leftJoinAndSelect('share.asset', 'asset')
+        .leftJoinAndSelect('asset.thumbnails', 'thumb')
+        .leftJoinAndSelect('share.album', 'album'),
+    )
+      // id completes the sort key so the keyset cursor compares a total order
       .orderBy('share.createdAt', 'DESC')
-      .getMany();
+      .addOrderBy('share.id', 'DESC')
+      .take(limit + 1);
+
+    if (q.cursor) {
+      const [rawCreatedAt, rawId] = decodeCursor(q.cursor, 2);
+      const createdAt = new Date(rawCreatedAt ?? '');
+      const id = rawId ?? '';
+      // a non-uuid id would reach SQL as an invalid cast: 400 here, never a 500
+      if (Number.isNaN(createdAt.getTime()) || !isUUID(id)) invalidCursor();
+      qb.andWhere('(share.createdAt, share.id) < (:cursorCreatedAt, :cursorId)', {
+        cursorCreatedAt: createdAt,
+        cursorId: id,
+      });
+    }
+
+    const rows = await qb.getMany();
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
 
     // ponytail: N+1 count/cover query per album share — fine for a personal scale library;
     // replace with a grouped join if share lists ever get large
     const items: ShareListItem[] = [];
-    for (const row of rows) {
+    for (const row of page) {
       items.push(
         row.kind === 'album' ? await this.toAlbumDto(row, row.album) : this.toAssetDto(row),
       );
     }
-    return { items };
+    return {
+      items,
+      total,
+      nextCursor:
+        rows.length > limit && last ? encodeCursor([last.createdAt.toISOString(), last.id]) : null,
+    };
   }
 
   async revoke(userId: string, shareId: string): Promise<void> {
@@ -190,27 +229,63 @@ export class SharesService {
     };
   }
 
-  async listAlbumAssetsByToken(token: string): Promise<PublicAlbumAssetsResponse> {
+  async listAlbumAssetsByToken(
+    token: string,
+    q: ListPublicAlbumAssetsQueryDto,
+  ): Promise<PublicAlbumAssetsResponse> {
     const share = await this.getAlbumShare(token);
-    const rows = await this.albumAssetRepo
+    const limit = q.limit ?? 100;
+
+    // anonymous capability URL: always a bounded page, never the whole album
+    const total = await this.albumAssetRepo
       .createQueryBuilder('aa')
-      .select('aa."assetId"', 'assetId')
       .innerJoin('assets', 'asset', 'asset.id = aa."assetId"')
       .where('aa."albumId" = :albumId', { albumId: share.albumId })
       .andWhere('asset.isTrashed = false')
+      .getCount();
+
+    const qb = this.albumAssetRepo
+      .createQueryBuilder('aa')
+      .select('aa."assetId"', 'assetId')
+      .addSelect('aa."addedAt"', 'addedAt')
+      .innerJoin('assets', 'asset', 'asset.id = aa."assetId"')
+      .where('aa."albumId" = :albumId', { albumId: share.albumId })
+      .andWhere('asset.isTrashed = false')
+      // id completes the sort key so the keyset cursor compares a total order
       .orderBy('aa."addedAt"', 'DESC')
-      .getRawMany<{ assetId: string }>();
+      .addOrderBy('aa."assetId"', 'DESC')
+      .limit(limit + 1);
 
-    if (rows.length === 0) return { items: [] };
+    if (q.cursor) {
+      const [rawAddedAt, rawAssetId] = decodeCursor(q.cursor, 2);
+      const addedAt = new Date(rawAddedAt ?? '');
+      const assetId = rawAssetId ?? '';
+      // a non-uuid id would reach SQL as an invalid cast: 400 here, never a 500
+      if (Number.isNaN(addedAt.getTime()) || !isUUID(assetId)) invalidCursor();
+      qb.andWhere('(aa."addedAt", aa."assetId") < (:cursorAddedAt, :cursorAssetId)', {
+        cursorAddedAt: addedAt,
+        cursorAssetId: assetId,
+      });
+    }
 
-    const assets = await this.assetRepo.findBy({ id: In(rows.map((row) => row.assetId)) });
+    const rows = await qb.getRawMany<{ assetId: string; addedAt: Date | string }>();
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    const nextCursor =
+      rows.length > limit && last
+        ? encodeCursor([new Date(last.addedAt).toISOString(), last.assetId])
+        : null;
+
+    if (page.length === 0) return { items: [], total, nextCursor };
+
+    const assets = await this.assetRepo.findBy({ id: In(page.map((row) => row.assetId)) });
     const byId = new Map(assets.map((asset) => [asset.id, asset]));
     const items: PublicShareAsset[] = [];
-    for (const row of rows) {
+    for (const row of page) {
       const asset = byId.get(row.assetId);
       if (asset) items.push(this.toPublicAsset(asset));
     }
-    return { items };
+    return { items, total, nextCursor };
   }
 
   async getAlbumAssetFileId(

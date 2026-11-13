@@ -3,6 +3,7 @@ import {
   IsOptional,
   Min,
   Max,
+  IsInt,
   IsISO8601,
   IsBoolean,
   IsUUID,
@@ -34,15 +35,17 @@ export class ListAssetsQueryDto {
 
   @IsOptional()
   @Type(() => Number)
+  @IsInt()
   @Min(1)
   @Max(100)
-  @ApiProperty({ default: 20, required: false })
+  @ApiProperty({ type: Number, default: 20, required: false, maximum: 100 })
   limit?: number;
 
   @IsOptional()
   @Type(() => Number)
+  @IsInt()
   @Min(0)
-  @ApiProperty({ default: 0, required: false })
+  @ApiProperty({ type: Number, default: 0, required: false })
   offset?: number;
 
   @IsOptional()

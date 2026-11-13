@@ -16,6 +16,8 @@ import { FileRecord } from '../database/entities';
 import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { Face } from '../database/entities';
 import { findOwnedOr404 } from '../common/asset-ownership';
+import { apiError } from '../common/api-error';
+import { decodeCursor, encodeCursor, invalidCursor } from '../common/cursor';
 import { isPostgresUniqueViolation } from '../common/sql-errors';
 import { refreshPersonsAfterFaceDelete } from '../common/face-cleanup';
 import { playableFileId } from './content-target';
@@ -65,30 +67,18 @@ interface AssetCursor {
 /** The last row's (effective date, uploadedAt, id) — the full list ORDER BY tuple. */
 function encodeAssetCursor(asset: Asset): string {
   const at = asset.takenAt ?? asset.uploadedAt;
-  return Buffer.from(
-    JSON.stringify([at.toISOString(), asset.uploadedAt.toISOString(), asset.id]),
-  ).toString('base64url');
+  return encodeCursor([at.toISOString(), asset.uploadedAt.toISOString(), asset.id]);
 }
 
 function decodeAssetCursor(raw: string): AssetCursor {
-  const invalid = (): BadRequestException => new BadRequestException('Invalid cursor');
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
-  } catch {
-    throw invalid();
+  const parts = decodeCursor(raw, 3);
+  const at = new Date(parts[0] ?? '');
+  const uploadedAt = new Date(parts[1] ?? '');
+  const id = parts[2] ?? '';
+  if (Number.isNaN(at.getTime()) || Number.isNaN(uploadedAt.getTime()) || !isUUID(id)) {
+    invalidCursor();
   }
-  if (!Array.isArray(parsed) || parsed.length !== 3) throw invalid();
-  const [at, uploadedAt, id] = parsed as unknown[];
-  if (typeof at !== 'string' || typeof uploadedAt !== 'string' || typeof id !== 'string') {
-    throw invalid();
-  }
-  const atDate = new Date(at);
-  const uploadedDate = new Date(uploadedAt);
-  if (Number.isNaN(atDate.getTime()) || Number.isNaN(uploadedDate.getTime()) || !isUUID(id)) {
-    throw invalid();
-  }
-  return { at: atDate, uploadedAt: uploadedDate, id };
+  return { at, uploadedAt, id };
 }
 
 @Injectable()
@@ -162,6 +152,12 @@ export class AssetsService {
     const offset = q.offset ?? 0;
     const isTrashed = q.isTrashed ?? false;
     const cursor = q.cursor ? decodeAssetCursor(q.cursor) : null;
+    // one continuation style per request: a cursor already encodes the position
+    if (cursor && offset > 0) {
+      throw apiError(400, 'VALIDATION_FAILED', 'offset must be 0 when cursor is provided', {
+        details: [{ field: 'offset', message: 'offset must be 0 when cursor is provided' }],
+      });
+    }
 
     const baseQuery = (): SelectQueryBuilder<Asset> => {
       const qb = this.repo.createQueryBuilder('asset').where('asset.userId = :userId', { userId });
@@ -230,8 +226,6 @@ export class AssetsService {
     return {
       items: items.map((a) => this.toResponse(a, thumbsByAsset.get(a.id) ?? [])),
       total,
-      limit,
-      offset,
       nextCursor: rows.length > limit && last ? encodeAssetCursor(last) : null,
     };
   }

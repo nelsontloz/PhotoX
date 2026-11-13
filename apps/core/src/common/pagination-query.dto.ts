@@ -2,11 +2,13 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsInt, IsOptional, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
-// ponytail: the albums + persons list endpoints share this exact limit/offset contract;
-// search + admin-users extend it (redeclaring limit for their stricter max caps)
+// The offset-addressed list contract (`/albums`, `/persons`). Endpoints that cap lower or page by
+// cursor declare their own `limit`/`cursor` (search, admin-users, album assets, assets) — the cap
+// belongs to the resource, not to the parameter name.
 export class PaginationQueryDto {
   @IsOptional()
   @Type(() => Number)
+  @IsInt()
   @Min(1)
   @Max(1000)
   // type: Number is load-bearing — an initializer-only field emits design:type Object, which
@@ -14,8 +16,7 @@ export class PaginationQueryDto {
   @ApiProperty({ type: Number, default: 20, required: false, maximum: 1000 })
   limit = 20;
 
-  // @IsInt: inherited by search/admin-users (both had it); tightens albums/persons
-  // float offsets from a potential 500 to a 400 — the safe direction
+  // @IsInt on both fields: a float offset/limit reached SQL as `OFFSET 1.5` and 500'd
   @IsOptional()
   @Type(() => Number)
   @IsInt()

@@ -63,7 +63,10 @@ export class AdminService {
     if (params.role) {
       qb.andWhere('u.role = :role', { role: params.role });
     }
+    // id completes the sort key: rows sharing the sort value would otherwise page
+    // non-deterministically and repeat or skip between offset pages
     qb.orderBy(`u.${params.sortField}`, params.sortDir.toUpperCase() as 'ASC' | 'DESC');
+    qb.addOrderBy('u.id', 'ASC');
     qb.take(params.limit).skip(params.offset);
 
     const [rows, total] = await qb.getManyAndCount();
@@ -76,7 +79,7 @@ export class AdminService {
       createdAt: u.createdAt.toISOString(),
     }));
 
-    return { items, total, limit: params.limit, offset: params.offset };
+    return { items, total };
   }
 
   /**

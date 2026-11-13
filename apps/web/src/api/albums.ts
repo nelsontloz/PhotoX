@@ -1,16 +1,15 @@
 import { api, type PageParams } from './client';
 import type {
   AlbumDto,
+  AlbumListResponse,
+  AssetListResponse,
   CreateAlbumDto,
   UpdateAlbumDto,
   AddAssetsToAlbumDto,
 } from '@photox/shared-types';
-import type { Asset } from '@photox/shared-types';
 
-export async function listAlbums(
-  params: PageParams = {},
-): Promise<{ items: AlbumDto[]; total: number }> {
-  const { data } = await api.get<{ items: AlbumDto[]; total: number }>('/v1/albums', { params });
+export async function listAlbums(params: PageParams = {}): Promise<AlbumListResponse> {
+  const { data } = await api.get<AlbumListResponse>('/v1/albums', { params });
   return data;
 }
 
@@ -35,11 +34,9 @@ export async function deleteAlbum(id: string): Promise<void> {
 
 export async function listAlbumAssets(
   id: string,
-  params: PageParams = {},
-): Promise<{ items: Asset[]; total: number }> {
-  const { data } = await api.get<{ items: Asset[]; total: number }>(`/v1/albums/${id}/assets`, {
-    params,
-  });
+  params: PageParams & { cursor?: string } = {},
+): Promise<AssetListResponse> {
+  const { data } = await api.get<AssetListResponse>(`/v1/albums/${id}/assets`, { params });
   return data;
 }
 

@@ -1,3 +1,5 @@
+import type { Page } from './pagination';
+
 export interface AlbumDto {
   id: string;
   userId: string;
@@ -25,3 +27,6 @@ export interface UpdateAlbumDto {
 export interface AddAssetsToAlbumDto {
   assetIds: string[];
 }
+
+/** GET /api/v1/albums — offset-addressed (the collection is small); `total` is the whole count. */
+export type AlbumListResponse = Page<AlbumDto>;

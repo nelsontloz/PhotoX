@@ -2,7 +2,12 @@ import type { Mock } from 'vitest';
 import { vi } from 'vitest';
 import * as argon2 from 'argon2';
 import type { DataSource } from 'typeorm';
-import { AdminSeedService, DatabaseModule, VectorInitService, typeOrmOptions } from './database.module';
+import {
+  AdminSeedService,
+  DatabaseModule,
+  VectorInitService,
+  typeOrmOptions,
+} from './database.module';
 import { StructuralIndexes1794500000000 } from './migrations/1794500000000-StructuralIndexes';
 
 const EMAIL = 'admin-seed@example.com';

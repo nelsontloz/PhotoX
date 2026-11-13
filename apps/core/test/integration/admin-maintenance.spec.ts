@@ -147,16 +147,17 @@ describe('admin maintenance', () => {
       .query({ limit: 2, offset: 1 })
       .set(auth);
     expect(page.status).toBe(200);
+    // limit/offset are request parameters, not response fields
     const pageBody = page.body as unknown as {
       items: unknown[];
       total: number;
-      limit: number;
-      offset: number;
+      limit?: number;
+      offset?: number;
     };
     expect(pageBody.total).toBe(3);
     expect(pageBody.items).toHaveLength(2);
-    expect(pageBody.limit).toBe(2);
-    expect(pageBody.offset).toBe(1);
+    expect(pageBody.limit).toBeUndefined();
+    expect(pageBody.offset).toBeUndefined();
 
     const search = await request(apiServer(t))
       .get('/api/v1/admin/users')

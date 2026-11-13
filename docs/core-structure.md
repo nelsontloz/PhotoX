@@ -5,20 +5,20 @@ The rules the code follows, so a new file has one obvious home. Enforced where i
 
 ## Ownership
 
-| Area | Owns |
-|---|---|
-| `auth/` | Token verification, the route policy (`open-routes.ts`), cookies, the guard |
-| `users/` | Accounts, credentials, sessions, admin user CRUD, the account wipe |
-| `database/entities/` | **Every** entity. One schema, one directory |
-| `database/migrations/` | Every schema change. Boot SQL in `database.module.ts` is DDL that `synchronize` cannot express |
-| `common/` | Anything imported by three or more features (`sql-errors`, `mime`, `asset-ownership`, …) |
-| `ingest/` | The ingest core: `persistOriginal` → `createAsset` → `enqueueAssetJobs`, plus the `/files` and asset-content routes |
-| `storage/` | `LocalStorageService` wiring (infrastructure) |
-| `assets/` | Asset CRUD, trash, metadata ingestion, byte-target resolution |
-| `timeline` (inside `assets/`) | The month-index / window protocol and its `version` tokens |
-| `backup/` | Manifest, transfer ledger, restore, merge — the one declared cross-cutting reader |
-| `maintenance/` | Periodic reconcilers (stuck assets) |
-| `worker/` | The `/worker/*` adapter; no business logic of its own |
+| Area                          | Owns                                                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `auth/`                       | Token verification, the route policy (`open-routes.ts`), cookies, the guard                                         |
+| `users/`                      | Accounts, credentials, sessions, admin user CRUD, the account wipe                                                  |
+| `database/entities/`          | **Every** entity. One schema, one directory                                                                         |
+| `database/migrations/`        | Every schema change. Boot SQL in `database.module.ts` is DDL that `synchronize` cannot express                      |
+| `common/`                     | Anything imported by three or more features (`sql-errors`, `mime`, `asset-ownership`, …)                            |
+| `ingest/`                     | The ingest core: `persistOriginal` → `createAsset` → `enqueueAssetJobs`, plus the `/files` and asset-content routes |
+| `storage/`                    | `LocalStorageService` wiring (infrastructure)                                                                       |
+| `assets/`                     | Asset CRUD, trash, metadata ingestion, byte-target resolution                                                       |
+| `timeline` (inside `assets/`) | The month-index / window protocol and its `version` tokens                                                          |
+| `backup/`                     | Manifest, transfer ledger, restore, merge — the one declared cross-cutting reader                                   |
+| `maintenance/`                | Periodic reconcilers (stuck assets)                                                                                 |
+| `worker/`                     | The `/worker/*` adapter; no business logic of its own                                                               |
 
 ## Rules
 

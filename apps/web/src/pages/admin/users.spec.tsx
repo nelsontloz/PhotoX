@@ -37,8 +37,6 @@ const grace: AdminUserRow = {
 const page = (over: Partial<AdminUserListResponse> = {}): AdminUserListResponse => ({
   items: [ada, grace],
   total: 42,
-  limit: 20,
-  offset: 0,
   ...over,
 });
 
@@ -185,7 +183,7 @@ describe('UsersSection', () => {
     expect(button('Prev').disabled).toBe(true);
     expect(button('Next').disabled).toBe(false);
 
-    api.listAdminUsers.mockResolvedValue(page({ offset: 20 }));
+    api.listAdminUsers.mockResolvedValue(page());
     fireEvent.click(button('Next'));
 
     await waitFor(() =>
@@ -197,7 +195,7 @@ describe('UsersSection', () => {
   });
 
   it('disables Next on the last page', async () => {
-    api.listAdminUsers.mockResolvedValue(page({ total: 5, offset: 0 }));
+    api.listAdminUsers.mockResolvedValue(page({ total: 5 }));
     render(<UsersSection />);
     await screen.findByText('Ada Lovelace');
 

@@ -1,3 +1,5 @@
+import type { Page } from './pagination';
+
 export type Role = 'user' | 'admin';
 
 export interface User {
@@ -135,21 +137,13 @@ export interface Asset {
   faces?: FaceDto[];
 }
 
-export interface AssetListResponse {
-  items: Asset[];
-  total: number;
-  limit: number;
-  offset: number;
-  /** Set when more rows follow; pass back as `cursor` to get the next page. */
-  nextCursor?: string | null;
-}
+/** `nextCursor` is set when more rows follow; pass it back as `cursor` for the next page. */
+export type AssetListResponse = Page<Asset>;
 
 // GET /api/v1/search + GET /api/v1/assets/:id/{duplicates,similar} — items reuse the
-// list-assets Asset shape verbatim
-export interface SearchResponse {
-  items: Asset[];
-  total: number;
-}
+// list-assets Asset shape verbatim. `total` is the candidate/returned count here, not a
+// whole-library match count (the ranked branches are depth-capped).
+export type SearchResponse = Page<Asset>;
 
 // Timeline sync surface: `GET /api/v1/timeline/index` + `GET /api/v1/timeline/window`.
 // The index is the revalidation call — a client diffs its per-window `version` against the cached
@@ -224,12 +218,7 @@ export interface AdminUserRow {
   createdAt: string;
 }
 
-export interface AdminUserListResponse {
-  items: AdminUserRow[];
-  total: number;
-  limit: number;
-  offset: number;
-}
+export type AdminUserListResponse = Page<AdminUserRow>;
 
 /** Outcome of relocating a user's backup after an account edit. */
 export interface AdminUserBackupSync {
@@ -424,12 +413,10 @@ export interface PersonDto {
   updatedAt: string;
 }
 
-export interface PersonListResponse {
-  items: PersonDto[];
-  total: number;
-  limit: number;
-  offset: number;
-}
+export type PersonListResponse = Page<PersonDto>;
+
+/** GET /api/v1/worker/faces — internal keyset page the worker walks for clustering. */
+export type FaceListResponse = Page<FaceDto>;
 
 export interface UpdatePersonRequest {
   name: string | null;
@@ -501,6 +488,7 @@ export type IngestErrorCode = (typeof INGEST_ERROR_CODES)[number];
 export const API_ERROR_CODES = [
   ...INGEST_ERROR_CODES,
   'VALIDATION_FAILED',
+  'INVALID_CURSOR',
   'BAD_REQUEST',
   'UNAUTHENTICATED',
   'FORBIDDEN',
@@ -574,6 +562,7 @@ export interface IngestErrorBody extends ApiErrorBody {
   receivedParts?: number[];
 }
 
+export * from './pagination';
 export * from './albums';
 export * from './shares';
 

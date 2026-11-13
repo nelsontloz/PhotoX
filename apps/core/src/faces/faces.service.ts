@@ -11,7 +11,7 @@ import { findOwnedOr404 } from '../common/asset-ownership';
 import { refreshPersonsAfterFaceDelete } from '../common/face-cleanup';
 import { LocalStorageService } from '@photox/shared-config';
 import { refreshPersonFaceCount } from './face-count';
-import type { DetectedFaceInput, FaceDto } from '@photox/shared-types';
+import type { DetectedFaceInput, FaceDto, FaceListResponse } from '@photox/shared-types';
 
 const DEFAULT_SIZE = 240;
 const MAX_SIZE = 600;
@@ -106,18 +106,22 @@ export class FacesService {
       includeEmbeddings?: boolean;
       excludeTrashed?: boolean;
     },
-  ) {
+  ): Promise<FaceListResponse> {
     const limit = opts.limit ?? 500;
+    const total = await this.repo.count({ where: { userId } });
     const faces = await this.repo.find({
       where: { userId, ...(opts.cursor ? { id: MoreThan(opts.cursor) } : {}) },
       order: { id: 'ASC' },
-      take: limit,
+      // one extra row decides "more follow" without a second query
+      take: limit + 1,
     });
+    const page = faces.slice(0, limit);
     const trashedAssetIds = await this.trashedAssetIds(userId, opts.excludeTrashed);
-    const items = faces
+    const items = page
       .filter((f) => !trashedAssetIds?.has(f.assetId))
       .map((f) => toFaceDto(f, opts.includeEmbeddings));
-    return { items, nextCursor: faces.length < limit ? null : (faces.at(-1)?.id ?? null) };
+    const last = page.at(-1);
+    return { items, total, nextCursor: faces.length > limit && last ? last.id : null };
   }
 
   private async trashedAssetIds(

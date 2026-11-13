@@ -130,7 +130,7 @@ describe('listAllAssets', () => {
     };
     getMock.mockImplementation((_url, config) => {
       const page = pages[(config?.params?.cursor as string | undefined) ?? 'first']!;
-      const data: AssetListResponse = { ...page, total: 3, limit: 1, offset: 0 };
+      const data: AssetListResponse = { ...page, total: 3 };
       return Promise.resolve({ data });
     });
 
@@ -154,7 +154,7 @@ describe('listAllAssets', () => {
 
   it('stops on a repeated cursor instead of looping forever', async () => {
     getMock.mockResolvedValue({
-      data: { items: [makeAsset('a-0')], total: 9, limit: 50, offset: 0, nextCursor: 'stuck' },
+      data: { items: [makeAsset('a-0')], total: 9, nextCursor: 'stuck' },
     });
 
     const all = await listAllAssets({ limit: 50 });
