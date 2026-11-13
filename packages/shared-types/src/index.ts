@@ -478,20 +478,66 @@ export type UploadSessionStatus =
 
 // Machine-readable `code` on every ingest error envelope:
 // `{statusCode, message, code}` (plus `receivedParts` for PARTS_MISSING).
-export type IngestErrorCode =
-  | 'SIZE_LIMIT'
-  | 'QUOTA_EXCEEDED'
-  | 'SESSION_LIMIT'
-  | 'SESSION_EXPIRED'
-  | 'PARTS_MISSING'
-  | 'PART_CONFLICT'
-  | 'PART_TOO_LARGE'
-  | 'MISSING_LENGTH'
-  | 'INDEX_RANGE'
-  | 'CHECKSUM_MISMATCH'
-  | 'UNSUPPORTED_TYPE'
-  | 'EMPTY_BODY'
-  | 'ENQUEUE_FAILED';
+export const INGEST_ERROR_CODES = [
+  'SIZE_LIMIT',
+  'QUOTA_EXCEEDED',
+  'SESSION_LIMIT',
+  'SESSION_EXPIRED',
+  'PARTS_MISSING',
+  'PART_CONFLICT',
+  'PART_TOO_LARGE',
+  'MISSING_LENGTH',
+  'INDEX_RANGE',
+  'CHECKSUM_MISMATCH',
+  'UNSUPPORTED_TYPE',
+  'EMPTY_BODY',
+  'ENQUEUE_FAILED',
+] as const;
+export type IngestErrorCode = (typeof INGEST_ERROR_CODES)[number];
+
+// The API-wide error contract. Every non-2xx response is an `ApiErrorBody`: the ingest codes
+// above plus one code per failure class the transport itself can produce. Codes are stable —
+// clients branch on `code`, never on `message` (prose) or on an `error` reason phrase.
+export const API_ERROR_CODES = [
+  ...INGEST_ERROR_CODES,
+  'VALIDATION_FAILED',
+  'BAD_REQUEST',
+  'UNAUTHENTICATED',
+  'FORBIDDEN',
+  'NOT_FOUND',
+  'CONFLICT',
+  'PAYLOAD_TOO_LARGE',
+  'UNSUPPORTED_MEDIA_TYPE',
+  'UNPROCESSABLE_ENTITY',
+  'RATE_LIMITED',
+  'RATE_LIMIT_UNAVAILABLE',
+  'MODEL_UNAVAILABLE',
+  'SERVICE_UNAVAILABLE',
+  'INTERNAL_ERROR',
+] as const;
+export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
+
+/** One field-level failure inside a validation error. */
+export interface ApiErrorDetail {
+  /** Dotted path of the offending field, when the error is field-scoped. */
+  field?: string;
+  message: string;
+}
+
+/**
+ * The one non-2xx body shape: `{statusCode, code, message, details?, retryAfterSec?, requestId}`.
+ * `Retry-After` is also sent as a header when `retryAfterSec` is present.
+ */
+export interface ApiErrorBody {
+  statusCode: number;
+  code: ApiErrorCode;
+  /** Human-readable sentence; clients display `details` when present, else this. */
+  message: string;
+  details?: ApiErrorDetail[];
+  retryAfterSec?: number;
+  /** Correlates the failure with the server log (`X-Request-Id`). */
+  requestId?: string;
+}
 
 // POST /api/v1/uploads — chunkSizeBytes/totalParts are server-fixed (8 MiB chunks)
 export interface UploadSessionCreated {
@@ -523,9 +569,7 @@ export interface UploadCompleteResponse {
   deduplicated: boolean;
 }
 
-export interface IngestErrorBody {
-  statusCode: number;
-  message: string;
+export interface IngestErrorBody extends ApiErrorBody {
   code: IngestErrorCode;
   receivedParts?: number[];
 }

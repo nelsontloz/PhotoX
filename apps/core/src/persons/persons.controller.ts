@@ -16,6 +16,11 @@ import { BullMqService } from '../queue/bullmq.service';
 import { UpdatePersonDto } from './dto/update-person.dto';
 import { PaginationQueryDto } from '../common/pagination-query.dto';
 import type { PersonListResponse, PersonDto } from '@photox/shared-types';
+import {
+  PersonClusterResponseModel,
+  PersonListResponseModel,
+  PersonModel,
+} from '../swagger/response-models';
 
 @ApiTags('persons')
 @Controller('api/v1/persons')
@@ -28,7 +33,7 @@ export class PersonsController {
   @Post('cluster')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Trigger face clustering for the current user' })
-  @ApiResponse({ status: 202, description: 'Cluster job queued' })
+  @ApiResponse({ status: 202, description: 'Cluster job queued', type: PersonClusterResponseModel })
   async triggerCluster(@CurrentUserId() userId: string) {
     // ponytail: unique jobId per click — fixed jobId would dedupe via BullMQ and silently drop re-runs
     const jobId = `cluster-${userId}-manual-${Date.now()}`;
@@ -43,7 +48,7 @@ export class PersonsController {
 
   @Get()
   @ApiOperation({ summary: 'List persons for a user' })
-  @ApiResponse({ status: 200, description: 'Paginated person list' })
+  @ApiResponse({ status: 200, description: 'Paginated person list', type: PersonListResponseModel })
   async list(
     @Query() q: PaginationQueryDto,
     @CurrentUserId() userId: string,
@@ -53,7 +58,7 @@ export class PersonsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single person' })
-  @ApiResponse({ status: 200, description: 'Person found' })
+  @ApiResponse({ status: 200, description: 'Person found', type: PersonModel })
   @ApiResponse({ status: 404, description: 'Person not found' })
   async getOne(@Param('id') id: string, @CurrentUserId() userId: string): Promise<PersonDto> {
     return this.persons.getOne(userId, id);
@@ -61,7 +66,7 @@ export class PersonsController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Rename a person' })
-  @ApiResponse({ status: 200, description: 'Person updated' })
+  @ApiResponse({ status: 200, description: 'Person updated', type: PersonModel })
   @ApiResponse({ status: 404, description: 'Person not found' })
   async update(
     @Param('id') id: string,

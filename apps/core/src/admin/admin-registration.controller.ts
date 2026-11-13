@@ -3,6 +3,7 @@ import { ApiProperty, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger
 import { IsBoolean } from 'class-validator';
 import type { RegistrationSettings } from '@photox/shared-types';
 import { SettingsService } from '../settings/settings.service';
+import { RegistrationSettingsModel } from '../swagger/response-models';
 
 class UpdateRegistrationDto {
   @ApiProperty({ example: false })
@@ -17,14 +18,22 @@ export class AdminRegistrationController {
 
   @Get()
   @ApiOperation({ summary: 'Public registration toggle state (admin-only)' })
-  @ApiResponse({ status: 200, description: 'Current registration setting' })
+  @ApiResponse({
+    status: 200,
+    description: 'Current registration setting',
+    type: RegistrationSettingsModel,
+  })
   async getSettings(): Promise<RegistrationSettings> {
     return { enabled: await this.settings.isRegistrationEnabled() };
   }
 
   @Patch()
   @ApiOperation({ summary: 'Enable or disable public registration (admin-only)' })
-  @ApiResponse({ status: 200, description: 'Updated registration setting' })
+  @ApiResponse({
+    status: 200,
+    description: 'Updated registration setting',
+    type: RegistrationSettingsModel,
+  })
   async update(@Body() body: UpdateRegistrationDto): Promise<RegistrationSettings> {
     await this.settings.setRegistrationEnabled(body.enabled);
     return { enabled: body.enabled };

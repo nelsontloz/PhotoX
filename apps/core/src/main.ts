@@ -1,12 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { ValidationPipe } from '@nestjs/common';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { createValidationPipe } from './common/validation';
 import { configureBodyParsers } from './common/body-parsers';
 import { requestIdMiddleware } from './common/request-id';
+import { setupSwagger } from './swagger/setup';
 import { loadEnv } from '@photox/shared-config';
 
 async function bootstrap() {
@@ -35,26 +35,11 @@ async function bootstrap() {
     next();
   });
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  app.useGlobalPipes(createValidationPipe());
   app.useGlobalFilters(new HttpExceptionFilter());
 
   // ponytail: no CORS — browsers reach the API same-origin via the Vite proxy / reverse proxy
-  const config = new DocumentBuilder()
-    .setTitle('Photox API')
-    .setDescription('Photo hosting API')
-    .setVersion('1.0')
-    // Swagger UI can send the same Bearer access token the API accepts (cookie auth
-    // works without this — the browser attaches it)
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' });
+  setupSwagger(app);
 
   await app.listen(env.API_PORT);
   console.log(`API running on port ${env.API_PORT}`);

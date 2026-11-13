@@ -1,9 +1,10 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { access } from 'fs/promises';
 import { join } from 'path';
 import { loadEnv } from '@photox/shared-config';
 import { SEARCH_EMBEDDING_MODEL, SEARCH_TEXT_MAX_LENGTH, toEmbedding } from '@photox/shared-types';
 import type { PreTrainedTokenizer, SiglipTextModel } from '@huggingface/transformers';
+import { apiError } from '../common/api-error';
 
 const CACHE_MAX = 256;
 const PROVISION_CMD = 'pnpm --filter @photox/worker-service vision-model';
@@ -72,7 +73,9 @@ export class TextEncodeService {
     try {
       await access(join(modelDir, 'onnx', 'text_model_int8.onnx'));
     } catch {
-      throw new ServiceUnavailableException(
+      throw apiError(
+        503,
+        'MODEL_UNAVAILABLE',
         `Vision search model not provisioned at ${modelDir} — run '${PROVISION_CMD}' on the host, ` +
           `then POST /api/v1/admin/embeddings/reprocess`,
       );

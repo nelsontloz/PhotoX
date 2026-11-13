@@ -26,6 +26,14 @@ import { AdminUserIdParamsDto } from './dto/admin-user-id.params.dto';
 import { CreateAdminUserDto } from './dto/create-admin-user.body.dto';
 import { ListAdminUsersQueryDto } from './dto/list-admin-users.query.dto';
 import { UpdateAdminUserDto } from './dto/update-admin-user.body.dto';
+import {
+  AdminUserBackupSyncModel,
+  AdminUserDeleteResponseModel,
+  AdminUserDeleteStatusModel,
+  AdminUserListResponseModel,
+  AdminUserRowModel,
+  AdminUserUpdateResponseModel,
+} from '../../swagger/response-models';
 
 // ponytail: admin-only is enforced centrally by JwtAuthGuard (every /api/v1/admin*
 // route requires the admin role) — no per-handler role checks here. Worker `act`
@@ -37,7 +45,11 @@ export class AdminController {
 
   @Get()
   @ApiOperation({ summary: 'List all users (admin-only, trusts the network)' })
-  @ApiResponse({ status: 200, description: 'Paginated user list' })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated user list',
+    type: AdminUserListResponseModel,
+  })
   async list(@Query() q: ListAdminUsersQueryDto): Promise<AdminUserListResponse> {
     const [rawField = 'createdAt', rawDir] = q.sort?.split(':') ?? [];
     const field = rawField as AdminUserSortField;
@@ -59,7 +71,7 @@ export class AdminController {
       'Works regardless of the public registration switch. Email is stored normalized, ' +
       'displayName trimmed; role defaults to `user`. No session is minted.',
   })
-  @ApiResponse({ status: 201, description: 'Created user row' })
+  @ApiResponse({ status: 201, description: 'Created user row', type: AdminUserRowModel })
   @ApiResponse({ status: 409, description: 'Email already registered' })
   async create(@Body() body: CreateAdminUserDto): Promise<AdminUserRow> {
     return this.admin.createUser(body);
@@ -74,7 +86,11 @@ export class AdminController {
       'session for the user; the S3 backup prefix moves to the new email key. A ' +
       'backup-move failure never fails the edit — retry POST :id/backup-sync.',
   })
-  @ApiResponse({ status: 200, description: 'Updated user row plus backup-sync outcome' })
+  @ApiResponse({
+    status: 200,
+    description: 'Updated user row plus backup-sync outcome',
+    type: AdminUserUpdateResponseModel,
+  })
   @ApiResponse({ status: 400, description: 'No changes to apply or blank displayName' })
   @ApiResponse({ status: 404, description: 'User not found' })
   @ApiResponse({ status: 409, description: 'Email already registered' })
@@ -95,7 +111,7 @@ export class AdminController {
       'for the live user row. Never throws for storage failures — the outcome is ' +
       'reported as { synced, moved, from?, to, reason?, error? }.',
   })
-  @ApiResponse({ status: 200, description: 'Backup-sync outcome' })
+  @ApiResponse({ status: 200, description: 'Backup-sync outcome', type: AdminUserBackupSyncModel })
   @ApiResponse({ status: 404, description: 'User not found' })
   async backupSync(@Param() params: AdminUserIdParamsDto): Promise<AdminUserBackupSync> {
     return this.admin.syncUserBackup(params.id);
@@ -112,7 +128,11 @@ export class AdminController {
       'backup prefix is NEVER touched (backupKept: true). Guards: 404 unknown user, ' +
       '403 self-delete, 409 last admin.',
   })
-  @ApiResponse({ status: 202, description: 'Deletion enqueued' })
+  @ApiResponse({
+    status: 202,
+    description: 'Deletion enqueued',
+    type: AdminUserDeleteResponseModel,
+  })
   @ApiResponse({ status: 404, description: 'User not found' })
   @ApiResponse({ status: 403, description: 'Self-delete is forbidden' })
   @ApiResponse({ status: 409, description: 'Cannot delete the last admin' })
@@ -125,7 +145,11 @@ export class AdminController {
 
   @Get(':id/delete-status')
   @ApiOperation({ summary: 'Poll async user-deletion state (admin-only)' })
-  @ApiResponse({ status: 200, description: 'Job state plus the kept backup prefix' })
+  @ApiResponse({
+    status: 200,
+    description: 'Job state plus the kept backup prefix',
+    type: AdminUserDeleteStatusModel,
+  })
   @ApiResponse({ status: 404, description: 'User not found and no finished run recorded' })
   async deleteStatus(@Param() params: AdminUserIdParamsDto): Promise<AdminUserDeleteStatus> {
     return this.admin.getUserDeleteStatus(params.id);

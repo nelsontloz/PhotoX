@@ -18,6 +18,7 @@ import { UpdateAssetDto } from './dto/update-asset.dto';
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto';
 import { PurgeTrashQueryDto } from './dto/purge-trash-query.dto';
 import { TrashAssetsDto } from './dto/trash-assets.dto';
+import { AssetListResponseModel, AssetModel } from '../swagger/response-models';
 
 @ApiTags('assets')
 @ApiBearerAuth()
@@ -27,7 +28,7 @@ export class AssetsController {
 
   @Get()
   @ApiOperation({ summary: 'List assets with filters' })
-  @ApiResponse({ status: 200, description: 'Paginated asset list' })
+  @ApiResponse({ status: 200, description: 'Paginated asset list', type: AssetListResponseModel })
   async list(@Query() q: ListAssetsQueryDto, @CurrentUserId() userId: string) {
     return this.assets.list(userId, q);
   }
@@ -69,7 +70,7 @@ export class AssetsController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single asset' })
-  @ApiResponse({ status: 200, description: 'Asset found' })
+  @ApiResponse({ status: 200, description: 'Asset found', type: AssetModel })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async getOne(@Param('id') id: string, @CurrentUserId() userId: string) {
     return this.assets.getOne(userId, id);
@@ -77,7 +78,7 @@ export class AssetsController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update user-editable asset metadata' })
-  @ApiResponse({ status: 200, description: 'Asset updated' })
+  @ApiResponse({ status: 200, description: 'Asset updated', type: AssetModel })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async update(
     @Param('id') id: string,

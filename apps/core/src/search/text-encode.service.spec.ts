@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ServiceUnavailableException } from '@nestjs/common';
+import { HttpException } from '@nestjs/common';
 import { TextEncodeService } from './text-encode.service';
 
 class FakeEncoder extends TextEncodeService {
@@ -54,9 +54,13 @@ describe('TextEncodeService provisioning', () => {
     process.env.STORAGE_DIR = dir;
     try {
       const service = new TextEncodeService();
-      await expect(service.encode('red square')).rejects.toBeInstanceOf(
-        ServiceUnavailableException,
-      );
+      const err = await service.encode('red square').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(HttpException);
+      expect((err as HttpException).getStatus()).toBe(503);
+      expect((err as HttpException).getResponse()).toMatchObject({
+        statusCode: 503,
+        code: 'MODEL_UNAVAILABLE',
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

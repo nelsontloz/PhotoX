@@ -12,6 +12,10 @@ class FakeRedis {
     if (next === 1) this.expirations.push([key, Number(windowSec)]);
     return Promise.resolve(next);
   }
+
+  pttl(): Promise<number> {
+    return Promise.resolve(42_000);
+  }
 }
 
 function makeService(redis: unknown) {
@@ -36,6 +40,30 @@ describe('RateLimitService', () => {
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(HttpException);
     expect((err as HttpException).getStatus()).toBe(429);
+    expect((err as HttpException).getResponse()).toMatchObject({
+      statusCode: 429,
+      code: 'RATE_LIMITED',
+      message: 'Too many requests',
+      retryAfterSec: 42,
+    });
+  });
+
+  it('falls back to the route window when PTTL fails', async () => {
+    const redis = new FakeRedis();
+    vi.spyOn(redis, 'pttl').mockRejectedValue(new Error('pttl failed'));
+    const { service } = makeService(redis);
+
+    for (let i = 0; i < RATE_LIMITS.login.limit; i++) {
+      await service.consume('login', '1.2.3.4', 'user@example.com');
+    }
+
+    const err = await service
+      .consume('login', '1.2.3.4', 'user@example.com')
+      .catch((e: unknown) => e);
+    expect((err as HttpException).getResponse()).toMatchObject({
+      code: 'RATE_LIMITED',
+      retryAfterSec: RATE_LIMITS.login.windowSec,
+    });
   });
 
   it('reads RATE_LIMIT_REGISTER at call time', async () => {
@@ -85,6 +113,10 @@ describe('RateLimitService', () => {
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(HttpException);
     expect((err as HttpException).getStatus()).toBe(503);
+    expect((err as HttpException).getResponse()).toMatchObject({
+      statusCode: 503,
+      code: 'RATE_LIMIT_UNAVAILABLE',
+    });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('Rate limit unavailable'));
   });
 

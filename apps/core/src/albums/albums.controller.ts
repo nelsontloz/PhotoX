@@ -18,6 +18,12 @@ import { UpdateAlbumDto } from './dto/update-album.dto';
 import { PaginationQueryDto } from '../common/pagination-query.dto';
 import { ListAlbumAssetsQueryDto } from './dto/list-album-assets-query.dto';
 import { AddAssetsBodyDto } from './dto/add-assets.dto';
+import {
+  AddAssetsResponseModel,
+  AlbumAssetsResponseModel,
+  AlbumListResponseModel,
+  AlbumModel,
+} from '../swagger/response-models';
 
 @ApiTags('albums')
 @Controller('api/v1/albums')
@@ -26,7 +32,7 @@ export class AlbumsController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new album' })
-  @ApiResponse({ status: 201, description: 'Album created' })
+  @ApiResponse({ status: 201, description: 'Album created', type: AlbumModel })
   @ApiResponse({ status: 400, description: 'Invalid request body' })
   async create(@Body() dto: CreateAlbumDto, @CurrentUserId() userId: string) {
     return this.albums.create(userId, dto);
@@ -34,14 +40,14 @@ export class AlbumsController {
 
   @Get()
   @ApiOperation({ summary: 'List albums' })
-  @ApiResponse({ status: 200, description: 'Paginated album list' })
+  @ApiResponse({ status: 200, description: 'Paginated album list', type: AlbumListResponseModel })
   async list(@Query() q: PaginationQueryDto, @CurrentUserId() userId: string) {
     return this.albums.list(userId, q);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single album' })
-  @ApiResponse({ status: 200, description: 'Album found' })
+  @ApiResponse({ status: 200, description: 'Album found', type: AlbumModel })
   @ApiResponse({ status: 404, description: 'Album not found' })
   async getOne(@Param('id') id: string, @CurrentUserId() userId: string) {
     return this.albums.getOne(userId, id);
@@ -49,7 +55,7 @@ export class AlbumsController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update album name or description' })
-  @ApiResponse({ status: 200, description: 'Album updated' })
+  @ApiResponse({ status: 200, description: 'Album updated', type: AlbumModel })
   @ApiResponse({ status: 404, description: 'Album not found' })
   async update(
     @Param('id') id: string,
@@ -70,7 +76,7 @@ export class AlbumsController {
 
   @Post(':id/assets')
   @ApiOperation({ summary: 'Add assets to an album' })
-  @ApiResponse({ status: 201, description: 'Assets added' })
+  @ApiResponse({ status: 201, description: 'Assets added', type: AddAssetsResponseModel })
   @ApiResponse({ status: 404, description: 'Album or asset not found' })
   async addAssets(
     @Param('id') id: string,
@@ -96,7 +102,7 @@ export class AlbumsController {
 
   @Get(':id/assets')
   @ApiOperation({ summary: 'List assets in an album' })
-  @ApiResponse({ status: 200, description: 'Paginated asset list' })
+  @ApiResponse({ status: 200, description: 'Paginated asset list', type: AlbumAssetsResponseModel })
   @ApiResponse({ status: 404, description: 'Album not found' })
   async listAssets(
     @Param('id') id: string,

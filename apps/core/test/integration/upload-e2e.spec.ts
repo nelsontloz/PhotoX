@@ -7,7 +7,7 @@ import request from 'supertest';
 import sharp from 'sharp';
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
-import { ValidationPipe, type INestApplication } from '@nestjs/common';
+import { type INestApplication } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import type { Express } from 'express';
 import type { Repository } from 'typeorm';
@@ -49,6 +49,7 @@ import {
 import { runFfmpeg } from '../../../worker-service/src/queue/ffmpeg';
 import { CoreClient } from '../../../worker-service/src/core/core-client.service';
 import { HttpExceptionFilter } from '../../src/common/filters/http-exception.filter';
+import { createValidationPipe } from '../../src/common/validation';
 import {
   TEST_AUTH_SECRET,
   TEST_WORKER_SECRET,
@@ -268,9 +269,7 @@ describe('upload e2e pipeline', () => {
         ],
       }).compile();
       app = moduleRef.createNestApplication();
-      app.useGlobalPipes(
-        new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-      );
+      app.useGlobalPipes(createValidationPipe());
       app.useGlobalFilters(new HttpExceptionFilter());
       // real HTTP loopback: worker processors call CoreClient → this app (the E2E proof)
       await app.listen(0);
