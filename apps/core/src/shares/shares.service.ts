@@ -2,12 +2,12 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, type FindOptionsRelations } from 'typeorm';
 import * as crypto from 'crypto';
-import { Share } from './entities/share.entity';
-import { isPostgresUniqueViolation } from '../assets/assets.service';
+import { Share } from '../database/entities/share.entity';
+import { isPostgresUniqueViolation } from '../common/sql-errors';
 import { Asset } from '../database/entities';
 import { FileRecord } from '../database/entities';
-import { Album } from '../albums/entities/album.entity';
-import { AlbumAsset } from '../albums/entities/album-asset.entity';
+import { Album } from '../database/entities/album.entity';
+import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { findOwnedOr404 } from '../common/asset-ownership';
 import { playableFileId } from '../files/content-target';
 import { CreateShareDto } from './dto/create-share.dto';

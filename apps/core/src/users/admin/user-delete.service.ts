@@ -9,15 +9,15 @@ import {
   type UserDeleteStepResult,
 } from '@photox/shared-types';
 import { DataSource, In, Repository } from 'typeorm';
-import { Album } from '../../albums/entities/album.entity';
+import { Album } from '../../database/entities/album.entity';
 import { Face, FileRecord, Person, UploadSession } from '../../database/entities';
 import { UserDelete } from '../../database/entities/user-delete.entity';
-import { BackupRun } from '../../backup/entities/backup-run.entity';
-import { Share } from '../../shares/entities/share.entity';
-import { BackupMerge } from '../../backup/entities/backup-merge.entity';
+import { BackupRun } from '../../database/entities/backup-run.entity';
+import { Share } from '../../database/entities/share.entity';
+import { BackupMerge } from '../../database/entities/backup-merge.entity';
 import { BullMqService } from '../../queue/bullmq.service';
-import { User } from '../entities/user.entity';
-import { RefreshToken } from '../entities/refresh-token.entity';
+import { User } from '../../database/entities/user.entity';
+import { RefreshToken } from '../../database/entities/refresh-token.entity';
 
 export interface UserDeleteProgress {
   jobId: string;

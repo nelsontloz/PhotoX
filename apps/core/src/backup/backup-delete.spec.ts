@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import type { Repository } from 'typeorm';
 import { backupPrefix, manifestKey } from '@photox/shared-config';
-import { User } from '../users/entities/user.entity';
+import { User } from '../database/entities/user.entity';
 import { UserBackupService } from './user-backup.service';
 
 function user(over: Partial<User> = {}): User {

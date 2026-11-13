@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FileRecord, UserDelete } from '../database/entities';
-import { User } from './entities/user.entity';
-import { RefreshToken } from './entities/refresh-token.entity';
+import { User } from '../database/entities/user.entity';
+import { RefreshToken } from '../database/entities/refresh-token.entity';
 import { StorageModule } from '../files/storage/storage.module';
 import { BackupModule } from '../backup/backup.module';
 import { SettingsModule } from '../settings/settings.module';

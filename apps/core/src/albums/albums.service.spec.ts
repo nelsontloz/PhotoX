@@ -1,7 +1,7 @@
 import type { Repository } from 'typeorm';
 import { AlbumsService } from './albums.service';
-import type { Album } from './entities/album.entity';
-import type { AlbumAsset } from './entities/album-asset.entity';
+import type { Album } from '../database/entities/album.entity';
+import type { AlbumAsset } from '../database/entities/album-asset.entity';
 import type { Asset } from '../database/entities';
 import type { AssetsService } from '../assets/assets.service';
 

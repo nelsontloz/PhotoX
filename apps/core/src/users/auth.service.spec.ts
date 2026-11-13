@@ -2,7 +2,7 @@ import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
 import { getMetadataArgsStorage } from 'typeorm';
 import { AuthService } from './auth.service';
-import { RefreshToken } from './entities/refresh-token.entity';
+import { RefreshToken } from '../database/entities/refresh-token.entity';
 import type { TokenService } from './tokens/token.service';
 import type { RateLimitService } from './rate-limit.service';
 import type { SettingsService } from '../settings/settings.service';

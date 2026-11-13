@@ -5,7 +5,7 @@ import { S3BackupService } from '../../src/backup/s3-backup.service';
 import { hashPassword } from '../../src/users/password';
 import { apiServer, closeTestApp, createApiTestApp, resetDb, seedUser } from './helpers';
 import type { ApiTestApp } from './helpers';
-import type { User } from '../../src/users/entities/user.entity';
+import type { User } from '../../src/database/entities/user.entity';
 
 const OLD_PASSWORD = 'old-password-123';
 const NEW_PASSWORD = 'new-password-456';

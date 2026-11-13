@@ -8,7 +8,7 @@ import { TEST_AUTH_SECRET_PREVIOUS } from './test-setup';
 import { ACCESS_COOKIE } from '../../src/auth/auth-cookie';
 import { RATE_LIMITS } from '../../src/users/rate-limit.service';
 import { BullMqService } from '../../src/queue/bullmq.service';
-import { RefreshToken } from '../../src/users/entities/refresh-token.entity';
+import { RefreshToken } from '../../src/database/entities/refresh-token.entity';
 import {
   apiServer,
   closeTestApp,

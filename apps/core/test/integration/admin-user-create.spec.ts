@@ -4,7 +4,7 @@ import { BullMqService } from '../../src/queue/bullmq.service';
 import { hashPassword } from '../../src/users/password';
 import { apiServer, closeTestApp, createApiTestApp, resetDb, seedUser } from './helpers';
 import type { ApiTestApp } from './helpers';
-import type { User } from '../../src/users/entities/user.entity';
+import type { User } from '../../src/database/entities/user.entity';
 
 const ADMIN_PASSWORD = 'admin-password-123';
 const PASSWORD = 'correcthorsebattery';

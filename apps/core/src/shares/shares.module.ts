@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Share } from './entities/share.entity';
+import { Share } from '../database/entities/share.entity';
 import { Asset } from '../database/entities';
 import { FileRecord } from '../database/entities';
-import { Album } from '../albums/entities/album.entity';
-import { AlbumAsset } from '../albums/entities/album-asset.entity';
+import { Album } from '../database/entities/album.entity';
+import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { UserFilesModule } from '../files/user/user-files.module';
 import { SharesService } from './shares.service';
 import { SharesController } from './shares.controller';

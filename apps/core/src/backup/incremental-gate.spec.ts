@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import type { Repository } from 'typeorm';
-import { User } from '../users/entities/user.entity';
+import { User } from '../database/entities/user.entity';
 import { shouldSkipUpload, UserBackupService } from './user-backup.service';
 
 const file = { id: 'file-1', checksumSha256: 'abc', sizeBytes: 10 };

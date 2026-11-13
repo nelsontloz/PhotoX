@@ -14,7 +14,7 @@ import type { Repository } from 'typeorm';
 import { Asset, AssetThumbnail, Face, FileRecord } from '../../src/database/entities';
 import { LocalStorageService, loadEnv } from '@photox/shared-config';
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types';
-import { User } from '../../src/users/entities/user.entity';
+import { User } from '../../src/database/entities/user.entity';
 import { AssetsModule } from '../../src/assets/assets.module';
 import { AlbumsModule } from '../../src/albums/albums.module';
 import { SharesModule } from '../../src/shares/shares.module';

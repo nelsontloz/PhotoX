@@ -25,11 +25,11 @@ import { AssetEmbedding } from '../../src/database/entities/asset-embedding.enti
 import { AssetDetection } from '../../src/database/entities/asset-detection.entity';
 import { LocalStorageService } from '@photox/shared-config';
 import { UserDelete } from '../../src/database/entities/user-delete.entity';
-import { User } from '../../src/users/entities/user.entity';
-import { RefreshToken } from '../../src/users/entities/refresh-token.entity';
-import { Album } from '../../src/albums/entities/album.entity';
-import { AlbumAsset } from '../../src/albums/entities/album-asset.entity';
-import { Share } from '../../src/shares/entities/share.entity';
+import { User } from '../../src/database/entities/user.entity';
+import { RefreshToken } from '../../src/database/entities/refresh-token.entity';
+import { Album } from '../../src/database/entities/album.entity';
+import { AlbumAsset } from '../../src/database/entities/album-asset.entity';
+import { Share } from '../../src/database/entities/share.entity';
 import { AssetsModule } from '../../src/assets/assets.module';
 import { AlbumsModule } from '../../src/albums/albums.module';
 import { SharesModule } from '../../src/shares/shares.module';

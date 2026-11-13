@@ -22,8 +22,8 @@ import {
   isWorkerRoute,
 } from './open-routes';
 import { ABSOLUTE_SESSION_MS } from './session.constants';
-import { User } from '../users/entities/user.entity';
-import { RefreshToken } from '../users/entities/refresh-token.entity';
+import { User } from '../database/entities/user.entity';
+import { RefreshToken } from '../database/entities/refresh-token.entity';
 
 declare global {
   // ponytail: replaces the passport Request.user augmentation removed with passport
