@@ -71,22 +71,25 @@ export class UserDeleteService {
   ) {}
 
   /** Records the admin's enqueue intent and resets any counters from an earlier run. */
-  async markQueued(userId: string, jobId: string, prefix: string): Promise<void> {
-    await this.runs.upsert(
-      {
-        userId,
-        jobId,
-        state: 'queued',
-        backupPrefix: prefix,
-        phase: null,
-        deletedRows: 0,
-        deletedFiles: 0,
-        failedFiles: 0,
-        error: null,
-        sessionsLocked: false,
-      },
-      ['userId'],
-    );
+  async markQueued(userId: string, jobId: string, prefix: string, email?: string): Promise<void> {
+    // `email` is only written when known: an upsert that omits it keeps the address a previous
+    // attempt recorded, and `startedAt` (a database default, never listed here) keeps the first
+    // attempt's time across retries.
+    const values: Partial<UserDelete> = {
+      userId,
+      jobId,
+      state: 'queued',
+      backupPrefix: prefix,
+      phase: null,
+      deletedRows: 0,
+      deletedFiles: 0,
+      failedFiles: 0,
+      error: null,
+      sessionsLocked: false,
+      finishedAt: null,
+    };
+    if (email !== undefined) values.email = email;
+    await this.runs.upsert(values, ['userId']);
   }
 
   /**
@@ -94,7 +97,7 @@ export class UserDeleteService {
    * keeps the intent visible; a retry request writes `queued` again (markQueued resets it).
    */
   async markEnqueueFailed(userId: string, message: string): Promise<void> {
-    await this.runs.update(userId, { state: 'failed', error: message });
+    await this.runs.update(userId, { state: 'failed', error: message, finishedAt: new Date() });
   }
 
   async getProgress(userId: string): Promise<UserDeleteProgress | undefined> {
@@ -155,7 +158,7 @@ export class UserDeleteService {
     }
 
     if (!run) {
-      await this.markQueued(userId, userDeleteJobId(userId), prefix);
+      await this.markQueued(userId, userDeleteJobId(userId), prefix, user.email);
     } else if (run.state === 'completed' || run.state === 'partial' || run.state === 'failed') {
       // The user row is back (restore/merge rebuilt the account, or a re-delete raced the
       // queue), so the terminal row is stale: restart the wipe instead of lying `done`.
@@ -237,6 +240,7 @@ export class UserDeleteService {
       deletedFiles: report.filesDeleted,
       failedFiles: report.filesFailed,
       error: report.firstError ?? report.error ?? null,
+      finishedAt: new Date(),
     });
     this.logger.log(
       `User wipe ${state}: user=${userId} rows=${(await this.getProgress(userId))?.deletedRows ?? 0} ` +

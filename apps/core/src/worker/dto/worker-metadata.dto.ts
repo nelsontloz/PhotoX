@@ -11,6 +11,7 @@ import {
   IsObject,
 } from 'class-validator';
 import { TitleDescriptionDto } from '../../common/title-description.dto';
+import { MaxJsonBytes } from '../../common/max-json-bytes.decorator';
 
 // Worker-only extraction payload (act-required `PATCH worker/assets/:id/metadata`). Every field
 // is optional; transcodeFileId keeps the same ownership rule as the in-app viewer flows.
@@ -135,6 +136,8 @@ export class WorkerMetadataDto extends TitleDescriptionDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsObject()
+  // EXIF/ffprobe summaries are a few KiB; 64 KiB is a ceiling, not a target
+  @MaxJsonBytes(64 * 1024)
   metadata?: Record<string, unknown>;
 
   @ApiProperty({ required: false, enum: ['pending', 'ready', 'failed'] })

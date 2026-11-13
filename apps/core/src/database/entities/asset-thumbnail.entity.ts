@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { Asset } from './asset.entity';
+import { bigintTransformer } from '../shared/bigint';
 
 @Entity('asset_thumbnails')
 @Unique(['assetId', 'size'])
@@ -39,7 +40,7 @@ export class AssetThumbnail {
   @Column({ type: 'int' })
   height!: number;
 
-  @Column({ type: 'bigint' })
+  @Column({ type: 'bigint', transformer: bigintTransformer })
   bytes!: number;
 
   @CreateDateColumn({ type: 'timestamptz' })

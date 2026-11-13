@@ -18,7 +18,7 @@ export class UploadSessionPart {
   @Column({ type: 'int' })
   sizeBytes!: number;
 
-  @Column({ type: 'char', length: 64, nullable: true })
+  @Column({ type: 'varchar', length: 64, nullable: true })
   checksumSha256!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })

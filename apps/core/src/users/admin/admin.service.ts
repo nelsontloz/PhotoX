@@ -272,7 +272,7 @@ export class AdminService {
     await this.deletes.clearFinishedJob(user.id);
     // the durable intent lands BEFORE the job: a lost write after an enqueue would leave the
     // worker stepping against a stale terminal row and sweeping a live account
-    await this.deletes.markQueued(user.id, jobId, prefix);
+    await this.deletes.markQueued(user.id, jobId, prefix, user.email);
     // pending per-user media jobs are drained by the worker's consumer at job start (the
     // worker owns those queues); core only enqueues the wipe here
     const enqueued = await this.bullMq.enqueue(

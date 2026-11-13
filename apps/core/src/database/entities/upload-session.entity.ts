@@ -7,6 +7,7 @@ import {
   Index,
 } from 'typeorm';
 import type { UploadSessionStatus } from '@photox/shared-types';
+import { bigintTransformer } from '../shared/bigint';
 
 // Resumable chunked upload session (`api/v1/uploads`). Created pending, chunk rows land in
 // upload_session_parts, complete() assembles/dedups and stamps completedFileId/completedAssetId.
@@ -29,10 +30,10 @@ export class UploadSession {
   @Column({ type: 'int' })
   totalParts!: number;
 
-  @Column({ type: 'bigint' })
+  @Column({ type: 'bigint', transformer: bigintTransformer })
   expectedSizeBytes!: number;
 
-  @Column({ type: 'char', length: 64, nullable: true })
+  @Column({ type: 'varchar', length: 64, nullable: true })
   checksumSha256!: string | null;
 
   @Column({ type: 'text' })

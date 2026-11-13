@@ -8,6 +8,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { AssetThumbnail } from './asset-thumbnail.entity';
+import { bigintTransformer } from '../shared/bigint';
 
 @Entity('assets')
 @Index(['userId', 'uploadedAt'])
@@ -54,7 +55,7 @@ export class Asset {
   @Column({ type: 'varchar', nullable: true })
   mimeType!: string | null;
 
-  @Column({ type: 'bigint', nullable: true })
+  @Column({ type: 'bigint', nullable: true, transformer: bigintTransformer })
   sizeBytes!: number | null;
 
   @Column({ type: 'varchar', nullable: true })

@@ -446,6 +446,11 @@ export interface BackupProgress {
 
 /** Cap for the run driver's retry backoff when it retries without BullMQ's scheduler. */
 const TRANSFER_MAX_BACKOFF_MS = 5 * 60_000;
+// ponytail: a claim is a timestamp, not a lease — no owner, no heartbeat — so a transfer that
+// outlives this window can be re-queued while the first job still runs. Both sides write the same
+// bytes to the same key through tmp+rename, so the cost is duplicate work, never corruption.
+// Upgrade to a renewing lease only if a single file can legitimately take this long (the 4 GiB
+// upload cap and the 1h transcode cap say it cannot).
 /** A crashed core leaves items 'running'; after this they are claimable again. */
 const TRANSFER_CLAIM_TIMEOUT_MS = 30 * 60_000;
 
