@@ -2,7 +2,8 @@ import type { Mock } from 'vitest';
 import { vi } from 'vitest';
 import * as argon2 from 'argon2';
 import type { DataSource } from 'typeorm';
-import { AdminSeedService, DatabaseModule, VectorInitService } from './database.module';
+import { AdminSeedService, DatabaseModule, VectorInitService, typeOrmOptions } from './database.module';
+import { StructuralIndexes1794500000000 } from './migrations/1794500000000-StructuralIndexes';
 
 const EMAIL = 'admin-seed@example.com';
 const PASSWORD = 'seed-password-123';
@@ -113,5 +114,14 @@ describe('forRoot synchronize gate', () => {
     expect(findSynchronize(DatabaseModule.forRoot())).toBe(true);
     delete process.env.NODE_ENV;
     expect(findSynchronize(DatabaseModule.forRoot())).toBe(true);
+  });
+});
+
+describe('typeOrmOptions', () => {
+  it('lets a migration opt out of its transaction', () => {
+    // TypeORM refuses a per-migration override under its 'all' default, so the CONCURRENTLY
+    // index build would fail every production boot with ForbiddenTransactionModeOverrideError.
+    expect(typeOrmOptions().migrationsTransactionMode).toBe('each');
+    expect(new StructuralIndexes1794500000000().transaction).toBe(false);
   });
 });
