@@ -48,8 +48,8 @@ When('I restore the photo from the viewer', async ({ page, ctx }) => {
   const [response] = await Promise.all([
     page.waitForResponse(
       (r) =>
-        r.request().method() === 'POST' &&
-        new URL(r.url()).pathname === `/api/v1/assets/trashed/${ctx.assetId}/restore`,
+        r.request().method() === 'DELETE' &&
+        new URL(r.url()).pathname === `/api/v1/assets/${ctx.assetId}/trash`,
     ),
     page.locator('button[aria-label="Restore from trash"]:visible').click(),
   ]);
@@ -77,12 +77,11 @@ When('I permanently delete the open photo from the viewer', async ({ page, ctx }
   const [response] = await Promise.all([
     page.waitForResponse(
       (r) =>
-        r.request().method() === 'DELETE' &&
-        new URL(r.url()).pathname === `/api/v1/assets/trashed/${id}`,
+        r.request().method() === 'DELETE' && new URL(r.url()).pathname === `/api/v1/assets/${id}`,
     ),
     page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click(),
   ]);
-  expect(response.status()).toBe(200);
+  expect(response.status()).toBe(204);
   await expect(page.locator('div.fixed.inset-0.z-50')).toHaveCount(0);
 });
 
@@ -98,10 +97,9 @@ When('I empty the trash', async ({ page }) => {
   await expect(page.getByRole('dialog')).toBeVisible();
   const [response] = await Promise.all([
     page.waitForResponse(
-      (r) =>
-        r.request().method() === 'DELETE' && new URL(r.url()).pathname === '/api/v1/assets/trashed',
+      (r) => r.request().method() === 'DELETE' && new URL(r.url()).pathname === '/api/v1/assets',
     ),
     page.getByRole('dialog').getByRole('button', { name: 'Empty trash', exact: true }).click(),
   ]);
-  expect(response.status()).toBe(200);
+  expect(response.status()).toBe(204);
 });

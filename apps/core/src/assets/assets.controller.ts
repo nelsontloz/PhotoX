@@ -9,12 +9,14 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
 import { AssetsService } from './assets.service';
 import { UpdateAssetDto } from './dto/update-asset.dto';
 import { ListAssetsQueryDto } from './dto/list-assets-query.dto';
+import { PurgeTrashQueryDto } from './dto/purge-trash-query.dto';
 import { TrashAssetsDto } from './dto/trash-assets.dto';
 
 @ApiTags('assets')
@@ -30,32 +32,35 @@ export class AssetsController {
     return this.assets.list(userId, q);
   }
 
-  @Get('trashed')
-  @ApiOperation({ summary: 'List trashed assets' })
-  @ApiResponse({ status: 200, description: 'Paginated trashed asset list' })
-  async listTrashed(@Query() q: ListAssetsQueryDto, @CurrentUserId() userId: string) {
-    return this.assets.list(userId, { ...q, isTrashed: true });
-  }
-
-  @Delete('trashed')
-  @ApiOperation({ summary: 'Permanently delete all trashed assets' })
-  @ApiResponse({ status: 200, description: 'Trash emptied' })
-  async emptyTrash(@CurrentUserId() userId: string) {
+  // Trash is a state of the asset, not its own collection: the trash view is
+  // `GET api/v1/assets?isTrashed=true`, and these three routes are the state transitions.
+  // The collection delete is the exception — it purges everything trashed, so it demands the
+  // explicit filter instead of trusting a bare `DELETE /assets` (see PurgeTrashQueryDto).
+  @Delete()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Permanently delete every trashed asset (requires isTrashed=true)' })
+  @ApiResponse({ status: 204, description: 'Trash emptied' })
+  @ApiResponse({ status: 400, description: 'isTrashed=true is required' })
+  async emptyTrash(@CurrentUserId() userId: string, @Query() q: PurgeTrashQueryDto) {
+    if (!q.isTrashed) {
+      throw new BadRequestException('Emptying the trash requires isTrashed=true');
+    }
     await this.assets.emptyTrash(userId);
   }
 
-  @Delete('trashed/:id')
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Permanently delete a trashed asset' })
-  @ApiResponse({ status: 200, description: 'Asset deleted' })
+  @ApiResponse({ status: 204, description: 'Asset deleted' })
   @ApiResponse({ status: 400, description: 'Asset is not trashed' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async deleteTrashed(@Param('id') id: string, @CurrentUserId() userId: string) {
     await this.assets.delete(userId, id);
   }
 
-  @Post('trashed/:id/restore')
+  @Delete(':id/trash')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Restore a trashed asset. Idempotent.' })
+  @ApiOperation({ summary: 'Remove an asset from the trash. Idempotent.' })
   @ApiResponse({ status: 204, description: 'Asset restored' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async restore(@Param('id') id: string, @CurrentUserId() userId: string) {

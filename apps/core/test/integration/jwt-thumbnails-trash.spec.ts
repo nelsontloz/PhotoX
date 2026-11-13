@@ -141,12 +141,12 @@ describe('thumbnails and trash JWT identity', () => {
     const file = await seedFile(t, a.id);
     const asset = await seedAsset(t, a.id, file.id, { isTrashed: true });
     const res = await request(apiServer(t))
-      .post(`/api/v1/assets/trashed/${asset.id}/restore`)
+      .delete(`/api/v1/assets/${asset.id}/trash`)
       .query({ userId: a.id })
       .set(t.authHeader(tokenB));
     expect(res.status).toBe(404);
     const own = await request(apiServer(t))
-      .post(`/api/v1/assets/trashed/${asset.id}/restore`)
+      .delete(`/api/v1/assets/${asset.id}/trash`)
       .set(t.authHeader(tokenA));
     expect(own.status).toBe(204);
   });
@@ -158,7 +158,7 @@ describe('thumbnails and trash JWT identity', () => {
     const file = await seedFile(t, a.id);
     const asset = await seedAsset(t, a.id, file.id, { isTrashed: true });
     const res = await request(apiServer(t))
-      .delete(`/api/v1/assets/trashed/${asset.id}`)
+      .delete(`/api/v1/assets/${asset.id}`)
       .set(t.authHeader(tokenB));
     expect(res.status).toBe(404);
     expect(await t.assetRepo.findOne({ where: { id: asset.id } })).not.toBeNull();
@@ -172,11 +172,11 @@ describe('thumbnails and trash JWT identity', () => {
     const assetA = await seedAsset(t, a.id, fileA.id, { isTrashed: true });
     const fileB = await seedFile(t, b.id);
     await seedAsset(t, b.id, fileB.id, { isTrashed: true });
-    // emptyTrash filters by owner (200); the negative is that A's row survives
+    // emptyTrash filters by owner; the negative is that A's row survives
     const res = await request(apiServer(t))
-      .delete('/api/v1/assets/trashed')
+      .delete('/api/v1/assets?isTrashed=true')
       .set(t.authHeader(tokenB));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(204);
     expect(await t.assetRepo.findOne({ where: { id: assetA.id } })).not.toBeNull();
     expect(await t.assetRepo.count({ where: { userId: b.id, isTrashed: true } })).toBe(0);
   });
@@ -199,9 +199,9 @@ describe('thumbnails and trash JWT identity', () => {
     );
 
     const res = await request(apiServer(t))
-      .delete(`/api/v1/assets/trashed/${asset.id}`)
+      .delete(`/api/v1/assets/${asset.id}`)
       .set(t.authHeader(token));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(204);
     expect(await t.assetRepo.findOne({ where: { id: asset.id } })).toBeNull();
     // thumbnail rows cascade with the asset
     expect(await t.thumbRepo.count({ where: { assetId: asset.id } })).toBe(0);
@@ -227,9 +227,9 @@ describe('thumbnails and trash JWT identity', () => {
     }
 
     const res = await request(apiServer(t))
-      .delete('/api/v1/assets/trashed')
+      .delete('/api/v1/assets?isTrashed=true')
       .set(t.authHeader(token));
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(204);
     expect(await t.assetRepo.count({ where: { isTrashed: true } })).toBe(0);
     expect(await t.thumbRepo.count()).toBe(0);
   });
