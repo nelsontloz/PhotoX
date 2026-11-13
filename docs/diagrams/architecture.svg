@@ -586,7 +586,7 @@
             font-family="'Geist Mono', monospace"
             text-anchor="middle"
           >
-            photox · pgvector · 17 tables
+            photox · pgvector · 20 tables
           </text>
 
           <!-- S3 / Floci (store) -->
@@ -696,7 +696,7 @@
             font-family="'Geist Mono', monospace"
             text-anchor="middle"
           >
-            8 queues · rl:* keys
+            10 queues · rl:* keys
           </text>
 
           <!-- Worker Service (service) -->

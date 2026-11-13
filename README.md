@@ -90,7 +90,7 @@ Core health check (host dev): `curl localhost:3000/health` (200 even when degrad
 | worker-service | 3004 (internal) | `GET /health` only; 8 BullMQ consumers: thumbnail, video, metadata, faces, faces-cluster, embeddings, detect, user-delete; no DB driver                 |
 | web            | 5173            | React frontend (proxies `/api`, `/worker` and `/health` to core)                                                                                        |
 | mobile         | —               | Flutter iOS/Android backup client (`apps/mobile`); talks to core directly with Bearer JWTs, outside the pnpm workspace                                  |
-| postgres       | 5432            | PostgreSQL with pgvector/cube/earthdistance (single `photox` DB, 17 tables)                                                                             |
+| postgres       | 5432            | PostgreSQL with pgvector/cube/earthdistance (single `photox` DB, 20 tables)                                                                             |
 | redis          | 6379            | BullMQ (8 worker queues), auth rate limits, health pings; no volume, so all of it is transient                                                          |
 | floci          | 4566            | S3-compatible object store backing per-user backups only (dev/local)                                                                                    |
 
@@ -127,7 +127,7 @@ No global prefix; controllers declare `api/v1/...`. Health and docs are unversio
 | Persons / faces | `POST /api/v1/persons/cluster`; `GET /api/v1/persons`, `GET/PATCH /:id`; `GET /api/v1/faces/:id/thumb`, `PATCH /:id/person`                                                                   |
 | Search / groups | `GET /api/v1/search?q=`; `GET /api/v1/assets/:id/{duplicates,similar,detections}`                                                                                                             |
 | Admin           | `/api/v1/admin/*` (see Admin setup)                                                                                                                                                           |
-| Worker          | `/worker/*` — 14 job routes, core-internal                                                                                                                                                    |
+| Worker          | `/worker/*` — 15 job routes, core-internal                                                                                                                                                    |
 | Docs            | `/docs`, `/docs-json`                                                                                                                                                                         |
 
 Open routes are exactly `/docs*`, `/health`, `/api/v1/auth*` and `/api/share*`; everything else needs auth. There is no places route group — places are asset columns resolved during metadata writes and by the admin backfill. Detection labels are readable at `GET /api/v1/assets/:id/detections` (the viewer overlay).
@@ -181,7 +181,7 @@ Sign-ups are governed by the `registration.enabled` setting: `GET`/`PATCH /api/v
 - `apps/mobile` — Flutter iOS/Android backup client with a merged device+server library (`pnpm mobile:*`; not a pnpm workspace package)
 - `apps/core/src/database` — TypeORM entities + migrations + boot SQL (core only)
 - `packages/shared-config` / `shared-types` — zod env + local storage, JWT payload/wire types
-- `docs/diagrams` — the two README diagrams (self-contained HTML + SVG)
+- `docs/diagrams` — the two README diagrams (self-contained SVG)
 - `e2e` — Playwright + playwright-bdd suite (self-contained container stack, `pnpm test:e2e`)
 - `e2e/mobile` — on-device Flutter e2e stack (`pnpm mobile:e2e`, needs an Android AVD)
 
