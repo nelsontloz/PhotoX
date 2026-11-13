@@ -19,6 +19,7 @@ import { pipeline } from 'stream/promises';
 import { Asset, FileRecord } from '../../database/entities';
 import { loadEnv, LocalStorageService } from '@photox/shared-config';
 import { findOwnedOr404 } from '../../common/asset-ownership';
+import { ingestErrorBody } from '../../common/ingest-errors';
 import { RegisterFileBodyDto } from './dto/register-file.body.dto';
 import type { UploadFileBodyDto } from './dto/upload-file.body.dto';
 import { FileRecordDto } from '../file-record.dto';
@@ -136,7 +137,7 @@ export class UserFilesService {
     userId: string,
     file: OriginalFileInput,
     meta: UploadFileBodyDto = {},
-  ): Promise<AssetResponse> {
+  ): Promise<{ asset: AssetResponse; created: boolean }> {
     const name = file?.originalname;
     this.logger.log(
       `[UserFilesService] upload started user=${userId} name=${name} size=${file?.size}`,
@@ -147,7 +148,9 @@ export class UserFilesService {
       // with a mislabelled mime can't enter the video pipeline.
       const kind = kindFromMime(record.mimeType);
       if (!kind) {
-        throw new BadRequestException('Unsupported file type');
+        throw new BadRequestException(
+          ingestErrorBody(400, 'Unsupported file type', 'UNSUPPORTED_TYPE'),
+        );
       }
       this.logger.log(
         `[UserFilesService] file saved user=${userId} file=${record.id} deduplicated=${!created}`,
@@ -160,31 +163,14 @@ export class UserFilesService {
         sizeBytes: file.size,
       });
       this.logger.log(`[UserFilesService] upload finished user=${userId} asset=${asset.id}`);
-      return asset;
+      // `created` is the durable-bytes flag, not the asset flag: a re-linking upload of owned
+      // bytes answers 200 with its (possibly pre-existing) asset.
+      return { asset, created };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`[UserFilesService] upload failed user=${userId} name=${name}: ${message}`);
-      // A duplicate asset can mean an earlier attempt saved the row and died before enqueuing.
-      // Repair it before reporting the 409: jobIds dedupe, so a healthy duplicate costs nothing
-      // but the metadata/faces re-enqueue, and this is the only door that reaches that asset.
-      await this.repairDuplicateAsset(userId, err);
       throw err;
     }
-  }
-
-  /**
-   * Re-enqueues the jobs of the asset a duplicate upload resolved to. A missing asset (deleted
-   * between the conflict and here) keeps the 409; an enqueue failure surfaces as the 503 so the
-   * client retries instead of being told the file is already safe.
-   */
-  private async repairDuplicateAsset(userId: string, err: unknown): Promise<void> {
-    if (!(err instanceof ConflictException)) return;
-    const body = err.getResponse() as { existingAssetId?: unknown } | null;
-    const assetId = typeof body?.existingAssetId === 'string' ? body.existingAssetId : null;
-    if (!assetId) return;
-    const asset = await this.assets.getOne(userId, assetId).catch(() => null);
-    if (!asset) return;
-    await this.enqueueAssetJobs(userId, { id: asset.fileId }, asset.kind, asset.id);
   }
 
   // shared by legacy upload and upload-session complete: create the asset row, then enqueue its
@@ -354,7 +340,7 @@ export class UserFilesService {
     file: OriginalFileInput,
   ): Promise<{ record: FileRecord; created: boolean }> {
     if (!file) {
-      throw new BadRequestException('No file provided');
+      throw new BadRequestException(ingestErrorBody(400, 'No file provided', 'EMPTY_BODY'));
     }
 
     try {
@@ -377,7 +363,9 @@ export class UserFilesService {
       if (quota !== undefined) {
         const used = await this.sumOriginalBytes(userId);
         if (used + file.size > quota) {
-          throw new PayloadTooLargeException('Storage quota exceeded');
+          throw new PayloadTooLargeException(
+            ingestErrorBody(413, 'Storage quota exceeded', 'QUOTA_EXCEEDED'),
+          );
         }
       }
 

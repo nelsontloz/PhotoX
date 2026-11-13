@@ -31,7 +31,7 @@ const CLUSTER_OFFSETS = [
 // that actually shows a cluster bubble.
 const CLUSTER_ZOOM = 14;
 
-// Distinct fixtures: the same bytes uploaded twice by one user answer 409.
+// Distinct fixtures: the same bytes uploaded twice by one user are a duplicate (200).
 const PHOTO_FIXTURES = ['photo.jpg', 'photo-text.jpg', 'face.jpg'];
 
 const placesPanel = (page: Page) => page.locator('aside[aria-label="Photos in this area"]');

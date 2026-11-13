@@ -185,7 +185,8 @@ describe('upload sessions', () => {
     const completed = await request(apiServer(t))
       .post(`/api/v1/uploads/${session.uploadId}/complete`)
       .set(auth(t, user));
-    expect(completed.status).toBe(200);
+    // this request stored the bytes: 201, not 200
+    expect(completed.status).toBe(201);
     const body = completed.body as {
       asset: {
         id: string;
@@ -253,7 +254,7 @@ describe('upload sessions', () => {
     const completed = await request(apiServer(t))
       .post(`/api/v1/uploads/${session.uploadId}/complete`)
       .set(auth(t, user));
-    expect(completed.status).toBe(200);
+    expect(completed.status).toBe(201);
   });
 
   it('replays a duplicate complete with deduplicated:true and no extra rows', async () => {
@@ -266,7 +267,7 @@ describe('upload sessions', () => {
     const first = await request(apiServer(t))
       .post(`/api/v1/uploads/${session.uploadId}/complete`)
       .set(auth(t, user));
-    expect(first.status).toBe(200);
+    expect(first.status).toBe(201);
     const firstBody = first.body as { asset: { id: string }; deduplicated: boolean };
     expect(firstBody.deduplicated).toBe(false);
 

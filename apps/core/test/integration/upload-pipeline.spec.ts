@@ -105,7 +105,7 @@ describe('upload pipeline', () => {
     expect(await waitForJobId(t, 'process-video', `video-${asset.id}`)).toBe(true);
   });
 
-  it('rejects duplicates with 409 shape', async () => {
+  it('answers a duplicate upload with 200 and the existing asset', async () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const bytes = await pngBytes();
@@ -115,20 +115,25 @@ describe('upload pipeline', () => {
       .attach('file', bytes, 'dup.png');
     expect(first.status).toBe(201);
     const firstAsset = first.body as unknown as { id: string; fileId: string };
+    expect(first.headers.location).toBe(`/api/v1/assets/${firstAsset.id}`);
+    const filesBefore = await t.fileRepo.count();
+    const assetsBefore = await t.assetRepo.count();
+
     const second = await request(apiServer(t))
       .post('/api/v1/files')
       .set(t.authHeader(token))
       .attach('file', bytes, 'dup.png');
-    expect(second.status).toBe(409);
-    const body = second.body as unknown as {
-      statusCode: number;
-      message: string;
-      existingAssetId: string;
-    };
-    // additive envelope: statusCode/message join the pre-existing id
-    expect(body.statusCode).toBe(409);
-    expect(body.message).toBe('File already uploaded');
-    expect(body.existingAssetId).toBe(firstAsset.id);
+    // duplicate is success, not conflict: 200 (not 201) with THE SAME asset and no new rows
+    expect(second.status).toBe(200);
+    const dup = second.body as unknown as { id: string; fileId: string };
+    expect(dup.id).toBe(firstAsset.id);
+    expect(dup.fileId).toBe(firstAsset.fileId);
+    expect(second.headers.location).toBe(`/api/v1/assets/${firstAsset.id}`);
+    expect(await t.fileRepo.count()).toBe(filesBefore);
+    expect(await t.assetRepo.count()).toBe(assetsBefore);
+    // the duplicate still re-queues the idempotent jobIds, so a first attempt that saved the
+    // rows and died before enqueuing is repaired by the retry
+    expect(await waitForJobId(t, 'process-thumbnail', `thumb-${firstAsset.id}-md`)).toBe(true);
   });
 
   it('rejects non-image/video mime with 400', async () => {
@@ -178,10 +183,9 @@ describe('upload pipeline', () => {
     ).toHaveLength(0);
   });
 
-  it('dedup re-upload of owned bytes still returns 409 when over quota', async () => {
+  it('dedup re-upload of owned bytes answers 200 and stays under the quota check', async () => {
     // documents the AFTER-dedup requirement: re-linking owned bytes costs zero bytes, so the
-    // quota check must run after the dedup fast-path, not before it. Passes already; pins the
-    // behavior so the quota guard cannot break it.
+    // quota check must run after the dedup fast-path, not before it.
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const png = await pngBytes();
@@ -197,7 +201,7 @@ describe('upload pipeline', () => {
       .post('/api/v1/files')
       .set(t.authHeader(token))
       .attach('file', png, 'reuse.png');
-    expect(second.status).toBe(409);
+    expect(second.status).toBe(200);
     expect(await t.fileRepo.count()).toBe(filesBefore);
   });
 

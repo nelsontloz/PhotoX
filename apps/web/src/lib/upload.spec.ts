@@ -16,15 +16,6 @@ function makeFile(name: string): File {
   return new File([new Uint8Array(8)], name, { type: 'image/jpeg' });
 }
 
-class FakeAxiosError extends Error {
-  isAxiosError = true;
-  response: { status: number; data: unknown };
-  constructor(status: number, data: unknown) {
-    super(`status ${status}`);
-    this.response = { status, data };
-  }
-}
-
 describe('enqueueFiles', () => {
   beforeEach(() => {
     uploadFileMock.mockReset();
@@ -35,14 +26,12 @@ describe('enqueueFiles', () => {
     useUploadStore.setState({ items: [], dismissed: false });
   });
 
-  it('continues processing remaining items when earlier ones return 409', async () => {
+  it('continues processing remaining items when earlier ones were already uploaded', async () => {
+    // a duplicate upload is success (200 + the existing asset), not a 409
     for (let i = 0; i < 3; i++) {
-      uploadFileMock.mockImplementationOnce(() => {
-        throw new FakeAxiosError(409, {
-          existingAssetId: `asset-existing-${i}`,
-          existingFileId: `file-existing-${i}`,
-        });
-      });
+      uploadFileMock.mockImplementationOnce(() =>
+        Promise.resolve({ id: `asset-existing-${i}`, fileId: `file-existing-${i}` } as never),
+      );
     }
     uploadFileMock
       .mockImplementationOnce(() => Promise.resolve({ id: 'asset-d', fileId: 'file-d' } as never))

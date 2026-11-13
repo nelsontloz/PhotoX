@@ -21,6 +21,7 @@ import {
   ApiConsumes,
 } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
+import type { StorageQuotaResponse } from '@photox/shared-types';
 import { randomUUID } from 'crypto';
 import { tmpdir } from 'os';
 import multer from 'multer';
@@ -58,23 +59,47 @@ export class UserFilesController {
       },
     },
   })
-  @ApiOperation({ summary: 'Upload a file, create its asset and enqueue processing' })
-  @ApiResponse({ status: 201, description: 'File uploaded, asset created' })
-  @ApiResponse({ status: 400, description: 'No file, unsupported type, or invalid request' })
-  @ApiResponse({ status: 409, description: 'File already uploaded' })
-  @ApiResponse({ status: 413, description: 'Storage quota exceeded' })
+  @ApiOperation({
+    summary: 'Upload a file, create its asset and enqueue processing',
+    description:
+      'Ingest door 1 of 2 (see POST /api/v1/uploads for large/resumable files). The sha256 ' +
+      'checksum is the natural key: uploading bytes the user already owns is success, not a ' +
+      'conflict. Answers 201 when this request stored new bytes and 200 when they were already ' +
+      'owned; both return the same asset (the existing one on a duplicate). No Idempotency-Key ' +
+      'is needed — a retried upload is safe by construction.',
+  })
+  @ApiResponse({ status: 201, description: 'New bytes stored, asset created' })
+  @ApiResponse({ status: 200, description: 'Bytes already owned; the existing asset is returned' })
+  @ApiResponse({ status: 400, description: 'EMPTY_BODY, UNSUPPORTED_TYPE, or invalid request' })
+  @ApiResponse({ status: 413, description: 'QUOTA_EXCEEDED' })
   @ApiResponse({ status: 503, description: 'Failed to enqueue background processing jobs' })
   async upload(
     @CurrentUserId() userId: string,
     @UploadedFile() file: OriginalFileInput,
     @Body() body: UploadFileBodyDto,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.userFilesService.upload(userId, file, body);
+    const { asset, created } = await this.userFilesService.upload(userId, file, body);
+    res.status(created ? HttpStatus.CREATED : HttpStatus.OK);
+    res.setHeader('Location', `/api/v1/assets/${asset.id}`);
+    return asset;
+  }
+
+  @Get('quota')
+  @ApiOperation({ summary: 'Storage usage and limit for originals' })
+  @ApiResponse({ status: 200, description: 'Used/limit/remaining bytes (limit null = unlimited)' })
+  async quota(@CurrentUserId() userId: string): Promise<StorageQuotaResponse> {
+    return this.userFilesService.storageQuota(userId);
   }
 
   @Post('exists')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Batch check which checksums already uploaded' })
+  @ApiOperation({
+    summary: 'Batch check which checksums already uploaded',
+    description:
+      'Pre-flight for ingest: safe and idempotent (a read expressed as POST for its batch body). ' +
+      'A hit carries the existing asset/file ids, so the client can skip the upload entirely.',
+  })
   @ApiResponse({ status: 200, description: 'Existence hits in input order' })
   async exists(@CurrentUserId() userId: string, @Body() body: CheckFilesExistsBodyDto) {
     const items = await this.userFilesService.existsMany(userId, body.items);

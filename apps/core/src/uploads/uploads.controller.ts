@@ -11,16 +11,18 @@ import {
   Post,
   Put,
   Req,
+  Res,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import type {
   UploadCompleteResponse,
   UploadSessionCreated,
   UploadSessionStatusResponse,
 } from '@photox/shared-types';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
-import { UPLOAD_CHUNK_SIZE_BYTES, UploadsService, uploadErrorBody } from './uploads.service';
+import { UPLOAD_CHUNK_SIZE_BYTES, UploadsService } from './uploads.service';
+import { ingestErrorBody } from '../common/ingest-errors';
 import { CreateUploadSessionBodyDto } from './dto/create-upload-session.body.dto';
 
 /**
@@ -35,17 +37,17 @@ export async function readPartBody(req: Request, maxBytes: number): Promise<Buff
   const declared = typeof header === 'string' && /^\d+$/.test(header) ? Number(header) : null;
   if (declared === null) {
     throw new BadRequestException(
-      uploadErrorBody(400, 'Content-Length header is required for part uploads', 'MISSING_LENGTH'),
+      ingestErrorBody(400, 'Content-Length header is required for part uploads', 'MISSING_LENGTH'),
     );
   }
   if (declared === 0 || declared > maxBytes) {
     throw new BadRequestException(
-      uploadErrorBody(400, `Part must be 1..${maxBytes} bytes, got ${declared}`, 'PART_TOO_LARGE'),
+      ingestErrorBody(400, `Part must be 1..${maxBytes} bytes, got ${declared}`, 'PART_TOO_LARGE'),
     );
   }
   if (req.readableEnded) {
     // the default json/urlencoded parsers already consumed this body (wrong content type)
-    throw new BadRequestException(uploadErrorBody(400, 'Part body is empty', 'PART_TOO_LARGE'));
+    throw new BadRequestException(ingestErrorBody(400, 'Part body is empty', 'PART_TOO_LARGE'));
   }
 
   const chunks: Buffer[] = [];
@@ -69,12 +71,12 @@ export async function readPartBody(req: Request, maxBytes: number): Promise<Buff
 
   if (overflow) {
     throw new BadRequestException(
-      uploadErrorBody(400, `Part must be at most ${maxBytes} bytes`, 'PART_TOO_LARGE'),
+      ingestErrorBody(400, `Part must be at most ${maxBytes} bytes`, 'PART_TOO_LARGE'),
     );
   }
   const body = Buffer.concat(chunks);
   if (body.length === 0) {
-    throw new BadRequestException(uploadErrorBody(400, 'Part body is empty', 'PART_TOO_LARGE'));
+    throw new BadRequestException(ingestErrorBody(400, 'Part body is empty', 'PART_TOO_LARGE'));
   }
   return body;
 }
@@ -131,11 +133,17 @@ export class UploadsController {
   }
 
   @Post(':uploadId/complete')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Assemble the parts, dedup by checksum and create the asset' })
+  @ApiOperation({
+    summary: 'Assemble the parts, dedup by checksum and create the asset',
+    description:
+      'Ingest door 2 of 2. Answers 201 when this request stored new bytes and 200 when it did ' +
+      'not (checksum already owned, session already completed, or an enqueue retry). A duplicate ' +
+      'is success, not a conflict; `deduplicated` is the same fact in the body.',
+  })
+  @ApiResponse({ status: 201, description: 'New bytes stored, asset created' })
   @ApiResponse({
     status: 200,
-    description: 'Asset created (or the pre-existing one on a dedup hit)',
+    description: 'No new bytes stored; the existing asset is returned with deduplicated=true',
   })
   @ApiResponse({ status: 400, description: 'UNSUPPORTED_TYPE' })
   @ApiResponse({ status: 404, description: 'Session not found' })
@@ -147,8 +155,11 @@ export class UploadsController {
   async complete(
     @CurrentUserId() userId: string,
     @Param('uploadId') uploadId: string,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<UploadCompleteResponse> {
-    return this.uploads.complete(userId, uploadId);
+    const result = await this.uploads.complete(userId, uploadId);
+    res.status(result.deduplicated ? HttpStatus.OK : HttpStatus.CREATED);
+    return result;
   }
 
   @Delete(':uploadId')

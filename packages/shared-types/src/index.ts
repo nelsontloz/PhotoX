@@ -467,9 +467,18 @@ export interface StorageQuotaResponse {
 export type UploadSessionStatus =
   'pending' | 'assembling' | 'assembled' | 'completed' | 'failed' | 'expired';
 
-// Machine-readable `code` on error envelopes, mirroring the P0-B 409 style:
+// Ingest contract — the two doors (`POST /api/v1/files` multipart, `POST /api/v1/uploads`
+// sessions) answer one protocol:
+//   - the sha256 checksum is the natural key; a duplicate is SUCCESS, never an error;
+//   - `201` means this request stored new bytes, `200` means these bytes were already owned
+//     (duplicate, a `complete` replay, or a retry that only re-ran the enqueues);
+//   - errors always carry a machine-readable `code` from `IngestErrorCode`;
+//   - no `Idempotency-Key` is needed — a retried request is safe by construction.
+// Pre-flight: `POST /api/v1/files/exists`, then `GET /api/v1/files/quota`, then upload.
+
+// Machine-readable `code` on every ingest error envelope:
 // `{statusCode, message, code}` (plus `receivedParts` for PARTS_MISSING).
-export type UploadSessionErrorCode =
+export type IngestErrorCode =
   | 'SIZE_LIMIT'
   | 'QUOTA_EXCEEDED'
   | 'SESSION_LIMIT'
@@ -481,6 +490,7 @@ export type UploadSessionErrorCode =
   | 'INDEX_RANGE'
   | 'CHECKSUM_MISMATCH'
   | 'UNSUPPORTED_TYPE'
+  | 'EMPTY_BODY'
   | 'ENQUEUE_FAILED';
 
 // POST /api/v1/uploads — chunkSizeBytes/totalParts are server-fixed (8 MiB chunks)
@@ -504,17 +514,19 @@ export interface UploadSessionStatusResponse {
   fileId?: string;
 }
 
-// POST /api/v1/uploads/:id/complete — deduplicated=true means the checksum already existed
-// (the returned asset is the pre-existing one; no new bytes were stored)
+// POST /api/v1/uploads/:id/complete — `deduplicated=true` means THIS request stored no new
+// bytes: the checksum was already owned, the session was already completed, or a previous
+// attempt saved the rows and only the enqueues are being retried. `false` means it stored them
+// (the response is `201` then, `200` otherwise).
 export interface UploadCompleteResponse {
   asset: Asset;
   deduplicated: boolean;
 }
 
-export interface UploadSessionErrorBody {
+export interface IngestErrorBody {
   statusCode: number;
   message: string;
-  code: UploadSessionErrorCode;
+  code: IngestErrorCode;
   receivedParts?: number[];
 }
 

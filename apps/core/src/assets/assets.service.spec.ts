@@ -1,4 +1,4 @@
-import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { In, QueryFailedError } from 'typeorm';
 import type { DataSource, Repository } from 'typeorm';
 import { AssetsService } from './assets.service';
@@ -50,23 +50,17 @@ function makeService(
 }
 
 describe('AssetsService.create upload race', () => {
-  it('maps a UNIQUE(fileId) race to 409 with the winning asset id', async () => {
+  it('hands back the winning asset on a UNIQUE(fileId) race', async () => {
     const err = uniqueViolation();
     const winner = { id: 'asset-winner', fileId: 'file-1' } as unknown as Asset;
-    const { service } = makeService(
+    const { service, findOneMock } = makeService(
       () => Promise.reject(err),
       () => Promise.resolve(winner),
     );
-    const caught: unknown = await service.create('u1', { fileId: 'file-1', kind: 'photo' }).then(
-      () => null,
-      (e: unknown) => e,
-    );
-    expect(caught).toBeInstanceOf(ConflictException);
-    expect((caught as ConflictException).getResponse()).toEqual({
-      statusCode: 409,
-      message: 'File already uploaded',
-      existingAssetId: 'asset-winner',
-    });
+    // duplicate is success: the loser does not fail an operation that already happened
+    const asset = await service.create('u1', { fileId: 'file-1', kind: 'photo' });
+    expect(asset.id).toBe('asset-winner');
+    expect(findOneMock).toHaveBeenCalledWith({ where: { fileId: 'file-1' } });
   });
 
   it('rethrows the 23505 when the winner is already gone', async () => {

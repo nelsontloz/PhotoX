@@ -20,14 +20,14 @@ When('I upload {string} again', async ({ page, ctx }, name: string) => {
   if (!ctx.assetId) throw new Error('upload the file once before uploading it again');
   const firstAssetId = ctx.assetId;
   // same-user re-uploads may resolve from the POST /api/v1/files/exists check and send NO
-  // POST /api/v1/files (neither 201 nor 409); uploadFixture races both POSTs and returns the
-  // existing asset id on either the skip or the 409 path.
+  // POST /api/v1/files; uploadFixture races both POSTs and returns the existing asset id on
+  // either the skip or the 200-duplicate path.
   const existingAssetId = await uploadFixture(page, name, { allowDuplicate: true });
   // duplicate checksum: core points back at the SAME asset; the UI marks it done
   expect(existingAssetId).toBe(firstAssetId);
   // the UI must accept the duplicate, not surface it: UploadNotification.tsx shows
-  // "All 2 items uploaded" only when no item errored — an error-mapped 409 would read
-  // "1 uploads failed"
+  // "All 2 items uploaded" only when no item errored — a duplicate mapped to an error would
+  // read "1 uploads failed"
   await expect(page.getByText('All 2 items uploaded')).toBeVisible();
 });
 

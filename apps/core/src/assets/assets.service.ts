@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -121,22 +120,16 @@ export class AssetsService {
     asset.originalName = dto.originalName ?? null;
     asset.transcodeStatus = dto.kind === 'video' ? 'pending' : null;
     asset.thumbnailStatus = 'pending';
-    // P1-5: duplicate uploads converge on one file row, but two asset inserts for the same
-    // fileId can still collide on UNIQUE(fileId) — map it to the same 409 shape the upload
-    // dedup path returns instead of leaking a 500.
+    // P1-5: duplicate uploads converge on one file row. A second asset insert for the same
+    // fileId collides on UNIQUE(fileId) — the file row is the user's content identity, so the
+    // loser hands back the winner instead of failing an operation that already succeeded.
     let saved: Asset;
     try {
       saved = await this.repo.save(asset);
     } catch (err) {
       if (isPostgresUniqueViolation(err)) {
         const existing = await this.repo.findOne({ where: { fileId: dto.fileId } });
-        if (existing) {
-          throw new ConflictException({
-            statusCode: 409,
-            message: 'File already uploaded',
-            existingAssetId: existing.id,
-          });
-        }
+        if (existing) return this.toResponse(existing);
       }
       throw err;
     }
