@@ -43,6 +43,8 @@ import { TextEncodeService } from '../../src/search/text-encode.service';
 import { UserFilesModule } from '../../src/ingest/user-files.module';
 import { UploadsModule } from '../../src/uploads/uploads.module';
 import { StorageModule } from '../../src/storage/storage.module';
+import { ObservabilityModule } from '../../src/common/observability/observability.module';
+import { HealthModule } from '../../src/health/health.module';
 import { WorkerModule } from '../../src/worker/worker.module';
 import { AdminModule } from '../../src/admin/admin.module';
 import { UsersModule } from '../../src/users/users.module';
@@ -140,6 +142,8 @@ export async function createApiTestApp(opts?: {
         TypeOrmModule.forFeature(ENTITIES),
         JwtModule.register({ secret: TEST_AUTH_SECRET, signOptions: { algorithm: 'HS256' } }),
         StorageModule,
+        ObservabilityModule,
+        HealthModule,
         BullMqModule,
         AuthModule,
         UsersModule,
