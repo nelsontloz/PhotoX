@@ -2,8 +2,7 @@ import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 import { SEARCH_EMBEDDING_DIM, SEARCH_EMBEDDING_MODEL } from '@photox/shared-types';
-import { Asset } from '../database/entities';
-import { findOwnedOr404 } from '../common/asset-ownership';
+import { AssetsService } from '../assets/assets.service';
 import { AssetEmbedding } from '../database/entities/asset-embedding.entity';
 import type { RegisterEmbeddingDto } from './dto/register-embedding.dto';
 
@@ -14,8 +13,7 @@ export class EmbeddingsService {
   constructor(
     @InjectRepository(AssetEmbedding)
     private readonly repo: Repository<AssetEmbedding>,
-    @InjectRepository(Asset)
-    private readonly assetRepo: Repository<Asset>,
+    private readonly assets: AssetsService,
   ) {}
 
   async register(
@@ -23,14 +21,14 @@ export class EmbeddingsService {
     userId: string,
     dto: RegisterEmbeddingDto,
   ): Promise<{ ok: true }> {
-    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset');
+    await this.assets.assertOwned(userId, assetId);
     this.assertValid(dto);
     await this.repo.upsert(
       [{ assetId, kind: dto.kind, model: dto.model, embedding: dto.embedding }],
       ['assetId', 'kind', 'model'],
     );
     // asset-level status so backfill can filter `embeddingStatus != 'ready'`; null = never embedded
-    await this.assetRepo.update({ id: assetId }, { embeddingStatus: 'ready' });
+    await this.assets.markEmbeddingStatus(assetId, 'ready');
     return { ok: true };
   }
 

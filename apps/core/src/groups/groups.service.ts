@@ -2,9 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, type Repository } from 'typeorm';
 import { SEARCH_EMBEDDING_MODEL, type SearchResponse } from '@photox/shared-types';
-import { Asset } from '../database/entities';
 import { AssetEmbedding } from '../database/entities/asset-embedding.entity';
-import { findOwnedOr404 } from '../common/asset-ownership';
 import { neighbourRows } from '../database/shared/neighbours';
 import { toVectorSql } from '../database/shared/pgvector';
 import { AssetsService } from '../assets/assets.service';
@@ -18,8 +16,6 @@ export class GroupsService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly assets: AssetsService,
-    @InjectRepository(Asset)
-    private readonly assetRepo: Repository<Asset>,
     @InjectRepository(AssetEmbedding)
     private readonly embeddingRepo: Repository<AssetEmbedding>,
   ) {}
@@ -29,7 +25,7 @@ export class GroupsService {
     assetId: string,
     dto: DuplicatesQueryDto,
   ): Promise<SearchResponse> {
-    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset');
+    await this.assets.assertOwned(userId, assetId);
     const threshold = dto.threshold ?? DEFAULT_DUPLICATE_THRESHOLD;
     // C7-limit-only: LIMIT 200 bounds the response (ordering stays deterministic: distance
     // ASC, id ASC). `total` is therefore capped at 200 — documented behavior change; the
@@ -56,7 +52,7 @@ export class GroupsService {
   }
 
   async similar(userId: string, assetId: string, dto: SimilarQueryDto): Promise<SearchResponse> {
-    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset');
+    await this.assets.assertOwned(userId, assetId);
     const limit = dto.limit ?? DEFAULT_SIMILAR_LIMIT;
     const source = await this.embeddingRepo.findOne({
       where: { assetId, kind: 'image', model: SEARCH_EMBEDDING_MODEL },

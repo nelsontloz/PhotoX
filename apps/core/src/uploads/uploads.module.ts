@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Asset, UploadSession, UploadSessionPart } from '../database/entities';
+import { UploadSession, UploadSessionPart } from '../database/entities';
 import { StorageModule } from '../storage/storage.module';
 import { UserFilesModule } from '../ingest/user-files.module';
 import { AssetsModule } from '../assets/assets.module';
@@ -10,7 +10,7 @@ import { UploadSessionsSweeper } from './upload-sessions.sweeper';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UploadSession, UploadSessionPart, Asset]),
+    TypeOrmModule.forFeature([UploadSession, UploadSessionPart]),
     StorageModule,
     UserFilesModule,
     AssetsModule,

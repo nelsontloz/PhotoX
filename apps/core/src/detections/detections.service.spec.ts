@@ -2,8 +2,8 @@ import { NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import type { DataSource, Repository } from 'typeorm';
-import { Asset } from '../database/entities';
 import { AssetDetection } from '../database/entities/asset-detection.entity';
+import { AssetsService } from '../assets/assets.service';
 import { RegisterDetectionsDto, type DetectedObjectDto } from './dto/register-detections.dto';
 import { DetectionsService } from './detections.service';
 
@@ -17,11 +17,13 @@ function makeService(owned = true) {
   const em = { delete: deleteFn, insert: insertFn };
   const transaction = vi.fn((cb: (manager: typeof em) => Promise<unknown>) => cb(em));
   const find = vi.fn().mockResolvedValue([]);
-  const findOne = vi.fn().mockResolvedValue(owned ? { id: 'asset-1', userId: 'u1' } : null);
+  const assertOwned = owned
+    ? vi.fn(() => Promise.resolve())
+    : vi.fn(() => Promise.reject(new NotFoundException('Asset not found')));
   const service = new DetectionsService(
     { find } as unknown as Repository<AssetDetection>,
-    { findOne } as unknown as Repository<Asset>,
     { transaction } as unknown as DataSource,
+    { assertOwned } as unknown as AssetsService,
   );
   return { service, deleteFn, insertFn, transaction, find };
 }

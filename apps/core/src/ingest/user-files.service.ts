@@ -16,9 +16,8 @@ import { createReadStream } from 'fs';
 import { unlink } from 'fs/promises';
 import { extname } from 'path';
 import { pipeline } from 'stream/promises';
-import { Asset, FileRecord } from '../database/entities';
+import { FileRecord } from '../database/entities';
 import { loadEnv, LocalStorageService } from '@photox/shared-config';
-import { findOwnedOr404 } from '../common/asset-ownership';
 import { kindFromMime, sniffMime } from '../common/mime';
 import { ingestErrorBody } from '../common/ingest-errors';
 import { RegisterFileBodyDto } from './dto/register-file.body.dto';
@@ -57,8 +56,6 @@ export class UserFilesService {
   constructor(
     @InjectRepository(FileRecord)
     private readonly fileRepo: Repository<FileRecord>,
-    @InjectRepository(Asset)
-    private readonly assetRepo: Repository<Asset>,
     private readonly storage: LocalStorageService,
     private readonly assets: AssetsService,
     private readonly bullMq: BullMqService,
@@ -198,7 +195,7 @@ export class UserFilesService {
     }
 
     if (dto.assetId) {
-      await findOwnedOr404(this.assetRepo, dto.assetId, userId, 'Asset');
+      await this.assets.assertOwned(userId, dto.assetId);
     }
 
     const storageKey = this.storage.buildKey(dto.kind, userId, dto.id, dto.ext);
@@ -398,10 +395,7 @@ export class UserFilesService {
     });
     const byChecksum = new Map(files.map((f) => [f.checksumSha256, f]));
     const fileIds = files.map((f) => f.id);
-    const assets =
-      fileIds.length > 0
-        ? await this.assetRepo.find({ where: { fileId: In(fileIds), userId } })
-        : [];
+    const assets = fileIds.length > 0 ? await this.assets.findByFileIds(userId, fileIds) : [];
     const assetByFileId = new Map(assets.map((a) => [a.fileId, a]));
     const hits = new Map<string, FileExistsCheckHit>();
     for (const checksum of unique) {

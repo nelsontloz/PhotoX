@@ -12,7 +12,6 @@ function uniqueViolation(): QueryFailedError {
 }
 
 function makeAssetService(opts: { saveBehavior: 'ok' | 'race-then-ok' }) {
-  const asset = { id: 'asset-1', userId: 'u1', isTrashed: false };
   const shareRepo = {
     findOne: vi.fn(() => Promise.resolve(null)),
     delete: vi.fn(() => Promise.resolve({ affected: 1 })),
@@ -29,14 +28,16 @@ function makeAssetService(opts: { saveBehavior: 'ok' | 'race-then-ok' }) {
               Promise.resolve({ ...(v as object), id: 'share-retry', createdAt: new Date() }),
             ),
   };
+  const assertOwnedActive = vi.fn(() => Promise.resolve());
   const service = new SharesService(
     shareRepo as never,
-    { findOne: vi.fn(() => Promise.resolve(asset)) } as never,
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
+    { assertOwnedActive } as never,
   );
-  return { service, shareRepo };
+  return { service, shareRepo, assertOwnedActive };
 }
 
 describe('SharesService.create concurrent rotation (C10)', () => {
@@ -67,10 +68,11 @@ describe('SharesService.create concurrent rotation (C10)', () => {
     };
     const service = new SharesService(
       shareRepo as never,
-      { findOne: vi.fn(() => Promise.resolve({ id: 'asset-1', userId: 'u1' })) } as never,
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
+      { assertOwnedActive: vi.fn(() => Promise.resolve()) } as never,
     );
     await expect(service.create('u1', { assetId: 'asset-1' })).rejects.toBe(err);
   });
@@ -92,6 +94,7 @@ describe('SharesService.findShareByToken', () => {
     };
     const service = new SharesService(
       shareRepo as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,
