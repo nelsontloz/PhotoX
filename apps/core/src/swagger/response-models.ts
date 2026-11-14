@@ -493,7 +493,8 @@ export class AddAssetsResponseModel {
 
 // --- shares ------------------------------------------------------------------
 
-export class AssetShareModel implements AssetShareDto {
+/** What a list returns: the create-only `token` column is never included. */
+export class AssetShareItemModel implements Omit<AssetShareDto, 'token'> {
   @ApiProperty({ type: String })
   id!: string;
 
@@ -502,10 +503,6 @@ export class AssetShareModel implements AssetShareDto {
 
   @ApiProperty({ type: String })
   userId!: string;
-
-  // create responses carry the raw capability; the list omits it, so the schema is optional
-  @ApiPropertyOptional({ type: String })
-  token!: string;
 
   @ApiProperty({ type: String })
   assetId!: string;
@@ -523,7 +520,13 @@ export class AssetShareModel implements AssetShareDto {
   createdAt!: string;
 }
 
-export class AlbumShareModel implements AlbumShareDto {
+/** A create response, which does carry the raw capability. */
+export class AssetShareModel extends AssetShareItemModel implements AssetShareDto {
+  @ApiProperty({ type: String })
+  token!: string;
+}
+
+export class AlbumShareItemModel implements Omit<AlbumShareDto, 'token'> {
   @ApiProperty({ type: String })
   id!: string;
 
@@ -532,10 +535,6 @@ export class AlbumShareModel implements AlbumShareDto {
 
   @ApiProperty({ type: String })
   userId!: string;
-
-  // create responses carry the raw capability; the list omits it, so the schema is optional
-  @ApiPropertyOptional({ type: String })
-  token!: string;
 
   @ApiProperty({ type: String })
   albumId!: string;
@@ -553,12 +552,21 @@ export class AlbumShareModel implements AlbumShareDto {
   createdAt!: string;
 }
 
-@ApiExtraModels(AssetShareModel, AlbumShareModel)
+/** A create response, which does carry the raw capability. */
+export class AlbumShareModel extends AlbumShareItemModel implements AlbumShareDto {
+  @ApiProperty({ type: String })
+  token!: string;
+}
+
+@ApiExtraModels(AssetShareItemModel, AlbumShareItemModel)
 export class ShareListResponseModel implements ShareListResponse {
   // A share row is one of two disjoint shapes and the raw token is never listed.
   @ApiProperty({
     isArray: true,
-    oneOf: [{ $ref: getSchemaPath(AssetShareModel) }, { $ref: getSchemaPath(AlbumShareModel) }],
+    oneOf: [
+      { $ref: getSchemaPath(AssetShareItemModel) },
+      { $ref: getSchemaPath(AlbumShareItemModel) },
+    ],
   })
   items!: ShareListItem[];
 
