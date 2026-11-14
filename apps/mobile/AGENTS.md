@@ -68,7 +68,7 @@ not covered — an emulator proves nothing about those, as above. It is opt-in a
 - `--delete-conflicting-outputs` is accepted but ignored on build_runner 2.16 — harmless, never needed.
 - `test/smoke_test.dart` only asserts the app bar renders. Green `analyze`/`test` proves nothing about backup logic; real verification needs a device.
 - `lib/upload/database.g.dart` is committed, so codegen drift is silent — re-run `--only-check` if you touched the drift tables.
-- `PHOTOX_API_URL` only pre-fills the first-launch "Connect your server" screen; the address the app uses is the one persisted in the drift `KeyValues` table (`AppSettings.apiBaseUrl`, emptied = not configured). An Android emulator reaches the host at `10.0.2.2`, not `localhost`.
+- `PHOTOX_API_URL` is only the fallback base URL until an address is stored; the address the app uses is the one typed on the sign-in screen and persisted in the drift `KeyValues` table (`AppSettings.apiBaseUrl`, emptied = not configured). An Android emulator reaches the host at `10.0.2.2`, not `localhost`.
 - `analysis_options.yaml` excludes `build/**`, `android/**`, `ios/**` from analysis.
 
 ## Deploy to a device
@@ -115,7 +115,7 @@ flutter run -d <ip>:<port> --dart-define=PHOTOX_API_URL=http://localhost:3000
 
 ### Gotchas that cost real time
 
-- `--dart-define` only pre-fills the first-launch setup screen: the address in use is `KeyValues.apiBaseUrl` in the drift DB, so an update install keeps the old server. The sign-in screen prefills the same address and is editable — a different value typed there is persisted and retargets both Dio clients, so no reinstall is needed to move servers.
+- `--dart-define` is only the fallback base URL: the address in use is `KeyValues.apiBaseUrl` in the drift DB, so an update install keeps the old server. The sign-in screen prefills the stored address and is editable — a different value typed there is persisted and retargets both Dio clients, so no reinstall is needed to move servers.
 - `adb shell input` fails with `INJECT_EVENTS` until *Developer options → USB debugging (Security settings)* is enabled; without it the UI cannot be driven or scripted from the shell.
 - Reading the app's queue DB (debug builds only) — pull the `-wal` too, or recent rows are missing:
   ```bash
