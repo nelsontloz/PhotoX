@@ -412,6 +412,64 @@ describe('assets layout', () => {
     expect(shown.get('2024-04')?.version).toBe(base.get('2024-04')?.version);
   });
 
+  it('leaves the layout byte-identical when an empty album is hidden', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    await seedTimedAsset(t, user.id, '2024-03-10T12:00:00.000Z');
+    await seedTimedAsset(t, user.id, '2024-04-10T12:00:00.000Z');
+    const album = await t.albumRepo.save(
+      t.albumRepo.create({ userId: user.id, name: 'Empty', description: null }),
+    );
+
+    const before = await monthsOf(t, token);
+    await tick();
+    const patched = await request(apiServer(t))
+      .patch(`/api/v1/albums/${album.id}`)
+      .set(t.authHeader(token))
+      .send({ hiddenFromTimeline: true });
+    expect(patched.status).toBe(200);
+
+    // no asset belongs to the album, so the hidden touch counters stay 0-0 and no window moves
+    expect([...(await monthsOf(t, token)).entries()]).toEqual([...before.entries()]);
+  });
+
+  it('returns a hidden album asset to the timeline when the album is deleted', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    await seedTimedAsset(t, user.id, '2024-03-10T12:00:00.000Z');
+    const hiddenAsset = await seedTimedAsset(t, user.id, '2024-03-20T12:00:00.000Z');
+    const album = await t.albumRepo.save(
+      t.albumRepo.create({ userId: user.id, name: 'Hidden', description: null }),
+    );
+    await t.albumAssetRepo.save(
+      t.albumAssetRepo.create({ albumId: album.id, assetId: hiddenAsset.id }),
+    );
+
+    const base = await monthsOf(t, token);
+    expect(base.get('2024-03')).toMatchObject({ count: 2 });
+
+    await tick();
+    await t.albumRepo.update(album.id, { hiddenFromTimeline: true });
+    const hidden = await monthsOf(t, token);
+    expect(hidden.get('2024-03')).toMatchObject({ count: 1 });
+    expect(hidden.get('2024-03')?.version).not.toBe(base.get('2024-03')?.version);
+
+    await tick();
+    const deleted = await request(apiServer(t))
+      .delete(`/api/v1/albums/${album.id}`)
+      .set(t.authHeader(token));
+    expect(deleted.status).toBe(204);
+
+    // the album row and its join rows are gone, so the visible set matches the baseline again
+    const restored = await monthsOf(t, token);
+    expect(restored.get('2024-03')).toMatchObject({ count: 2 });
+    expect(restored.get('2024-03')?.version).toBe(base.get('2024-03')?.version);
+    expect(await wholeLayout(t, token)).toEqual([
+      { t: '2024-03-20T12:00:00.000Z', w: 100, h: 100 },
+      { t: '2024-03-10T12:00:00.000Z', w: 100, h: 100 },
+    ]);
+  });
+
   it('moves an album window version on membership changes and bypasses the hidden filter', async () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
