@@ -37,6 +37,9 @@ import { BackupTransferConsumers } from './backup-transfer.consumers';
     PlacesModule,
   ],
   controllers: [BackupController],
+  // RunLifecycleService / TransferDispatchService / RunFinalizeService / BackupMergeService are
+  // composed by hand inside UserBackupService (its constructor is the composition root), not
+  // registered here — the short provider list is correct, not incomplete.
   providers: [
     S3BackupService,
     UserBackupService,

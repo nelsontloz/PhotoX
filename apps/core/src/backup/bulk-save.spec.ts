@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { EntityManager } from 'typeorm';
 import { Asset } from '../database/entities';
 import { BackupRunItem } from '../database/entities/backup-run-item.entity';
-import { BULK_CHUNK, bulkInsert, bulkSave, chunked } from './user-backup.service';
+import { BULK_CHUNK, bulkInsert, bulkSave, chunked } from './bulk-io';
 
 describe('chunked', () => {
   it('splits 2500 ids into 3 ordered groups without loss', () => {
