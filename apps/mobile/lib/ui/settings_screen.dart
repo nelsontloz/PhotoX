@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../media/photo_observer.dart';
 import '../settings/settings_store.dart';
 import 'widgets/app_background.dart';
 import 'widgets/count_format.dart';
@@ -17,6 +18,7 @@ class SettingsScreen extends StatefulWidget {
     required this.onSave,
     required this.onOpenAlbums,
     required this.onSignOut,
+    required this.folders,
     this.busy = false,
   });
 
@@ -32,6 +34,9 @@ class SettingsScreen extends StatefulWidget {
   /// Clears the current session after confirmation.
   final Future<void> Function() onSignOut;
 
+  /// Device albums, read only to name the chosen folders in the scope summary.
+  final Future<List<MediaFolder>> Function() folders;
+
   /// True while the caller is loading or writing preferences.
   final bool busy;
 
@@ -43,12 +48,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late AppSettings _settings;
   bool _saving = false;
 
+  /// Names for the chosen folder ids; empty until loaded, so the count stands in.
+  List<String> _chosenNames = const <String>[];
+
   bool get _busy => widget.busy || _saving;
 
   @override
   void initState() {
     super.initState();
     _settings = widget.settings;
+    _loadChosenNames();
   }
 
   @override
@@ -56,6 +65,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.didUpdateWidget(oldWidget);
     if (!_saving && oldWidget.settings != widget.settings) {
       _settings = widget.settings;
+      _loadChosenNames();
+    }
+  }
+
+  /// Resolves the chosen ids to album names once; a denial or a slow library
+  /// just leaves the count in place.
+  Future<void> _loadChosenNames() async {
+    final ids = _settings.uploadFolderIds;
+    if (_settings.uploadAllFolders || ids.isEmpty) {
+      if (_chosenNames.isNotEmpty) setState(() => _chosenNames = const <String>[]);
+      return;
+    }
+    try {
+      final folders = await widget.folders();
+      final byId = <String, String>{
+        for (final folder in folders) folder.id: folder.name,
+      };
+      final names = <String>[for (final id in ids) if (byId[id] != null) byId[id]!];
+      if (mounted) setState(() => _chosenNames = names);
+    } on Object {
+      // cosmetic only: the count already names the scope
     }
   }
 
@@ -85,7 +115,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String get _scopeSummary {
     if (_settings.uploadAllFolders) return 'All folders';
     final ids = _settings.uploadFolderIds;
-    return ids.isEmpty ? 'Camera folder' : countLabel(ids.length, 'folder');
+    if (ids.isEmpty) return 'Camera folder';
+    if (_chosenNames.isEmpty) return countLabel(ids.length, 'folder');
+    return '${countLabel(_chosenNames.length, 'folder')}: ${_chosenNames.join(', ')}';
   }
 
   String get _scopeDetail {

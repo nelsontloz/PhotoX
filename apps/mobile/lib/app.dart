@@ -151,6 +151,7 @@ class _PhotoXAppState extends State<PhotoXApp> {
             onSave: widget.controller.updateSettings,
             onOpenAlbums: _openAlbumsFromSettings,
             onSignOut: _signOutFromSettings,
+            folders: widget.controller.folders,
             busy: widget.controller.busy,
           ),
         ),

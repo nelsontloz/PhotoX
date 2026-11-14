@@ -103,6 +103,7 @@ Widget _settings({
   Future<void> Function(AppSettings settings)? onSave,
   VoidCallback? onOpenAlbums,
   Future<void> Function()? onSignOut,
+  Future<List<MediaFolder>> Function()? folders,
   double textScale = 1,
 }) {
   return _app(
@@ -111,6 +112,12 @@ Widget _settings({
       onSave: onSave ?? (settings) async {},
       onOpenAlbums: onOpenAlbums ?? () {},
       onSignOut: onSignOut ?? () async {},
+      folders:
+          folders ??
+          () async => const <MediaFolder>[
+            MediaFolder(id: 'camera', name: 'Camera', assetCount: 12, isCamera: true),
+            MediaFolder(id: 'screens', name: 'Screenshots', assetCount: 3),
+          ],
     ),
     textScale: textScale,
   );
@@ -155,6 +162,22 @@ void main() {
       expect(find.text('Enter your email address.'), findsOneWidget);
       expect(find.text('Enter your password.'), findsOneWidget);
       expect(calls, 0);
+    });
+
+    testWidgets('names the emulator host while the server field is empty', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app(LoginScreen(onSignIn: (_, _, _) async {})));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('10.0.2.2'), findsOneWidget);
+
+      await tester.enterText(
+        find.byType(TextFormField).first,
+        'http://192.168.1.10:3000',
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('10.0.2.2'), findsNothing);
     });
 
     testWidgets('submits a trimmed email and the typed password', (
@@ -922,7 +945,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(await _summary(tester), '2 folders');
+      expect(await _summary(tester), '2 folders: Camera, Screenshots');
 
       await tester.pumpWidget(
         _settings(
