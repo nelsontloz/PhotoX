@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { hashFile, setWorkerConstructorForTests, terminate } from './hash';
+import { hashFile, setWorkerConstructorForTests, terminate, HASH_TIMEOUT_MS } from './hash';
 
 const ABC_SHA256 = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
 
 describe('hashFile fail-open', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.useRealTimers();
     setWorkerConstructorForTests(null);
     terminate();
   });
@@ -50,32 +51,38 @@ describe('hashFile fail-open', () => {
   }
 
   it('resolves null when the worker never responds (bounded timeout)', async () => {
+    vi.useFakeTimers();
     setWorkerConstructorForTests(ManualWorker as unknown as new () => Worker);
     const file = new File(['abc'], 'abc.txt', { type: 'text/plain' });
-    await expect(hashFile(file, undefined, 30)).resolves.toBeNull();
+    const hash = hashFile(file);
+    await vi.advanceTimersByTimeAsync(HASH_TIMEOUT_MS);
+    await expect(hash).resolves.toBeNull();
   });
 
   it('fails open every concurrent caller instead of deadlocking the queue', async () => {
+    vi.useFakeTimers();
     setWorkerConstructorForTests(HangingWorker as unknown as new () => Worker);
     const files = [new File(['a'], 'a.txt'), new File(['b'], 'b.txt'), new File(['c'], 'c.txt')];
     // all three chain onto the single shared worker; each is bounded, so the second and third
     // settle after their own queue turn instead of hanging behind the stalled first call
-    await expect(Promise.all(files.map((file) => hashFile(file, undefined, 30)))).resolves.toEqual([
-      null,
-      null,
-      null,
-    ]);
+    const all = Promise.all(files.map((file) => hashFile(file)));
+    await vi.advanceTimersByTimeAsync(HASH_TIMEOUT_MS * files.length);
+    await expect(all).resolves.toEqual([null, null, null]);
   });
 
   it('ignores a late worker response after timing out', async () => {
+    vi.useFakeTimers();
     setWorkerConstructorForTests(ManualWorker as unknown as new () => Worker);
     const file = new File(['abc'], 'abc.txt', { type: 'text/plain' });
-    await expect(hashFile(file, undefined, 30)).resolves.toBeNull();
+    const stalled = hashFile(file);
+    await vi.advanceTimersByTimeAsync(HASH_TIMEOUT_MS);
+    await expect(stalled).resolves.toBeNull();
     // the stalled job answers after its caller already failed open: the orphaned pending
     // entry is gone, so this must be a no-op rather than a leak or a cross-call resolve
     ManualWorker.last?.respond('late-checksum');
-    const next = hashFile(new File(['def'], 'def.txt', { type: 'text/plain' }), undefined, 5000);
+    const next = hashFile(new File(['def'], 'def.txt', { type: 'text/plain' }));
     setTimeout(() => ManualWorker.last?.respond(ABC_SHA256), 10);
+    await vi.advanceTimersByTimeAsync(10);
     await expect(next).resolves.toBe(ABC_SHA256);
   });
 });

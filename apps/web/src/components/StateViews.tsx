@@ -38,17 +38,20 @@ export function ErrorState({
   );
 }
 
-/** Centered "nothing here yet" hero: icon in a tinted circle, title, body copy. */
+/** Centered "nothing here yet" hero: icon in a tinted circle, title, body copy, optional action. */
 export function EmptyState({
   icon,
   circleClassName,
   title,
   body,
+  children,
 }: {
   icon: ReactNode;
   circleClassName: string;
   title: string;
   body: string;
+  /** Optional action under the copy (e.g. the empty timeline's upload button). */
+  children?: ReactNode;
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-24 px-4 text-center max-w-lg mx-auto">
@@ -63,6 +66,7 @@ export function EmptyState({
       <p className="mt-4 text-slate-500 dark:text-slate-400 text-base sm:text-lg leading-relaxed max-w-md">
         {body}
       </p>
+      {children != null && <div className="mt-10">{children}</div>}
     </div>
   );
 }

@@ -225,16 +225,13 @@ export async function getAssetDetections(assetId: string): Promise<AssetDetectio
 /** Exists-check budget: a stalled check throws, and the caller fail-open uploads. */
 export const CHECK_FILES_EXIST_TIMEOUT_MS = 20_000;
 
-export async function checkFilesExist(
-  items: FileExistsCheckItem[],
-  options: { timeout?: number } = {},
-): Promise<FileExistsCheckHit[]> {
+export async function checkFilesExist(items: FileExistsCheckItem[]): Promise<FileExistsCheckHit[]> {
   const { data } = await api.post<FileExistsCheckResponse>(
     '/v1/files/exists',
     {
       items,
     },
-    { timeout: options.timeout ?? CHECK_FILES_EXIST_TIMEOUT_MS },
+    { timeout: CHECK_FILES_EXIST_TIMEOUT_MS },
   );
   return data.items;
 }

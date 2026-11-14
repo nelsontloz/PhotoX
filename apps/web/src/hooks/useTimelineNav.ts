@@ -18,8 +18,6 @@ export function useTimelineNav({
 }): {
   hasBeyond: (dir: 'prev' | 'next', fromT: string) => boolean;
   resolveBeyond: (dir: 'prev' | 'next', fromT: string) => Promise<Asset | null>;
-  /** Timeline pages resolve `?asset=` ids whose month isn't loaded; other viewers opt out. */
-  resolveMissing: true;
 } {
   const newestT = layoutItems[0]?.t ?? null;
   const oldestT = layoutItems[layoutItems.length - 1]?.t ?? null;
@@ -48,8 +46,5 @@ export function useTimelineNav({
     [layoutItems, ensureMonth],
   );
 
-  // Deep link (?asset=<id>) to an asset whose month isn't fetched: useAssetNavigation fetches the
-  // asset itself so the viewer opens instead of waiting for a month that may never enter the mount
-  // window.
-  return { hasBeyond, resolveBeyond, resolveMissing: true };
+  return { hasBeyond, resolveBeyond };
 }
