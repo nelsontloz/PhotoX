@@ -137,17 +137,4 @@ export class UserFilesController {
   ) {
     await serveFileBytes(req, res, this.userFilesService, userId, fileId, { attachment: true });
   }
-
-  @Get(':fileId/download')
-  @ApiOperation({ summary: 'Download file bytes' })
-  @ApiResponse({ status: 200, description: 'File stream' })
-  @ApiResponse({ status: 404, description: 'File not found' })
-  async download(
-    @Res() res: Response,
-    @Param('fileId') fileId: string,
-    @Req() req: Request,
-    @CurrentUserId() userId: string,
-  ) {
-    await serveFileBytes(req, res, this.userFilesService, userId, fileId, { attachment: true });
-  }
 }

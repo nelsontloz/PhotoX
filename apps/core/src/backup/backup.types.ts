@@ -122,11 +122,14 @@ export type UserBackupManifest = z.infer<typeof userBackupManifestSchema>;
 
 /**
  * Outcome of one manifest fetch + parse: the validated manifest, or the failure
- * tag (plus the raw cause so callers can log the S3/parse error name).
+ * tag (plus the raw cause so callers can log the S3/parse error name, and the raw
+ * bytes on `corrupt` so a degraded status can still salvage identity fields).
  */
 export type ManifestReadResult =
   | { manifest: UserBackupManifest }
-  | { error: 'missing' | 'unreadable' | 'corrupt'; cause?: unknown };
+  | { error: 'missing'; cause?: unknown }
+  | { error: 'unreadable'; cause?: unknown }
+  | { error: 'corrupt'; cause?: unknown; raw?: Buffer };
 
 /** Previous-manifest file entry used by the incremental upload gate. */
 export interface PreviousFileEntry {

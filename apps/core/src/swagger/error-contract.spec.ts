@@ -9,10 +9,8 @@ function makeDocument(): OpenAPIObject {
     openapi: '3.0.0',
     info: { title: 'test', version: '1' },
     components: {
-      parameters: {
-        // a query parameter reached only through a $ref
-        refreshHint: { name: 'hint', in: 'query', schema: { type: 'string' } },
-      },
+      // what DocumentBuilder.addBearerAuth() emits — the post-processor must keep it
+      securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
     },
     paths: {
       '/health': { get: { responses: { 200: { description: 'ok' } } } },
@@ -47,7 +45,7 @@ function makeDocument(): OpenAPIObject {
       },
       '/api/v1/auth/refresh': {
         post: {
-          parameters: [{ $ref: '#/components/parameters/refreshHint' }],
+          parameters: [{ name: 'hint', in: 'query', schema: { type: 'string' } }],
           responses: { 200: { description: 'refreshed' } },
         },
       },
@@ -138,7 +136,7 @@ describe('applyErrorContract', () => {
     expect(operation(document, '/api/v1/assets', 'get').responses['400']).toBeDefined();
     expect(operation(document, '/api/v1/assets', 'post').responses['400']).toBeDefined();
     expect(operation(document, '/api/v1/assets/{id}', 'delete').responses['400']).toBeUndefined();
-    // the query parameter arrives through a $ref
+    // the query parameter is inline (no @ApiQuery/@ApiParam in this tree emits a $ref)
     expect(operation(document, '/api/v1/auth/refresh', 'post').responses['400']).toBeDefined();
   });
 

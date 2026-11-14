@@ -38,6 +38,15 @@ type ShareTarget =
   | { kind: 'asset'; assetId: string; albumId: null }
   | { kind: 'album'; assetId: null; albumId: string };
 
+/** The last row's ("<timestamp>", "<uuid>") — both share lists page on that tuple. */
+function decodeTimestampCursor(raw: string): { at: Date; id: string } {
+  const [rawAt, id = ''] = decodeCursor(raw, 2);
+  const at = new Date(rawAt ?? '');
+  // a non-uuid id would reach SQL as an invalid cast: 400 here, never a 500
+  if (Number.isNaN(at.getTime()) || !isUUID(id)) invalidCursor();
+  return { at, id };
+}
+
 @Injectable()
 export class SharesService {
   constructor(
@@ -165,14 +174,10 @@ export class SharesService {
       .take(limit + 1);
 
     if (q.cursor) {
-      const [rawCreatedAt, rawId] = decodeCursor(q.cursor, 2);
-      const createdAt = new Date(rawCreatedAt ?? '');
-      const id = rawId ?? '';
-      // a non-uuid id would reach SQL as an invalid cast: 400 here, never a 500
-      if (Number.isNaN(createdAt.getTime()) || !isUUID(id)) invalidCursor();
+      const cursor = decodeTimestampCursor(q.cursor);
       qb.andWhere('(share.createdAt, share.id) < (:cursorCreatedAt, :cursorId)', {
-        cursorCreatedAt: createdAt,
-        cursorId: id,
+        cursorCreatedAt: cursor.at,
+        cursorId: cursor.id,
       });
     }
 
@@ -215,7 +220,7 @@ export class SharesService {
           id: share.album.id,
           name: share.album.name,
           description: share.album.description,
-          assetCount: await this.countAlbumAssets(share.album.id),
+          assetCount: await this.assets.countActiveInAlbum(share.album.id),
         },
       };
     }
@@ -256,14 +261,10 @@ export class SharesService {
       .limit(limit + 1);
 
     if (q.cursor) {
-      const [rawAddedAt, rawAssetId] = decodeCursor(q.cursor, 2);
-      const addedAt = new Date(rawAddedAt ?? '');
-      const assetId = rawAssetId ?? '';
-      // a non-uuid id would reach SQL as an invalid cast: 400 here, never a 500
-      if (Number.isNaN(addedAt.getTime()) || !isUUID(assetId)) invalidCursor();
+      const cursor = decodeTimestampCursor(q.cursor);
       qb.andWhere('(aa."addedAt", aa."assetId") < (:cursorAddedAt, :cursorAssetId)', {
-        cursorAddedAt: addedAt,
-        cursorAssetId: assetId,
+        cursorAddedAt: cursor.at,
+        cursorAssetId: cursor.id,
       });
     }
 
@@ -318,22 +319,15 @@ export class SharesService {
     }
     if (size !== undefined) throw new BadRequestException(`Unsupported size '${size}'`);
     // Same pick as the in-app viewer: when the worker transcoded the video (non-h264 original),
-    // browsers cannot decode the original — serve the AV1/webm derivative.
-    const fileId = await this.playableFileId(share.userId, asset.transcodeFileId, asset.fileId);
+    // browsers cannot decode the original — serve the AV1/webm derivative. The transcode row is
+    // used only when it still belongs to the share owner; otherwise the original is served.
+    const fileId = await playableFileId(
+      this.fileRepo,
+      share.userId,
+      asset.transcodeFileId,
+      asset.fileId,
+    );
     return { fileId, userId: share.userId };
-  }
-
-  /**
-   * Serve the transcode derivative only when its file row still belongs to the share owner;
-   * otherwise fall back to the original. A poisoned transcodeFileId pointer must never pull
-   * another user's bytes into a public capability URL.
-   */
-  async playableFileId(
-    userId: string,
-    transcodeFileId: string | null,
-    fallbackFileId: string,
-  ): Promise<string> {
-    return playableFileId(this.fileRepo, userId, transcodeFileId, fallbackFileId);
   }
 
   private async getAlbumShare(token: string): Promise<Share> {
@@ -352,7 +346,8 @@ export class SharesService {
       'asset',
     );
     if (!share.asset || share.asset.isTrashed) throw new NotFoundException('Share not found');
-    const fileId = await this.playableFileId(
+    const fileId = await playableFileId(
+      this.fileRepo,
       share.userId,
       share.asset.transcodeFileId,
       share.asset.fileId,
@@ -404,7 +399,7 @@ export class SharesService {
     const albumId = share.albumId!;
     const albumRow = album ?? (await this.albumRepo.findOne({ where: { id: albumId } }));
     const [assetCount, coverThumbFileId] = await Promise.all([
-      this.countAlbumAssets(albumId),
+      this.assets.countActiveInAlbum(albumId),
       this.coverThumbFileId(albumId),
     ]);
     return {
@@ -417,15 +412,6 @@ export class SharesService {
       albumCoverThumbFileId: coverThumbFileId,
       createdAt: share.createdAt instanceof Date ? share.createdAt.toISOString() : share.createdAt,
     };
-  }
-
-  private async countAlbumAssets(albumId: string): Promise<number> {
-    return this.albumAssetRepo
-      .createQueryBuilder('aa')
-      .innerJoin('assets', 'asset', 'asset.id = aa."assetId"')
-      .where('aa."albumId" = :albumId', { albumId })
-      .andWhere('asset.isTrashed = false')
-      .getCount();
   }
 
   private async coverThumbFileId(albumId: string): Promise<string | null> {

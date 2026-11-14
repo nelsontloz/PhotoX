@@ -503,7 +503,8 @@ export class AssetShareModel implements AssetShareDto {
   @ApiProperty({ type: String })
   userId!: string;
 
-  @ApiProperty({ type: String })
+  // create responses carry the raw capability; the list omits it, so the schema is optional
+  @ApiPropertyOptional({ type: String })
   token!: string;
 
   @ApiProperty({ type: String })
@@ -532,7 +533,8 @@ export class AlbumShareModel implements AlbumShareDto {
   @ApiProperty({ type: String })
   userId!: string;
 
-  @ApiProperty({ type: String })
+  // create responses carry the raw capability; the list omits it, so the schema is optional
+  @ApiPropertyOptional({ type: String })
   token!: string;
 
   @ApiProperty({ type: String })
@@ -551,67 +553,12 @@ export class AlbumShareModel implements AlbumShareDto {
   createdAt!: string;
 }
 
-export class AssetShareItemModel implements Omit<AssetShareDto, 'token'> {
-  @ApiProperty({ type: String })
-  id!: string;
-
-  @ApiProperty({ enum: ['asset'] })
-  kind!: 'asset';
-
-  @ApiProperty({ type: String })
-  userId!: string;
-
-  @ApiProperty({ type: String })
-  assetId!: string;
-
-  @ApiProperty({ type: String, nullable: true })
-  assetFileId!: string | null;
-
-  @ApiProperty({ type: String, nullable: true })
-  assetThumbFileId!: string | null;
-
-  @ApiProperty({ enum: ['photo', 'video'], nullable: true })
-  assetKind!: 'photo' | 'video' | null;
-
-  @ApiProperty({ type: String, format: 'date-time' })
-  createdAt!: string;
-}
-
-export class AlbumShareItemModel implements Omit<AlbumShareDto, 'token'> {
-  @ApiProperty({ type: String })
-  id!: string;
-
-  @ApiProperty({ enum: ['album'] })
-  kind!: 'album';
-
-  @ApiProperty({ type: String })
-  userId!: string;
-
-  @ApiProperty({ type: String })
-  albumId!: string;
-
-  @ApiProperty({ type: String })
-  albumName!: string;
-
-  @ApiProperty({ type: Number })
-  albumAssetCount!: number;
-
-  @ApiProperty({ type: String, nullable: true })
-  albumCoverThumbFileId!: string | null;
-
-  @ApiProperty({ type: String, format: 'date-time' })
-  createdAt!: string;
-}
-
-@ApiExtraModels(AssetShareItemModel, AlbumShareItemModel)
+@ApiExtraModels(AssetShareModel, AlbumShareModel)
 export class ShareListResponseModel implements ShareListResponse {
   // A share row is one of two disjoint shapes and the raw token is never listed.
   @ApiProperty({
     isArray: true,
-    oneOf: [
-      { $ref: getSchemaPath(AssetShareItemModel) },
-      { $ref: getSchemaPath(AlbumShareItemModel) },
-    ],
+    oneOf: [{ $ref: getSchemaPath(AssetShareModel) }, { $ref: getSchemaPath(AlbumShareModel) }],
   })
   items!: ShareListItem[];
 
@@ -992,40 +939,7 @@ export class EnqueuedJobsModel {
   ai!: number;
 }
 
-export class RestoreResultModel implements RestoreResult {
-  @ApiProperty({ type: String })
-  userId!: string;
-
-  @ApiProperty({ type: String })
-  email!: string;
-
-  @ApiProperty({ type: String })
-  prefix!: string;
-
-  @ApiProperty({ type: String, format: 'date-time' })
-  backedUpAt!: string;
-
-  @ApiProperty({ type: Number })
-  files!: number;
-
-  @ApiProperty({ type: Number })
-  assets!: number;
-
-  @ApiProperty({ type: Number })
-  albums!: number;
-
-  @ApiProperty({ type: Number })
-  shares!: number;
-
-  @ApiProperty({ type: Number })
-  persons!: number;
-
-  @ApiProperty({ type: Number })
-  uploaded!: number;
-
-  @ApiProperty({ type: Number })
-  skipped!: number;
-
+export class RestoreResultModel extends BackupResultModel implements RestoreResult {
   @ApiProperty({
     type: 'object',
     properties: {
@@ -1315,25 +1229,7 @@ export class MergeDedupedModel {
   assets!: number;
 }
 
-export class MergeSkippedModel {
-  @ApiProperty({ type: Number })
-  files!: number;
-
-  @ApiProperty({ type: Number })
-  assets!: number;
-
-  @ApiProperty({ type: Number })
-  albums!: number;
-
-  @ApiProperty({ type: Number })
-  albumAssets!: number;
-
-  @ApiProperty({ type: Number })
-  shares!: number;
-
-  @ApiProperty({ type: Number })
-  persons!: number;
-
+export class MergeSkippedModel extends MergeCountsModel {
   @ApiProperty({ type: Number })
   shareTokenConflicts!: number;
 
@@ -1556,16 +1452,7 @@ export class EnqueuedRunModel {
   enqueued!: number;
 }
 
-export class EmbeddingRunModel {
-  @ApiProperty({ type: String, format: 'date-time' })
-  startedAt!: string;
-
-  @ApiProperty({ type: Number })
-  total!: number;
-
-  @ApiProperty({ type: Number })
-  enqueued!: number;
-
+export class EmbeddingRunModel extends EnqueuedRunModel {
   @ApiProperty({ type: String })
   model!: string;
 }

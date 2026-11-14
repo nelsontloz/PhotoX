@@ -45,10 +45,7 @@ export class PublicSharesController {
   @ApiResponse({ status: 404, description: 'Share not found' })
   @ApiResponse({ status: 416, description: 'Range not satisfiable' })
   async streamByToken(@Param('token') token: string, @Req() req: Request, @Res() res: Response) {
-    // file ids never leave the server: resolve the playable target from the token
-    // (getAssetStreamTarget 404s unknown/expired/non-asset shares alike)
-    const { fileId, userId } = await this.shares.getAssetStreamTarget(token);
-    await serveFileBytes(req, res, this.files, userId, fileId);
+    await this.serveAssetByToken(token, req, res);
   }
 
   @Get(':token/assets')
@@ -70,8 +67,7 @@ export class PublicSharesController {
   @ApiResponse({ status: 404, description: 'Share not found' })
   @ApiResponse({ status: 416, description: 'Range not satisfiable' })
   async contentByToken(@Param('token') token: string, @Req() req: Request, @Res() res: Response) {
-    const { fileId, userId } = await this.shares.getAssetStreamTarget(token);
-    await serveFileBytes(req, res, this.files, userId, fileId);
+    await this.serveAssetByToken(token, req, res);
   }
 
   @Get(':token/assets/:assetId/content')
@@ -87,8 +83,7 @@ export class PublicSharesController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    const { fileId, userId } = await this.shares.getAlbumAssetFileId(token, assetId, size);
-    await serveFileBytes(req, res, this.files, userId, fileId);
+    await this.serveAlbumAsset(token, assetId, size, req, res);
   }
 
   @Get(':token/assets/:assetId/stream')
@@ -104,6 +99,23 @@ export class PublicSharesController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
+    await this.serveAlbumAsset(token, assetId, size, req, res);
+  }
+
+  /** File ids never leave the server: resolve the playable target from the token, then stream. */
+  private async serveAssetByToken(token: string, req: Request, res: Response): Promise<void> {
+    // getAssetStreamTarget 404s unknown/expired/non-asset shares alike
+    const { fileId, userId } = await this.shares.getAssetStreamTarget(token);
+    await serveFileBytes(req, res, this.files, userId, fileId);
+  }
+
+  private async serveAlbumAsset(
+    token: string,
+    assetId: string,
+    size: string | undefined,
+    req: Request,
+    res: Response,
+  ): Promise<void> {
     const { fileId, userId } = await this.shares.getAlbumAssetFileId(token, assetId, size);
     await serveFileBytes(req, res, this.files, userId, fileId);
   }

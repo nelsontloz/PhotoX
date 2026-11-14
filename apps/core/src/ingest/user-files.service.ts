@@ -11,15 +11,14 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, FindOptionsWhere } from 'typeorm';
 import { isUUID } from 'class-validator';
-import { randomUUID, createHash } from 'crypto';
-import { createReadStream } from 'fs';
+import { randomUUID } from 'crypto';
 import { unlink } from 'fs/promises';
 import { extname } from 'path';
-import { pipeline } from 'stream/promises';
 import { FileRecord } from '../database/entities';
 import { loadEnv, LocalStorageService } from '@photox/shared-config';
 import { kindFromMime, sniffMime } from '../common/mime';
 import { ingestErrorBody } from '../common/ingest-errors';
+import { sha256File } from '../backup/backup-storage-io';
 import { RegisterFileBodyDto } from './dto/register-file.body.dto';
 import type { UploadFileBodyDto } from './dto/upload-file.body.dto';
 import { FileRecordDto } from './file-record.dto';
@@ -275,7 +274,7 @@ export class UserFilesService {
       const mimeType = await sniffMime(file.path);
       if (!mimeType) throw new BadRequestException('Unsupported file type');
 
-      const checksum = await this.computeChecksum(file.path);
+      const checksum = await sha256File(file.path);
 
       const existing = await this.fileRepo.findOne({
         where: { userId, checksumSha256: checksum, purpose: 'original' },
@@ -357,12 +356,6 @@ export class UserFilesService {
     } finally {
       await unlink(file.path).catch(() => undefined);
     }
-  }
-
-  private async computeChecksum(path: string): Promise<string> {
-    const hash = createHash('sha256');
-    await pipeline(createReadStream(path), hash);
-    return hash.digest('hex');
   }
 
   private async getRecord(fileId: string): Promise<FileRecord> {

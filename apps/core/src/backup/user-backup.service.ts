@@ -271,10 +271,6 @@ export class UserBackupService {
     return this.dispatchService.consumeTransferJob(kind, job);
   }
 
-  finalizeRunIfDone(runId: string): Promise<void> {
-    return this.dispatchService.finalizeRunIfDone(runId);
-  }
-
   finalizeBackupRun(run: BackupRun, manifest: UserBackupManifest): Promise<void> {
     return this.finalizeService.finalizeBackupRun(run, manifest);
   }

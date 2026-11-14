@@ -1,10 +1,5 @@
 import { HttpException } from '@nestjs/common';
-import {
-  API_ERROR_CODES,
-  type ApiErrorBody,
-  type ApiErrorCode,
-  type ApiErrorDetail,
-} from '@photox/shared-types';
+import { API_ERROR_CODES, type ApiErrorCode, type ApiErrorDetail } from '@photox/shared-types';
 
 /** The code a bare status maps to when the thrower did not name one. */
 export function defaultCodeForStatus(status: number): ApiErrorCode {
@@ -47,14 +42,4 @@ export function apiError(
   extra?: { details?: ApiErrorDetail[]; retryAfterSec?: number; [key: string]: unknown },
 ): HttpException {
   return new HttpException({ statusCode: status, code, message, ...extra }, status);
-}
-
-export function isApiErrorBody(value: unknown): value is ApiErrorBody {
-  if (!value || typeof value !== 'object') return false;
-  const body = value as Record<string, unknown>;
-  return (
-    typeof body.statusCode === 'number' &&
-    isApiErrorCode(body.code) &&
-    typeof body.message === 'string'
-  );
 }

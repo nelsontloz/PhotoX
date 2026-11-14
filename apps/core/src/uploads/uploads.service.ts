@@ -194,7 +194,7 @@ export class UploadsService {
     const session = await this.loadOwned(userId, uploadId);
     // lazy expiry: a session nobody came back to is parked the moment it is asked about
     if (session.status === 'expired' || this.isStale(session)) {
-      if (session.status !== 'expired') await this.expireStale(session);
+      if (session.status !== 'expired') await this.parkExpired(session);
       throw sessionExpiredError();
     }
     const parts = await this.partRepo.find({ where: { sessionId: session.id } });
@@ -690,13 +690,6 @@ export class UploadsService {
       return false;
     }
     return this.expiresAtOf(session).getTime() <= Date.now();
-  }
-
-  /** Lazy expiry on a session row read outside a transaction (GET): park it and drop its bytes. */
-  private async expireStale(session: UploadSession): Promise<void> {
-    // same claim-then-remove path as the sweeper: a GET must not overwrite a session that
-    // completed between the read and this call
-    await this.parkExpired(session);
   }
 
   /** Lazy expiry under the session lock (PUT/complete) — the update must ride the same runner. */

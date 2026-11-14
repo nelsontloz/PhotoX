@@ -51,6 +51,16 @@ export class AdminService {
     private readonly backups: UserBackupService,
   ) {}
 
+  private toAdminRow(user: User): AdminUserRow {
+    return {
+      id: user.id,
+      displayName: user.displayName,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt.toISOString(),
+    };
+  }
+
   async listUsers(params: ListAdminUsersParams): Promise<AdminUserListResponse> {
     const qb = this.userRepo
       .createQueryBuilder('u')
@@ -71,15 +81,7 @@ export class AdminService {
 
     const [rows, total] = await qb.getManyAndCount();
 
-    const items: AdminUserRow[] = rows.map((u) => ({
-      id: u.id,
-      displayName: u.displayName,
-      email: u.email,
-      role: u.role,
-      createdAt: u.createdAt.toISOString(),
-    }));
-
-    return { items, total };
+    return { items: rows.map((u) => this.toAdminRow(u)), total };
   }
 
   /**
@@ -182,14 +184,7 @@ export class AdminService {
     this.logger.log(`admin ${requesterId} updated user ${fresh.id}: ${changedFields.join(',')}`);
 
     return {
-      user: {
-        id: fresh.id,
-        displayName: fresh.displayName,
-        email: fresh.email,
-        role: fresh.role,
-        createdAt: fresh.createdAt.toISOString(),
-        updatedAt: fresh.updatedAt.toISOString(),
-      },
+      user: { ...this.toAdminRow(fresh), updatedAt: fresh.updatedAt.toISOString() },
       backup,
     };
   }
@@ -217,13 +212,7 @@ export class AdminService {
     });
     try {
       const saved = await this.userRepo.save(user);
-      return {
-        id: saved.id,
-        displayName: saved.displayName,
-        email: saved.email,
-        role: saved.role,
-        createdAt: saved.createdAt.toISOString(),
-      };
+      return this.toAdminRow(saved);
     } catch (err) {
       // the pre-check races a concurrent registration on the unique email index
       if (isPostgresUniqueViolation(err)) {

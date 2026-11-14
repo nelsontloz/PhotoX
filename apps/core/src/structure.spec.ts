@@ -14,7 +14,7 @@ import { join, relative } from 'node:path';
  */
 const ASSET_REPO_OWNERS: Record<string, string> = {
   assets: 'owns the table',
-  backup: 'declared cross-cutting ledger reader (docs/backups-contract.md)',
+  backup: 'declared cross-cutting ledger reader',
   admin: "admin surface writes any user's asset (place backfill, orphan cleanup)",
   shares: 'token-scoped public share reads have no userId to scope by',
   faces: 'AssetsModule imports FacesModule, so faces cannot depend back without a cycle',
