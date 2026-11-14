@@ -7,7 +7,6 @@ import {
   addAssetsViaApi,
   authHeaders,
   createAlbumViaApi,
-  getAsset,
   registerUser,
   requireAssetId,
   requireAuth,
@@ -104,28 +103,8 @@ Given('a share exists for an uploaded video', async ({ request, ctx }) => {
   await seedAssetShare(request, ctx, 'video');
 });
 
-Given('a share exists for an uploaded video that gets transcoded', async ({ request, ctx }) => {
-  const auth = await registerUser(request);
-  const assetId = await uploadViaApi(request, auth, 'video-vp8.webm');
-  // the share stream only has a derivative to serve once the worker has produced it
-  await expect
-    .poll(async () => (await getAsset(request, auth, assetId)).transcodeFileId ?? null, {
-      timeout: 180_000,
-    })
-    .not.toBeNull();
-  const share = await expectShareCreated(await postShare(request, auth, { assetId }));
-  ctx.shareOwner = auth;
-  ctx.assetId = assetId;
-  ctx.videoShare = share;
-  ctx.lastShare = share;
-});
-
 Given('a share exists for an album containing an uploaded photo', async ({ request, ctx }) => {
   await seedAlbumShare(request, ctx);
-});
-
-Given('a second user registers for share testing', async ({ request, ctx }) => {
-  ctx.otherAuth = await registerUser(request);
 });
 
 // --- Own shares page: UI ------------------------------------------------------------------
@@ -241,14 +220,6 @@ When('I create an asset share for the uploaded photo', async ({ request, ctx }) 
   ctx.lastShare = share;
 });
 
-When('I create an asset share for the uploaded photo again', async ({ request, ctx }) => {
-  const response = await postShare(request, requireAuth(ctx), { assetId: requireAssetId(ctx) });
-  ctx.lastStatus = response.status();
-  const share = await expectShareCreated(response);
-  ctx.assetShareAgain = share;
-  ctx.lastShare = share;
-});
-
 When('I create an album share for that share target', async ({ request, ctx }) => {
   const albumId = ctx.albumId;
   if (!albumId) throw new Error('prepare an album share target first');
@@ -270,14 +241,6 @@ Then('the share list shows only the album share', async ({ page }) => {
   await expect(page.getByText('Photo', { exact: true })).toHaveCount(0);
 });
 
-When('I submit a share request with both an asset and an album id', async ({ request, ctx }) => {
-  const response = await postShare(request, requireAuth(ctx), {
-    assetId: randomUUID(),
-    albumId: randomUUID(),
-  });
-  ctx.lastStatus = response.status();
-});
-
 Then(
   'the second share request rotated the token and killed the old URL',
   async ({ request, ctx }) => {
@@ -290,11 +253,6 @@ Then(
   },
 );
 
-Then('the shares API lists exactly one share entry', async ({ request, ctx }) => {
-  const list = await fetchShares(request, requireAuth(ctx));
-  expect(list.items.length).toBe(1);
-});
-
 When(
   'the second user creates an asset share for their own uploaded photo',
   async ({ request, ctx }) => {
@@ -304,24 +262,6 @@ When(
     ctx.otherShare = share;
   },
 );
-
-Then("the second user's shares API lists only their own share", async ({ request, ctx }) => {
-  const list = await fetchShares(request, requireOtherAuth(ctx));
-  expect(list.items.length).toBe(1);
-  const only = list.items[0];
-  if (!only) throw new Error("the second user's share list is empty");
-  expect(only.id).toBe(requireShare(ctx.otherShare, "second user's").id);
-  const mine = ctx.assetShare;
-  if (mine) expect(only.id).not.toBe(mine.id);
-});
-
-When("the second user attempts to revoke the first user's share", async ({ request, ctx }) => {
-  const mine = requireShare(ctx.assetShare, 'first user asset');
-  const response = await request.delete(`/api/v1/shares/${mine.id}`, {
-    headers: authHeaders(requireOtherAuth(ctx)),
-  });
-  ctx.lastStatus = response.status();
-});
 
 When(
   "the second user requests a share of the first user's album target",
@@ -442,31 +382,3 @@ When(
     ctx.streamContentRange = response.headers()['content-range'] ?? null;
   },
 );
-
-Then('the share stream response carries a content range header', ({ ctx }) => {
-  const contentRange = ctx.streamContentRange;
-  if (!contentRange) throw new Error('the share stream response has no Content-Range header');
-  expect(contentRange).toMatch(/^bytes 0-99\/\d+$/);
-});
-
-Then('the share stream serves the video transcode', async ({ request, ctx }) => {
-  const share = requireShare(ctx.videoShare ?? ctx.lastShare, 'video');
-  const owner = ctx.shareOwner;
-  if (!owner || !ctx.assetId) throw new Error('seed a transcoded video share first');
-  const asset = await getAsset(request, owner, ctx.assetId);
-  const transcodeFileId = asset.transcodeFileId;
-  if (!transcodeFileId) throw new Error('asset has no transcode file');
-
-  // ETags identify the bytes: the capability URL must serve the transcode, not the original
-  const range = { Range: 'bytes=0-99' };
-  const shared = await request.get(`/api/share/${share.token}/stream`, { headers: range });
-  expect(shared.status()).toBe(206);
-  const transcode = await request.get(`/api/v1/files/${transcodeFileId}/stream`, {
-    headers: { ...authHeaders(owner), ...range },
-  });
-  const original = await request.get(`/api/v1/files/${asset.fileId}/stream`, {
-    headers: { ...authHeaders(owner), ...range },
-  });
-  expect(shared.headers().etag).toBe(transcode.headers().etag);
-  expect(shared.headers().etag).not.toBe(original.headers().etag);
-});

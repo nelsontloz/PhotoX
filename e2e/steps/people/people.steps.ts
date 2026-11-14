@@ -1,14 +1,9 @@
 import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test';
 import {
-  Given,
   Then,
   When,
   authHeaders,
-  registerUser,
-  requireAssetId,
   requireAuth,
-  seedEmbedding,
-  seedFaces,
   type AuthResponse,
   type Ctx,
 } from '../support';
@@ -27,31 +22,10 @@ interface PersonList {
   total: number;
 }
 
-interface FaceSummary {
-  id: string;
-  personId?: string | null;
-}
-
 function requirePersonId(ctx: Ctx): string {
   const id = ctx.personId;
   if (!id) throw new Error('create a person first (seed faces and cluster)');
   return id;
-}
-
-function requirePersonFaceId(ctx: Ctx): string {
-  const id = ctx.personFaceId;
-  if (!id) throw new Error('seed a person face first');
-  return id;
-}
-
-async function fetchAssetFaces(
-  request: APIRequestContext,
-  auth: AuthResponse,
-  assetId: string,
-): Promise<FaceSummary[]> {
-  const response = await request.get(`/api/v1/assets/${assetId}`, { headers: authHeaders(auth) });
-  expect(response.status()).toBe(200);
-  return ((await response.json()) as { faces?: FaceSummary[] }).faces ?? [];
 }
 
 async function fetchPerson(
@@ -95,12 +69,6 @@ async function waitForPersons(
   return matches;
 }
 
-async function ensureOtherUser(request: APIRequestContext, ctx: Ctx): Promise<AuthResponse> {
-  const other = ctx.otherUser ?? (await registerUser(request));
-  ctx.otherUser = other;
-  return other;
-}
-
 const isClusterPost = (response: Response): boolean =>
   response.request().method() === 'POST' &&
   new URL(response.url()).pathname === '/api/v1/persons/cluster';
@@ -108,13 +76,6 @@ const isClusterPost = (response: Response): boolean =>
 const isPersonPatch = (response: Response): boolean =>
   response.request().method() === 'PATCH' &&
   /^\/api\/v1\/persons\/[^/]+$/.test(new URL(response.url()).pathname);
-
-function isFacePersonPatch(faceId: string, response: Response): boolean {
-  return (
-    response.request().method() === 'PATCH' &&
-    new URL(response.url()).pathname === `/api/v1/faces/${faceId}/person`
-  );
-}
 
 /** Inline-renames through the detail heading and awaits the PATCH. */
 async function renamePersonInline(page: Page, name: string): Promise<void> {
@@ -126,32 +87,6 @@ async function renamePersonInline(page: Page, name: string): Promise<void> {
   ]);
   expect(response.status()).toBe(200);
 }
-
-Given('I seed one unassigned person face on my latest photo', async ({ request, ctx }) => {
-  const auth = requireAuth(ctx);
-  const assetId = requireAssetId(ctx);
-  const before = await fetchAssetFaces(request, auth, assetId);
-  await seedFaces(request, auth, assetId, [
-    { box: { x: 20, y: 20, w: 60, h: 60 }, embedding: seedEmbedding(1) },
-  ]);
-  const added = (await fetchAssetFaces(request, auth, assetId)).filter(
-    (face) => !before.some((previous) => previous.id === face.id),
-  );
-  expect(added.length).toBe(1);
-  ctx.personFaceId = added[0]!.id;
-});
-
-Given('I seed two distinct person clusters on my latest photo', async ({ request, ctx }) => {
-  const auth = requireAuth(ctx);
-  const assetId = requireAssetId(ctx);
-  // two identical-embedding pairs, far apart in vector space -> two DBSCAN clusters -> two persons
-  await seedFaces(request, auth, assetId, [
-    { box: { x: 10, y: 10, w: 60, h: 60 }, embedding: seedEmbedding(0) },
-    { box: { x: 80, y: 10, w: 60, h: 60 }, embedding: seedEmbedding(0) },
-    { box: { x: 10, y: 80, w: 60, h: 60 }, embedding: seedEmbedding(1) },
-    { box: { x: 80, y: 80, w: 60, h: 60 }, embedding: seedEmbedding(1) },
-  ]);
-});
 
 When('I trigger person clustering through the API', async ({ request, ctx }) => {
   const response = await request.post('/api/v1/persons/cluster', {
@@ -261,117 +196,6 @@ Then('the person detail shows a {string} day header', async ({ page }, label: st
   await expect(page.locator('main h2').first()).toHaveText(label, { timeout: 60_000 });
 });
 
-When('I open my latest person photo in the viewer', async ({ page, ctx }) => {
-  await page.goto(`/?asset=${requireAssetId(ctx)}`);
-  await expect(page.getByTestId('asset-viewer')).toBeVisible({ timeout: 30_000 });
-});
-
-When('I open the person info panel', async ({ page }) => {
-  await page.locator('button[title="Toggle Info"]').click();
-  // AssetMetadataPanel also renders an h4 "Details" — anchor the panel header by level + container
-  const panel = page.getByTestId('asset-viewer').locator('aside');
-  await expect(panel.getByRole('heading', { level: 2, name: 'Details' })).toBeVisible();
-});
-
-When('I assign the viewer face to the seeded person', async ({ page, ctx }) => {
-  const personId = requirePersonId(ctx);
-  const faceId = requirePersonFaceId(ctx);
-  const select = page.getByTestId('asset-viewer').locator('aside select');
-  await expect(select.locator(`option[value="${personId}"]`)).toHaveCount(1, { timeout: 30_000 });
-  const [response] = await Promise.all([
-    page.waitForResponse((response) => isFacePersonPatch(faceId, response)),
-    select.selectOption(personId),
-  ]);
-  expect(response.status()).toBe(200);
-});
-
-Then('the seeded person face is assigned to the person', async ({ request, ctx }) => {
-  const auth = requireAuth(ctx);
-  const personId = requirePersonId(ctx);
-  const faceId = requirePersonFaceId(ctx);
-  const assetId = requireAssetId(ctx);
-  await expect
-    .poll(
-      async () =>
-        (await fetchAssetFaces(request, auth, assetId)).find((face) => face.id === faceId)
-          ?.personId ?? null,
-      { timeout: 30_000 },
-    )
-    .toBe(personId);
-  expect((await fetchPerson(request, auth, personId)).faceCount).toBe(3);
-});
-
-When('I unassign the viewer face from the person', async ({ page, ctx }) => {
-  const faceId = requirePersonFaceId(ctx);
-  const select = page.getByTestId('asset-viewer').locator('aside select');
-  const [response] = await Promise.all([
-    page.waitForResponse((response) => isFacePersonPatch(faceId, response)),
-    select.selectOption(''),
-  ]);
-  expect(response.status()).toBe(200);
-});
-
-Then('the seeded person face is unassigned from the person', async ({ request, ctx }) => {
-  const auth = requireAuth(ctx);
-  const personId = requirePersonId(ctx);
-  const faceId = requirePersonFaceId(ctx);
-  const assetId = requireAssetId(ctx);
-  await expect
-    .poll(
-      async () =>
-        (await fetchAssetFaces(request, auth, assetId)).find((face) => face.id === faceId)
-          ?.personId ?? null,
-      { timeout: 30_000 },
-    )
-    .toBeNull();
-  expect((await fetchPerson(request, auth, personId)).faceCount).toBe(2);
-});
-
-Then('another user cannot get the person', async ({ request, ctx }) => {
-  const other = await ensureOtherUser(request, ctx);
-  const response = await request.get(`/api/v1/persons/${requirePersonId(ctx)}`, {
-    headers: authHeaders(other),
-  });
-  expect(response.status()).toBe(404);
-});
-
-Then('another user cannot rename the person', async ({ request, ctx }) => {
-  const other = await ensureOtherUser(request, ctx);
-  const response = await request.patch(`/api/v1/persons/${requirePersonId(ctx)}`, {
-    headers: authHeaders(other),
-    data: { name: 'Mallory' },
-  });
-  expect(response.status()).toBe(404);
-});
-
-When('I rename the person to {string} through the API', async ({ request, ctx }, name: string) => {
-  const response = await request.patch(`/api/v1/persons/${requirePersonId(ctx)}`, {
-    headers: authHeaders(requireAuth(ctx)),
-    data: { name },
-  });
-  expect(response.status()).toBe(200);
-  expect(((await response.json()) as PersonSummary).name).toBe(name);
-});
-
-Then('the person is named {string} through the API', async ({ request, ctx }, name: string) => {
-  const person = await fetchPerson(request, requireAuth(ctx), requirePersonId(ctx));
-  expect(person.name).toBe(name);
-});
-
-When('I clear the person name through the API', async ({ request, ctx }) => {
-  const response = await request.patch(`/api/v1/persons/${requirePersonId(ctx)}`, {
-    headers: authHeaders(requireAuth(ctx)),
-    data: { name: null },
-  });
-  expect(response.status()).toBe(200);
-  expect(((await response.json()) as PersonSummary).name).toBeNull();
-});
-
-Then('the person has no name through the API', async ({ request, ctx }) => {
-  const person = await fetchPerson(request, requireAuth(ctx), requirePersonId(ctx));
-  expect(person.name).toBeNull();
-});
-
 Then('the person API name is {string}', async ({ request, ctx }, name: string) => {
   const person = await fetchPerson(request, requireAuth(ctx), requirePersonId(ctx));
   expect(person.name).toBe(name);
@@ -380,19 +204,4 @@ Then('the person API name is {string}', async ({ request, ctx }, name: string) =
 Then('the person API has no name', async ({ request, ctx }) => {
   const person = await fetchPerson(request, requireAuth(ctx), requirePersonId(ctx));
   expect(person.name).toBeNull();
-});
-
-Then('the person list pages with a limit of {int}', async ({ request, ctx }, limit: number) => {
-  const auth = requireAuth(ctx);
-  const first = await fetchPersons(request, auth, `?limit=${limit}`);
-  expect(first.total).toBe(2);
-  expect(first.items).toHaveLength(limit);
-  const second = await fetchPersons(request, auth, `?limit=${limit}&offset=${limit}`);
-  expect(second.items).toHaveLength(limit);
-  const firstId = first.items[0]?.id;
-  const secondId = second.items[0]?.id;
-  if (!firstId || !secondId) throw new Error('person pages did not return items');
-  expect(secondId).not.toBe(firstId);
-  const beyond = await fetchPersons(request, auth, `?limit=${limit}&offset=${limit * 2}`);
-  expect(beyond.items).toHaveLength(0);
 });

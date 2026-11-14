@@ -669,6 +669,15 @@ describe('UsersSection registration setting', () => {
     await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'));
   });
 
+  it('reads the persisted setting back on a fresh mount', async () => {
+    // a reload is a fresh mount: the switch must reflect the saved value, not the default
+    api.getRegistrationSettings.mockResolvedValue({ enabled: false });
+    render(<UsersSection />);
+
+    const toggle = await screen.findByRole('switch', { name: 'Allow public sign-ups' });
+    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'));
+  });
+
   it('reverts the switch and shows the error when the save fails', async () => {
     api.setRegistrationSettings.mockRejectedValue({
       isAxiosError: true,

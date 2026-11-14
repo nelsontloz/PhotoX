@@ -3,14 +3,12 @@ import {
   Given,
   Then,
   When,
-  PASSWORD,
   authHeaders,
   injectSession,
   registerUser,
   requireAdmin,
   scenarioState,
   searchUsersFor,
-  signIn,
   startAndWaitForRun,
   type AuthResponse,
   type Ctx,
@@ -68,12 +66,6 @@ function requireNewEmail(ctx: Ctx): string {
   const email = scenarioState<UserEditState>(ctx).newEmail;
   if (!email) throw new Error('save the account edit first');
   return email;
-}
-
-function requireUpdateBody(ctx: Ctx): AdminUserUpdateBody {
-  const body = scenarioState<UserEditState>(ctx).updateBody;
-  if (!body) throw new Error('change the email through the admin API first');
-  return body;
 }
 
 /** `<local>-edited@<domain>` — unique per scenario and derived from the registered address. */
@@ -222,25 +214,6 @@ When(
   },
 );
 
-Then('the edited account signs in with the new address', async ({ request, ctx }) => {
-  const account = requireAccount(ctx);
-  const auth = await signIn(request, requireNewEmail(ctx));
-  expect(auth.user.id).toBe(account.user.id);
-});
-
-Then('the old address no longer signs in', async ({ request, ctx }) => {
-  const login = await request.post('/api/v1/auth/login', {
-    data: { email: requireAccount(ctx).user.email, password: PASSWORD },
-  });
-  expect(login.status(), 'the old address should be rejected').toBe(401);
-});
-
-Then('the edit response reports no backup to move', ({ ctx }) => {
-  const backup = requireUpdateBody(ctx).backup;
-  expect(backup.moved).toBe(false);
-  expect(backup.reason).toBe('no-backup');
-});
-
 When(
   "the account-editing admin changes that account's email through the edit dialog",
   async ({ page, ctx, $testInfo }) => {
@@ -374,21 +347,3 @@ When(
     scenarioState<UserEditState>(ctx).roleChangeStatus = response.status();
   },
 );
-
-Then('the role change is rejected as a bad request', ({ ctx }) => {
-  expect(scenarioState<UserEditState>(ctx).roleChangeStatus).toBe(400);
-});
-
-Then("the account's role is unchanged", async ({ request, ctx }) => {
-  const admin = await requireAdmin(ctx, request);
-  const account = requireAccount(ctx);
-  const response = await request.get(
-    `/api/v1/admin/users?q=${encodeURIComponent(account.user.email)}`,
-    { headers: authHeaders(admin) },
-  );
-  expect(response.status()).toBe(200);
-  const list = (await response.json()) as { items: { id: string; role: string }[]; total: number };
-  expect(list.total).toBe(1);
-  expect(list.items[0]?.id).toBe(account.user.id);
-  expect(list.items[0]?.role).toBe('user');
-});

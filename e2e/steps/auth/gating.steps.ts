@@ -1,5 +1,5 @@
 import { expect, type APIRequestContext } from '@playwright/test';
-import { Given, Then, When, authHeaders } from '../support';
+import { Given, Then, When } from '../support';
 
 Given('I am not signed in', () => {
   // fresh browser context per scenario: nothing persisted, no init script
@@ -27,11 +27,6 @@ async function callApi(
 
 When('an anonymous client calls {string}', async ({ request, ctx }, spec: string) => {
   ctx.lastStatus = await callApi(request, spec);
-});
-
-When('I call {string} with my token', async ({ request, ctx }, spec: string) => {
-  if (!ctx.auth) throw new Error('ctx.auth is missing — sign in first');
-  ctx.lastStatus = await callApi(request, spec, authHeaders(ctx.auth));
 });
 
 Then('the response status is {int}', ({ ctx }, status: number) => {

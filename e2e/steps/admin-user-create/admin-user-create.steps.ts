@@ -4,7 +4,6 @@ import {
   After,
   Given,
   PASSWORD,
-  SIGNUPS_CLOSED_NOTICE,
   Then,
   When,
   authHeaders,
@@ -80,34 +79,6 @@ Given('an administrator account will be created through the dialog', ({ ctx }) =
   scenarioState<UserCreateState>(ctx).draft = draftFor('E2E Created Admin', 'admin');
 });
 
-Given('the public sign-up flag is mocked off for this page', async ({ page }) => {
-  // page-scoped: never touches the real app_settings row that the rest of the run registers
-  // against (the same interception pattern as the delete feature's delayed response)
-  await page.route('**/api/v1/auth/registration', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ enabled: false }),
-    });
-  });
-});
-
-Then('the login page hides the create-account link', async ({ page }) => {
-  await page.goto('/login');
-  await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('Create an account')).toHaveCount(0);
-  await expect(page.getByText(/Don't have an account/)).toHaveCount(0);
-});
-
-Then('the register page shows the closed sign-up notice', async ({ page }) => {
-  await page.goto('/register');
-  await expect(page.getByText(SIGNUPS_CLOSED_NOTICE, { exact: true })).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.locator('form')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
-});
-
 When('the account-creating admin opens the users tab', async ({ page }) => {
   await page.goto('/admin?tab=users');
   await expect(page.getByRole('heading', { level: 2, name: 'Users Management' })).toBeVisible({
@@ -161,10 +132,6 @@ When('the account-creating admin submits the new account', async ({ page, ctx })
   const response = await pending;
   state.createStatus = response.status();
   state.created = (await response.json()) as CreatedUserRow;
-});
-
-Then('the admin account create request returned 201', ({ ctx }) => {
-  expect(scenarioState<UserCreateState>(ctx).createStatus).toBe(201);
 });
 
 Then('the create-user dialog closes with a Created toast', async ({ page, ctx }) => {

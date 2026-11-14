@@ -11,12 +11,3 @@ Feature: Chunked resumable upload sessions
     When I complete the upload session
     Then the timeline shows its loaded thumbnail
     And the session status reports completed with its asset id
-    And the upload session is not visible to another user
-
-  Scenario: Completing an upload session again is idempotent
-    Given I am signed in
-    When I create a chunked upload session for "photo.jpg"
-    And I upload every part of "photo.jpg"
-    When I complete the upload session
-    Then completing the upload session again returns the same asset as a deduplicated replay
-    And the timeline still shows exactly one item

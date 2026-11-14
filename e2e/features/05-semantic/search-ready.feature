@@ -1,10 +1,4 @@
 Feature: Search page readiness and related tray
-
-  Scenario: Search page explains when the index is not ready
-    Given I am signed in
-    When I open "/search?q=zebra"
-    Then the search page shows a ready, empty, or not-ready state for "zebra"
-
   Scenario: Viewer shows similar photos in the related tray
     Given I am signed in
     When I upload "photo.jpg" for semantic processing

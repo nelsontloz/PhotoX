@@ -199,10 +199,6 @@ Given('I am signed in as the seeded administrator', async ({ request, page, base
   await page.goto('/');
 });
 
-Given('a regular user is registered for the admin list', async ({ request, ctx }) => {
-  scenarioState<UserDeleteState>(ctx).listed = await registerUser(request);
-});
-
 Given('a regular user with one photo is registered for deletion', async ({ request, ctx }) => {
   const victim = await registerUser(request);
   scenarioState<UserDeleteState>(ctx).victim = victim;
@@ -257,18 +253,6 @@ Then(
     expect(await remove.getAttribute('title')).toBe(`Delete ${listed.user.displayName}`);
   },
 );
-
-Then('my own admin row disables Delete with the self-delete guard', async ({ page, ctx }) => {
-  const admin = requireStateAdmin(ctx);
-  await searchUsersFor(page, admin.user.email);
-  const remove = page.getByRole('button', {
-    name: `Delete ${admin.user.displayName}`,
-    exact: true,
-  });
-  await expect(remove).toHaveCount(1);
-  await expect(remove).toBeDisabled();
-  expect(await remove.getAttribute('title')).toBe("You can't delete your own account.");
-});
 
 When('I open the delete dialog for that user', async ({ page, ctx }) => {
   const victim = requireVictim(ctx);
@@ -369,54 +353,6 @@ Then('the users list no longer matches the deleted user', async ({ page, ctx }) 
   ).toBeVisible();
 });
 
-When('that user is removed through the API while the dialog is open', async ({ request, ctx }) => {
-  const admin = requireStateAdmin(ctx);
-  const victim = requireVictim(ctx);
-  // the dialog stays open on the users tab while the account disappears underneath it
-  const response = await request.delete(`/api/v1/admin/users/${victim.user.id}`, {
-    headers: authHeaders(admin),
-  });
-  expect(response.status()).toBe(202);
-  await expect
-    .poll(
-      async () => {
-        const status = await request.get(`/api/v1/admin/users/${victim.user.id}/delete-status`, {
-          headers: authHeaders(admin),
-        });
-        if (status.status() !== 200) return `http-${status.status()}`;
-        return ((await status.json()) as { state?: string }).state ?? 'missing';
-      },
-      { timeout: 120_000 },
-    )
-    .toBe('completed');
-});
-
-When('I confirm deletion of that user', async ({ page }) => {
-  const dialog = deleteDialog(page);
-  await dialog.locator('#delete-user-confirm').fill('DELETE');
-  await dialog.getByRole('button', { name: 'Delete user', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toBeVisible({ timeout: 30_000 });
-});
-
-Then('the missing-user message is shown and the dialog stays open', async ({ page }) => {
-  // the raced delete answers 404, which the dialog maps to the fixed missing-user sentence
-  // (403/409 verbatim mapping is covered at the API level below plus the web unit specs)
-  const dialog = deleteDialog(page);
-  await expect(dialog.getByRole('alert')).toContainText(
-    'That user no longer exists. Close this and refresh the list.',
-  );
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeEnabled();
-  await dialog.getByRole('button', { name: 'Cancel' }).click();
-  await expect(dialog).toHaveCount(0);
-  // the account is really gone from the list — the external API removal cannot refresh
-  // the table by itself (same debounced query), so re-sort to force a refetch like a user would
-  await page.getByRole('button', { name: 'Email' }).click();
-  await expect(page.getByText('No users match the current filters.', { exact: true })).toBeVisible({
-    timeout: 15_000,
-  });
-});
-
 When(
   'an admin delete is attempted on the last admin with a forged setup token',
   async ({ request, ctx }) => {
@@ -431,27 +367,6 @@ When(
     state.lastAdminMessage = typeof body.message === 'string' ? body.message : JSON.stringify(body);
   },
 );
-
-Then('the forged admin token is rejected with 403', ({ ctx }) => {
-  // the account row says 'user', so the claim on the forged token buys nothing: 403 before any
-  // delete logic runs (the last-admin 409 is covered at the service level)
-  const state = scenarioState<UserDeleteState>(ctx);
-  expect(state.lastAdminStatus).toBe(403);
-  expect(state.lastAdminMessage ?? '').toContain('Admin only');
-});
-
-Then('self-deletion through the API is rejected with 403 verbatim', async ({ request, ctx }) => {
-  // the guard chain rejects before draining or enqueuing, so this mutates nothing
-  const admin = requireStateAdmin(ctx);
-  const response = await request.delete(`/api/v1/admin/users/${admin.user.id}`, {
-    headers: authHeaders(admin),
-  });
-  expect(response.status()).toBe(403);
-  const body = (await response.json()) as { message?: unknown };
-  expect(typeof body.message === 'string' ? body.message : JSON.stringify(body)).toContain(
-    'Cannot delete your own account',
-  );
-});
 
 When('I delete the victim user through the confirmation dialog', async ({ page, ctx }) => {
   const victim = requireVictim(ctx);

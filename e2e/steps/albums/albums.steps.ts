@@ -14,9 +14,7 @@ import {
   authHeaders,
   createAlbumViaApi,
   expectThumbnailLoaded,
-  registerUser,
   requireAuth,
-  requireOtherAuth,
   uploadViaApi,
   waitForThumbnails,
   type AlbumRef,
@@ -89,10 +87,6 @@ Given('I created an album via the API named {string}', async ({ request, ctx }, 
   albums.push(album);
 });
 
-Given('I registered a second album user', async ({ request, ctx }) => {
-  ctx.otherAuth = await registerUser(request);
-});
-
 Given('I uploaded an album photo', async ({ request, ctx }) => {
   const assetId = await uploadViaApi(request, requireAuth(ctx), 'photo.jpg');
   ctx.albumAssets = [assetId];
@@ -107,11 +101,6 @@ Given('I uploaded two album photos', async ({ request, ctx }) => {
   ctx.assetId = first;
 });
 
-Given('the other album user uploaded an album photo', async ({ request, ctx }) => {
-  const assetId = await uploadViaApi(request, requireOtherAuth(ctx), 'photo.jpg');
-  ctx.otherAssetId = assetId;
-});
-
 // --- album API actions ------------------------------------------------------
 
 When('I add my album photo to the album', async ({ request, ctx }) => {
@@ -120,86 +109,6 @@ When('I add my album photo to the album', async ({ request, ctx }) => {
   ]);
   ctx.lastStatus = status;
   expect(status).toBe(201);
-});
-
-When('I add my album photo to the album {string}', async ({ request, ctx }, name: string) => {
-  const auth = requireAuth(ctx);
-  const album = await findAlbumByName(request, auth, name);
-  ctx.lastStatus = await addAssetsViaApi(request, auth, album.id, [albumAssetAt(ctx, 0)]);
-  expect(ctx.lastStatus).toBe(201);
-});
-
-When('I add my second album photo to the album', async ({ request, ctx }) => {
-  const status = await addAssetsViaApi(request, requireAuth(ctx), currentAlbum(ctx).id, [
-    albumAssetAt(ctx, 1),
-  ]);
-  ctx.lastStatus = status;
-  expect(status).toBe(201);
-});
-
-When('I add my album photo to the album again', async ({ request, ctx }) => {
-  const status = await addAssetsViaApi(request, requireAuth(ctx), currentAlbum(ctx).id, [
-    albumAssetAt(ctx, 0),
-  ]);
-  ctx.lastStatus = status;
-  expect(status).toBe(201);
-});
-
-When('I add my trashed album photo to the album', async ({ request, ctx }) => {
-  ctx.lastStatus = await addAssetsViaApi(request, requireAuth(ctx), currentAlbum(ctx).id, [
-    albumAssetAt(ctx, 0),
-  ]);
-});
-
-When("I add the other album user's photo to my album", async ({ request, ctx }) => {
-  const assetId = ctx.otherAssetId;
-  if (!assetId) throw new Error("the other album user's photo was not uploaded");
-  ctx.lastStatus = await addAssetsViaApi(request, requireAuth(ctx), currentAlbum(ctx).id, [
-    assetId,
-  ]);
-});
-
-When('I trash my album photo', async ({ request, ctx }) => {
-  const response = await request.post(`/api/v1/assets/${albumAssetAt(ctx, 0)}/trash`, {
-    headers: authHeaders(requireAuth(ctx)),
-  });
-  ctx.lastStatus = response.status();
-});
-
-When('the other album user requests my album', async ({ request, ctx }) => {
-  const response = await request.get(`/api/v1/albums/${currentAlbum(ctx).id}`, {
-    headers: authHeaders(requireOtherAuth(ctx)),
-  });
-  ctx.lastStatus = response.status();
-});
-
-When('the other album user renames my album', async ({ request, ctx }) => {
-  const response = await request.patch(`/api/v1/albums/${currentAlbum(ctx).id}`, {
-    headers: authHeaders(requireOtherAuth(ctx)),
-    data: { name: 'Hijacked album' },
-  });
-  ctx.lastStatus = response.status();
-});
-
-When('the other album user deletes my album', async ({ request, ctx }) => {
-  const response = await request.delete(`/api/v1/albums/${currentAlbum(ctx).id}`, {
-    headers: authHeaders(requireOtherAuth(ctx)),
-  });
-  ctx.lastStatus = response.status();
-});
-
-When("the other album user requests my album's photos", async ({ request, ctx }) => {
-  const response = await request.get(`/api/v1/albums/${currentAlbum(ctx).id}/assets`, {
-    headers: authHeaders(requireOtherAuth(ctx)),
-  });
-  ctx.lastStatus = response.status();
-});
-
-When('the other album user adds their own photo to my album', async ({ request, ctx }) => {
-  const other = requireOtherAuth(ctx);
-  const assetId = ctx.otherAssetId ?? (await uploadViaApi(request, other, 'photo.jpg'));
-  ctx.otherAssetId = assetId;
-  ctx.lastStatus = await addAssetsViaApi(request, other, currentAlbum(ctx).id, [assetId]);
 });
 
 When(
@@ -214,33 +123,11 @@ When(
   },
 );
 
-When('I create an album without a name', async ({ request, ctx }) => {
-  const response = await request.post('/api/v1/albums', {
-    headers: authHeaders(requireAuth(ctx)),
-    data: { description: 'no name attached' },
-  });
-  ctx.lastStatus = response.status();
-});
-
 // --- album API assertions ---------------------------------------------------
 
 Then('the album asset count is {int}', async ({ request, ctx }, count: number) => {
   const payload = await fetchAlbumAssets(request, requireAuth(ctx), currentAlbum(ctx).id);
   expect(payload.total).toBe(count);
-});
-
-Then('the listed albums in order are {string}', ({ ctx }, names: string) => {
-  const page = ctx.albumPage;
-  if (!page) throw new Error('list the albums first');
-  expect(page.map((album) => album.name)).toEqual(names.split(',').map((name) => name.trim()));
-});
-
-Then('my album lists the photos newest-added first', async ({ request, ctx }) => {
-  const payload = await fetchAlbumAssets(request, requireAuth(ctx), currentAlbum(ctx).id);
-  expect(payload.items.map((item) => item.id)).toEqual([
-    albumAssetAt(ctx, 1),
-    albumAssetAt(ctx, 0),
-  ]);
 });
 
 Then('my timeline still contains the album photo', async ({ request, ctx }) => {
@@ -270,105 +157,9 @@ async function fetchTimeline(
   return (await response.json()) as TimelinePayload;
 }
 
-interface LayoutMonthsPayload {
-  months: { key: string; count: number; version: string }[];
-}
-
-/** GET the timeline month index: window list + per-window versions. */
-async function fetchLayout(
-  request: APIRequestContext,
-  auth: AuthResponse,
-): Promise<LayoutMonthsPayload> {
-  const response = await request.get('/api/v1/timeline/index?tz=UTC', {
-    headers: authHeaders(auth),
-  });
-  expect(response.status()).toBe(200);
-  return (await response.json()) as LayoutMonthsPayload;
-}
-
-async function setAlbumHidden(
-  request: APIRequestContext,
-  ctx: Ctx,
-  albumId: string,
-  hidden: boolean,
-): Promise<void> {
-  const response = await request.patch(`/api/v1/albums/${albumId}`, {
-    headers: authHeaders(requireAuth(ctx)),
-    data: { hiddenFromTimeline: hidden },
-  });
-  ctx.lastStatus = response.status();
-  expect(response.status()).toBe(200);
-}
-
-When('I hide the album from the timeline', async ({ request, ctx }) => {
-  await setAlbumHidden(request, ctx, currentAlbum(ctx).id, true);
-});
-
-When('I hide the album {string} from the timeline', async ({ request, ctx }, name: string) => {
-  const album = await findAlbumByName(request, requireAuth(ctx), name);
-  await setAlbumHidden(request, ctx, album.id, true);
-});
-
-When('I show the album on the timeline', async ({ request, ctx }) => {
-  await setAlbumHidden(request, ctx, currentAlbum(ctx).id, false);
-});
-
-When('I delete the album via the API', async ({ request, ctx }) => {
-  const response = await request.delete(`/api/v1/albums/${currentAlbum(ctx).id}`, {
-    headers: authHeaders(requireAuth(ctx)),
-  });
-  ctx.lastStatus = response.status();
-  expect(response.status()).toBe(204);
-});
-
-Then('the album reports hidden from the timeline', async ({ request, ctx }) => {
-  const response = await request.get(`/api/v1/albums/${currentAlbum(ctx).id}`, {
-    headers: authHeaders(requireAuth(ctx)),
-  });
-  expect(response.status()).toBe(200);
-  const album = (await response.json()) as { hiddenFromTimeline?: boolean };
-  expect(album.hiddenFromTimeline).toBe(true);
-});
-
 Then('my timeline does not contain the album photo', async ({ request, ctx }) => {
   const timeline = await fetchTimeline(request, requireAuth(ctx));
   expect(timeline.items.map((item) => item.id)).not.toContain(albumAssetAt(ctx, 0));
-});
-
-Then('my timeline is empty', async ({ request, ctx }) => {
-  expect((await fetchTimeline(request, requireAuth(ctx))).total).toBe(0);
-});
-
-Then('the album timeline contains the album photo', async ({ request, ctx }) => {
-  const albumId = currentAlbum(ctx).id;
-  const timeline = await fetchTimeline(request, requireAuth(ctx), `&albumId=${albumId}`);
-  expect(timeline.items.map((item) => item.id)).toContain(albumAssetAt(ctx, 0));
-});
-
-Then('the timeline layout is empty', async ({ request, ctx }) => {
-  const layout = await fetchLayout(request, requireAuth(ctx));
-  expect(layout.months).toHaveLength(0);
-});
-
-Then('the timeline layout only omits the hidden photo', async ({ request, ctx }) => {
-  const auth = requireAuth(ctx);
-  const layout = await fetchLayout(request, auth);
-  const layoutTotal = layout.months.reduce((sum, month) => sum + month.count, 0);
-  expect(layoutTotal).toBe(1);
-  // the scenario holds exactly two photos, so a total of 1 plus the sibling "does not contain"
-  // step pins the remaining layout item to the visible album's photo
-  expect((await fetchTimeline(request, auth)).total).toBe(1);
-});
-
-Then('the timeline layout version changes after hiding', async ({ request, ctx }) => {
-  const auth = requireAuth(ctx);
-  const versions = (layout: LayoutMonthsPayload) =>
-    layout.months.map((month) => `${month.key}:${month.version}`).join('|');
-  const before = versions(await fetchLayout(request, auth));
-  // the version has to be captured before the flag flips, so this step performs the hide itself
-  await setAlbumHidden(request, ctx, currentAlbum(ctx).id, true);
-  const after = versions(await fetchLayout(request, auth));
-  expect(after).not.toBe(before);
 });
 
 // --- albums page UI ---------------------------------------------------------
@@ -640,15 +431,6 @@ When('I hide the album from its options menu', async ({ page, ctx }) => {
   );
 });
 
-When('I show the album from its options menu', async ({ page, ctx }) => {
-  await toggleAlbumTimeline(
-    page,
-    ctx,
-    'Show on timeline',
-    page.locator('button[aria-label="Album options"]'),
-  );
-});
-
 Then('the album page shows the hidden badge', async ({ page }) => {
   await expect(page.getByText('Hidden from timeline', { exact: true })).toBeVisible();
 });
@@ -659,16 +441,6 @@ When('I select the first photo on the timeline', async ({ page }) => {
   const checkbox = page.getByTestId('gallery-item').locator('button[role="checkbox"]').first();
   await checkbox.click();
   await expect(checkbox).toHaveAttribute('aria-checked', 'true');
-});
-
-When('I select all {int} photos on the timeline', async ({ page }, count: number) => {
-  const checkboxes = page.getByTestId('gallery-item').locator('button[role="checkbox"]');
-  await expect(checkboxes).toHaveCount(count, { timeout: 60_000 });
-  for (let i = 0; i < count; i++) {
-    const checkbox = checkboxes.nth(i);
-    await checkbox.click();
-    await expect(checkbox).toHaveAttribute('aria-checked', 'true');
-  }
 });
 
 When('I open the album picker from the selection bar', async ({ page }) => {

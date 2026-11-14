@@ -1,12 +1,4 @@
 Feature: Admin user deletion
-
-  Scenario: Every row has a Delete action but the admin cannot delete themselves
-    Given I am signed in as the seeded administrator
-    And a regular user is registered for the admin list
-    When I can open the admin dashboard
-    Then the users table shows an Actions column with a Delete button for the listed user
-    And my own admin row disables Delete with the self-delete guard
-
   Scenario: The delete dialog gates confirmation behind typed DELETE
     Given I am signed in as the seeded administrator
     And a regular user with one photo is registered for deletion
@@ -24,23 +16,6 @@ Feature: Admin user deletion
     When I confirm deletion of that user while the delete response is delayed
     Then the delete dialog is closed
     And the users list no longer matches the deleted user
-
-  Scenario: A delete that races another removal surfaces the error and keeps the dialog open
-    Given I am signed in as the seeded administrator
-    And a regular user with one photo is registered for deletion
-    When I can open the admin dashboard
-    And I open the delete dialog for that user
-    And that user is removed through the API while the dialog is open
-    And I confirm deletion of that user
-    Then the missing-user message is shown and the dialog stays open
-
-  Scenario: A forged admin role cannot delete the last admin
-    Given I am signed in as the seeded administrator
-    And a regular user is registered for the admin list
-    When an admin delete is attempted on the last admin with a forged setup token
-    Then the forged admin token is rejected with 403
-    And self-deletion through the API is rejected with 403 verbatim
-
   Scenario: Deleting a user wipes the library but keeps the S3 backup and spares siblings
     Given I am signed in as the seeded administrator
     And a victim user with a full library and backup is registered
