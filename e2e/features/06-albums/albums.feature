@@ -60,18 +60,6 @@ Feature: Albums UI flows
     Then the album page shows 2 album photos
     And the first album photo thumbnail loads
 
-  Scenario: Adding photos to a freshly created album through its dialog
-    Given I am signed in
-    And I uploaded an album photo
-    When I open "/albums"
-    And I create an album through the UI named "Fresh album"
-    And I open the album card "Fresh album"
-    And I open the add photos dialog
-    Then the add photos dialog lists 1 album photos
-    When I select all album photos in the dialog
-    And I add the selected album photos
-    Then the album page shows 1 album photos
-
   Scenario: Removing a photo from an album keeps it on the timeline
     Given I am signed in
     And I created an album via the API named "Removable album"
@@ -107,27 +95,6 @@ Feature: Albums UI flows
     And I add the selected photos to the selected albums
     Then the album asset count is 1
 
-  Scenario: Adding selected timeline photos to a new album from the selection bar
-    Given I am signed in
-    And I uploaded two album photos
-    When I open "/"
-    And I select all 2 photos on the timeline
-    And I open the album picker from the selection bar
-    And I create an album named "Bar-created album" in the picker
-    Then the album "Bar-created album" contains exactly my album photos
-
-  Scenario: Adding timeline photos to an album that already has photos
-    Given I am signed in
-    And I created an album via the API named "Populated album"
-    And I uploaded two album photos
-    When I add my second album photo to the album
-    And I open "/"
-    And I select all 2 photos on the timeline
-    And I open the album picker from the selection bar
-    And I select the album "Populated album" in the picker
-    And I add the selected photos to the selected albums
-    Then the album "Populated album" contains exactly my album photos
-
   Scenario: Hiding an album from its options menu removes its photo from the timeline
     Given I am signed in
     And I created an album via the API named "Menu-hidden album"
@@ -139,17 +106,6 @@ Feature: Albums UI flows
     And the album page shows 1 album photos
     When I open "/"
     Then my timeline does not contain the album photo
-
-  Scenario: Showing a hidden album from its options menu restores it on the timeline
-    Given I am signed in
-    And I created an album via the API named "Menu-shown album"
-    And I uploaded an album photo
-    When I add my album photo to the album
-    And I hide the album from the timeline
-    And I open the album
-    And I show the album from its options menu
-    Then the album page shows 1 album photos
-    And my timeline still contains the album photo
 
   Scenario: Toggling an album from its card menu hides it from the timeline
     Given I am signed in

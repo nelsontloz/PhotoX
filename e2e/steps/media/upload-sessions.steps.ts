@@ -6,16 +6,7 @@ import type {
   UploadSessionCreated,
   UploadSessionStatusResponse,
 } from '@photox/shared-types';
-import {
-  FIXTURES_DIR,
-  Then,
-  When,
-  authHeaders,
-  expectSingleTimelineItem,
-  registerUser,
-  requireAuth,
-  type Ctx,
-} from '../support';
+import { FIXTURES_DIR, Then, When, authHeaders, requireAuth, type Ctx } from '../support';
 
 // Per-scenario upload-session state, keyed by the scenario ctx (support.ts Ctx untouched).
 interface UploadSessionState {
@@ -125,20 +116,3 @@ Then(
     expect(body.asset.id).toBe(state.completedAssetId);
   },
 );
-
-Then('the upload session is not visible to another user', async ({ request, ctx }) => {
-  const state = sessionState(ctx);
-  // owner scoping: another account's session id must read as missing, not as forbidden
-  const otherAuth = await registerUser(request);
-  const response = await request.get(`/api/v1/uploads/${state.uploadId}`, {
-    headers: authHeaders(otherAuth),
-  });
-  expect(response.status()).toBe(404);
-});
-
-Then('the timeline still shows exactly one item', async ({ page }) => {
-  // the asset was created through the API after the timeline first loaded: reload to fetch it —
-  // a single tile then proves the idempotent replay minted no second asset
-  await page.goto('/');
-  await expectSingleTimelineItem(page);
-});

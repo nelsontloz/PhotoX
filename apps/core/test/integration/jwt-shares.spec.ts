@@ -276,6 +276,98 @@ describe('shares JWT identity', () => {
     expect(pub.status).toBe(404);
   });
 
+  it('omits the token from every share list row', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const file = await seedFile(t, user.id);
+    const asset = await seedAsset(t, user.id, file.id);
+    await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(token))
+      .send({ assetId: asset.id });
+    const album = await t.albumRepo.save(
+      t.albumRepo.create({ userId: user.id, name: 'Trip', description: null }),
+    );
+    const created = await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(token))
+      .send({ albumId: album.id });
+    expect(created.status).toBe(201);
+
+    const res = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(token));
+    expect(res.status).toBe(200);
+    const body = res.body as unknown as { items: Record<string, unknown>[]; total: number };
+    expect(body.total).toBe(2);
+    expect(body.items.map((i) => i.kind).sort()).toEqual(['album', 'asset']);
+    // the capability is handed out once at create: a list row that echoed it would leak every link
+    for (const row of body.items) {
+      expect(row).not.toHaveProperty('token');
+    }
+  });
+
+  it('drops a revoked share from the list', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const file = await seedFile(t, user.id);
+    const asset = await seedAsset(t, user.id, file.id);
+    const created = await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(token))
+      .send({ assetId: asset.id });
+    const share = created.body as unknown as { id: string };
+
+    const before = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(token));
+    expect((before.body as unknown as { items: { id: string }[] }).items.map((i) => i.id)).toEqual([
+      share.id,
+    ]);
+
+    const revoked = await request(apiServer(t))
+      .delete(`/api/v1/shares/${share.id}`)
+      .set(t.authHeader(token));
+    expect(revoked.status).toBe(204);
+
+    const after = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(token));
+    expect(after.status).toBe(200);
+    const body = after.body as unknown as { items: { id: string }[]; total: number };
+    expect(body.total).toBe(0);
+    expect(body.items.map((i) => i.id)).not.toContain(share.id);
+  });
+
+  it('keeps an album share in the list when an asset share is trashed', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const file = await seedFile(t, user.id);
+    const asset = await seedAsset(t, user.id, file.id);
+    await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(token))
+      .send({ assetId: asset.id });
+    const album = await t.albumRepo.save(
+      t.albumRepo.create({ userId: user.id, name: 'Trip', description: null }),
+    );
+    await request(apiServer(t))
+      .post('/api/v1/shares')
+      .set(t.authHeader(token))
+      .send({ albumId: album.id });
+
+    const trashed = await request(apiServer(t))
+      .post(`/api/v1/assets/${asset.id}/trash`)
+      .set(t.authHeader(token));
+    expect(trashed.status).toBe(204);
+
+    // the trashed filter is scoped to the asset's share: an album share has no asset to hide it
+    const list = await request(apiServer(t)).get('/api/v1/shares').set(t.authHeader(token));
+    expect(list.status).toBe(200);
+    const body = list.body as unknown as {
+      items: { kind: string; albumId?: string }[];
+      total: number;
+    };
+    expect(body.total).toBe(1);
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]?.kind).toBe('album');
+    expect(body.items[0]?.albumId).toBe(album.id);
+  });
+
   it('does not leak exif, gps or faces through the public projection', async () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });

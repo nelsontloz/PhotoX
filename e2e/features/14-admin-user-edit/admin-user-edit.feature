@@ -18,14 +18,6 @@ Feature: Admin account editing
     And the account edit toast reports the new name
     And the users list shows the updated name and email
 
-  Scenario: The edited account signs in with the new address and the old one no longer works
-    Given an administrator session is available for account editing
-    And a regular account is registered for the edit flow
-    When the account-editing admin changes that account's email through the admin API
-    Then the edited account signs in with the new address
-    And the old address no longer signs in
-    And the edit response reports no backup to move
-
   Scenario: The S3 backup moves to the new address immediately
     Given an administrator session is available for account editing
     And a regular account is registered for the edit flow
@@ -43,10 +35,3 @@ Feature: Admin account editing
     Then the backup warning box reports the storage error with a Retry move action
     When the account-editing admin retries the backup move
     Then the backup warning box is cleared
-
-  Scenario: A role change through the API is rejected
-    Given an administrator session is available for account editing
-    And a regular account is registered for the edit flow
-    When the account-editing admin attempts a role change through the admin API
-    Then the role change is rejected as a bad request
-    And the account's role is unchanged

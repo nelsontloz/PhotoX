@@ -173,6 +173,112 @@ describe('albums JWT identity', () => {
     );
   });
 
+  it('rejects adding a trashed asset to an album', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const file = await seedFile(t, user.id);
+    const trashed = await seedAsset(t, user.id, file.id, { isTrashed: true });
+    const created = await request(apiServer(t))
+      .post('/api/v1/albums')
+      .set(t.authHeader(token))
+      .send({ name: 'Trip' });
+    const album = created.body as unknown as { id: string };
+
+    const add = await request(apiServer(t))
+      .post(`/api/v1/albums/${album.id}/assets`)
+      .set(t.authHeader(token))
+      .send({ assetIds: [trashed.id] });
+    expect(add.status).toBe(404);
+    expect(
+      await t.albumAssetRepo.count({ where: { albumId: album.id, assetId: trashed.id } }),
+    ).toBe(0);
+  });
+
+  it('keeps a single item when the same asset is added twice', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const file = await seedFile(t, user.id);
+    const asset = await seedAsset(t, user.id, file.id);
+    const created = await request(apiServer(t))
+      .post('/api/v1/albums')
+      .set(t.authHeader(token))
+      .send({ name: 'Trip' });
+    const album = created.body as unknown as { id: string };
+
+    const first = await request(apiServer(t))
+      .post(`/api/v1/albums/${album.id}/assets`)
+      .set(t.authHeader(token))
+      .send({ assetIds: [asset.id] });
+    expect(first.status).toBe(201);
+    const second = await request(apiServer(t))
+      .post(`/api/v1/albums/${album.id}/assets`)
+      .set(t.authHeader(token))
+      .send({ assetIds: [asset.id] });
+    // the insert is `.orIgnore()`d, so a repeat add is still a success response
+    expect(second.status).toBe(201);
+    expect(await t.albumAssetRepo.count({ where: { albumId: album.id, assetId: asset.id } })).toBe(
+      1,
+    );
+  });
+
+  it('lists albums newest first with limit and offset', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const names = ['First', 'Second', 'Third'];
+    for (const [i, name] of names.entries()) {
+      const created = await request(apiServer(t))
+        .post('/api/v1/albums')
+        .set(t.authHeader(token))
+        .send({ name });
+      const album = created.body as unknown as { id: string };
+      // distinct createdAt: wall-clock creations can share a millisecond and page arbitrarily
+      await t.albumRepo.update(album.id, {
+        createdAt: new Date(`2024-0${i + 1}-01T00:00:00.000Z`),
+      });
+    }
+
+    const first = await request(apiServer(t))
+      .get('/api/v1/albums')
+      .query({ limit: 2, offset: 0 })
+      .set(t.authHeader(token));
+    expect(first.status).toBe(200);
+    const firstBody = first.body as unknown as { items: { name: string }[]; total: number };
+    expect(firstBody.total).toBe(3);
+    expect(firstBody.items.map((i) => i.name)).toEqual(['Third', 'Second']);
+
+    const second = await request(apiServer(t))
+      .get('/api/v1/albums')
+      .query({ limit: 2, offset: 2 })
+      .set(t.authHeader(token));
+    expect(second.status).toBe(200);
+    const secondBody = second.body as unknown as { items: { name: string }[]; total: number };
+    expect(secondBody.total).toBe(3);
+    expect(secondBody.items.map((i) => i.name)).toEqual(['First']);
+  });
+
+  it('round-trips the hiddenFromTimeline flag through GET', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const created = await request(apiServer(t))
+      .post('/api/v1/albums')
+      .set(t.authHeader(token))
+      .send({ name: 'Trip' });
+    const album = created.body as unknown as { id: string };
+
+    const patched = await request(apiServer(t))
+      .patch(`/api/v1/albums/${album.id}`)
+      .set(t.authHeader(token))
+      .send({ hiddenFromTimeline: true });
+    expect(patched.status).toBe(200);
+    expect((patched.body as { hiddenFromTimeline: boolean }).hiddenFromTimeline).toBe(true);
+
+    const get = await request(apiServer(t))
+      .get(`/api/v1/albums/${album.id}`)
+      .set(t.authHeader(token));
+    expect(get.status).toBe(200);
+    expect((get.body as { hiddenFromTimeline: boolean }).hiddenFromTimeline).toBe(true);
+  });
+
   it('rejects invalid album body with 400', async () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });

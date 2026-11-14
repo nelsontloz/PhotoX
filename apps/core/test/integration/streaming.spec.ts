@@ -144,6 +144,24 @@ describe('HTTP range streaming', () => {
     expectBytes(res.body, '234');
   });
 
+  it('returns 416 for an unsatisfiable range on the public share stream', async () => {
+    const { user, file } = await seedStreamableFile();
+    const asset = await seedAsset(t, user.id, file.id);
+    const share = await t.shareRepo.save(
+      t.shareRepo.create({
+        userId: user.id,
+        kind: 'asset',
+        assetId: asset.id,
+        token: 'share-token-416',
+      }),
+    );
+    const res = await request(apiServer(t))
+      .get(`/api/share/${share.token}/stream`)
+      .set('Range', 'bytes=99999999-');
+    expect(res.status).toBe(416);
+    expect(res.headers['content-range']).toBe('bytes */10');
+  });
+
   it('serves a shared asset fully with cache headers, then 304s on If-None-Match', async () => {
     const { user, file } = await seedStreamableFile();
     const asset = await seedAsset(t, user.id, file.id);

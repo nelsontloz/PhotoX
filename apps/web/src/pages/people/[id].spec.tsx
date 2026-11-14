@@ -1,19 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import type { PersonDto } from '@photox/shared-types';
+import type { Asset, PersonDto } from '@photox/shared-types';
+import { groupDateSortKey } from '../../lib/dateFormat';
 
 const usePersonDetailMock = vi.hoisted(() => vi.fn());
+const useTimelineViewMock = vi.hoisted(() => vi.fn());
 const retryMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../../hooks/usePersonDetail', () => ({ usePersonDetail: usePersonDetailMock }));
-vi.mock('../../hooks/useTimelineView', () => ({
-  useTimelineView: () => ({
-    timeline: { loading: false, error: null, layout: { buckets: [] } },
-    loadedAssets: [],
-  }),
-}));
+vi.mock('../../hooks/useTimelineView', () => ({ useTimelineView: useTimelineViewMock }));
 vi.mock('../../hooks/useInlineRename', () => ({
   useInlineRename: () => ({
     editing: false,
@@ -24,12 +21,14 @@ vi.mock('../../hooks/useInlineRename', () => ({
   }),
 }));
 vi.mock('../../api/persons', () => ({ renamePerson: vi.fn() }));
-vi.mock('../../components/AppShell', () => ({
-  AppShell: ({ children }: { children: ReactNode }) => <>{children}</>,
-}));
-vi.mock('../../components/Timeline/TimelineAssets', () => ({
-  TimelineAssets: () => null,
-}));
+vi.mock('../../components/AppShell', async () => {
+  const { createContext } = await import('react');
+  return {
+    AppShell: ({ children }: { children: ReactNode }) => <>{children}</>,
+    ScrollContainerContext: createContext(null),
+    useScrollContainer: () => null,
+  };
+});
 vi.mock('../../components/ViewerHost', () => ({ ViewerHost: () => null }));
 
 import PersonDetailPage from './[id]';
@@ -49,6 +48,26 @@ const idleHook = {
   retry: retryMock,
 };
 
+// jsdom has no IntersectionObserver; the person grid's real AssetThumb registers one on mount (it
+// never becomes visible here, so the thumb download path is never reached).
+class IOStub {
+  observe(): void {
+    /* no-op */
+  }
+  unobserve(): void {
+    /* no-op */
+  }
+  disconnect(): void {
+    /* no-op */
+  }
+}
+
+const emptyView = {
+  timeline: { loading: false, error: null, layout: { buckets: [], totalHeight: 0 } },
+  months: { groups: [], monthStatus: new Map(), ensureMonth: vi.fn(), retainMonths: vi.fn() },
+  loadedAssets: [],
+};
+
 function renderPerson() {
   return render(
     <MemoryRouter initialEntries={['/people/p-1']}>
@@ -59,9 +78,15 @@ function renderPerson() {
   );
 }
 
+beforeEach(() => {
+  vi.stubGlobal('IntersectionObserver', IOStub);
+  useTimelineViewMock.mockReturnValue(emptyView);
+});
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('PersonDetailPage person states', () => {
@@ -93,5 +118,50 @@ describe('PersonDetailPage person states', () => {
     renderPerson();
 
     expect(await screen.findByText('Ada Lovelace')).toBeTruthy();
+  });
+
+  it('renders the Today day header with no face-box overlay on the person grid', async () => {
+    const sortKey = groupDateSortKey(new Date().toISOString());
+    const monthKey = sortKey.slice(0, 7);
+    const asset = {
+      id: 'a-1',
+      kind: 'photo',
+      width: 4,
+      height: 3,
+      faceCount: null,
+    } as Asset;
+    usePersonDetailMock.mockReturnValue({ ...idleHook, loading: false, person });
+    useTimelineViewMock.mockReturnValue({
+      timeline: {
+        loading: false,
+        error: null,
+        measured: true,
+        containerRef: vi.fn(),
+        layout: {
+          buckets: [
+            {
+              key: monthKey,
+              top: 0,
+              height: 120,
+              days: [{ sortKey, top: 0, height: 120, items: [] }],
+            },
+          ],
+          totalHeight: 120,
+        },
+      },
+      months: {
+        groups: [{ label: 'Today', sortKey, items: [asset] }],
+        monthStatus: new Map([[monthKey, 'ready']]),
+        ensureMonth: vi.fn(),
+        retainMonths: vi.fn(),
+      },
+      loadedAssets: [asset],
+    });
+    renderPerson();
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Today' })).toBeTruthy();
+    const tile = screen.getByTestId('gallery-item');
+    expect(within(tile).queryByTestId('face-box')).toBeNull();
+    expect(screen.queryByTestId('face-box')).toBeNull();
   });
 });

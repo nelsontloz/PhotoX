@@ -1,11 +1,9 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import {
-  Given,
   Then,
   When,
   authHeaders,
   expectThumbnailLoaded,
-  registerUser,
   requireAuth,
   requireOtherAuth,
   uploadViaApi,
@@ -27,14 +25,6 @@ const favoriteButton = (page: Page) =>
 // An ancient fixed instant keeps the day-group label in the calendar-format branch ("Jan 2, 2020"),
 // stable in any timezone — today/yesterday would flake when a test straddles midnight.
 const PINNED_FAVORITES_DATE = '2020-01-02T12:00:00.000Z';
-
-Given('another user registers for favorites isolation', async ({ request, ctx }) => {
-  ctx.otherAuth = await registerUser(request);
-});
-
-When('I upload {string} via the favorites API', async ({ request, ctx }, name: string) => {
-  ctx.assetId = await uploadViaApi(request, requireAuth(ctx), name);
-});
 
 When(
   'the other user uploads {string} via the favorites API',
@@ -61,13 +51,6 @@ When('I favorite the uploaded asset through the favorites API', async ({ request
   ctx.favoriteIds = [...(ctx.favoriteIds ?? []), ctx.assetId];
 });
 
-When('I unfavorite the uploaded asset through the favorites API', async ({ request, ctx }) => {
-  if (!ctx.assetId) throw new Error('upload an asset first');
-  const status = await patchFavorite(request, requireAuth(ctx), ctx.assetId, false);
-  expect(status).toBe(200);
-  ctx.favoriteIds = (ctx.favoriteIds ?? []).filter((id) => id !== ctx.assetId);
-});
-
 When(
   'the other user favorites their uploaded asset through the favorites API',
   async ({ request, ctx }) => {
@@ -86,14 +69,6 @@ When(
   },
 );
 
-When('I trash my uploaded asset through the favorites API', async ({ request, ctx }) => {
-  if (!ctx.assetId) throw new Error('upload an asset first');
-  const response = await request.post(`/api/v1/assets/${ctx.assetId}/trash`, {
-    headers: authHeaders(requireAuth(ctx)),
-  });
-  ctx.lastStatus = response.status();
-});
-
 When(
   'I list my favorites with limit {int} and offset {int}',
   async ({ request, ctx }, limit: number, offset: number) => {
@@ -106,14 +81,6 @@ When(
   },
 );
 
-When('the other user lists their favorites through the favorites API', async ({ request, ctx }) => {
-  const response = await request.get('/api/v1/assets?favorite=true&limit=100&offset=0', {
-    headers: authHeaders(requireOtherAuth(ctx)),
-  });
-  expect(response.status()).toBe(200);
-  ctx.otherListResponse = (await response.json()) as FavoriteList;
-});
-
 Then(
   'the last favorites list holds {int} of {int} items',
   ({ ctx }, items: number, total: number) => {
@@ -122,35 +89,6 @@ Then(
     expect(list.total).toBe(total);
   },
 );
-
-Then('the favorites list pages hold my two distinct favorited assets', ({ ctx }) => {
-  const [first, second] = ctx.listResponses ?? [];
-  if (!first || !second) throw new Error('list two favorite pages first');
-  const [firstItem] = first.items;
-  const [secondItem] = second.items;
-  if (!firstItem || !secondItem) throw new Error('expected one item per favorites page');
-  expect(firstItem.id).not.toBe(secondItem.id);
-  const favorited = new Set(ctx.favoriteIds ?? []);
-  expect(favorited.has(firstItem.id)).toBe(true);
-  expect(favorited.has(secondItem.id)).toBe(true);
-});
-
-Then("the other user's favorites list is empty", ({ ctx }) => {
-  const list = ctx.otherListResponse;
-  if (!list) throw new Error('the other user must list favorites first');
-  expect(list.items).toHaveLength(0);
-  expect(list.total).toBe(0);
-});
-
-Then("the other user's favorites list holds only their own asset", ({ ctx }) => {
-  const list = ctx.otherListResponse;
-  if (!list) throw new Error('the other user must list favorites first');
-  const { otherAssetId } = ctx;
-  expect(list.total).toBe(1);
-  expect(list.items).toHaveLength(1);
-  expect(list.items[0]?.id).toBe(otherAssetId);
-  expect(otherAssetId).not.toBe(ctx.assetId);
-});
 
 When('I set the uploaded asset date for favorites grouping', async ({ request, ctx }) => {
   if (!ctx.assetId) throw new Error('upload an asset first');

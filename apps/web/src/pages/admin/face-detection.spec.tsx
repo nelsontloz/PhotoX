@@ -11,7 +11,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../../api/admin', () => api);
 
-import { FacialDetectionCard } from './ai';
+import { DetectionsReprocessSection, EmbeddingsReprocessSection, FacialDetectionCard } from './ai';
 
 const settings = (over: Partial<FaceDetectionSettings> = {}): FaceDetectionSettings => ({
   modelAvailable: true,
@@ -167,5 +167,60 @@ describe('FacialDetectionCard (reprocess)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Recluster users' }));
 
     expect(await screen.findByText('Nothing to cluster — no faces yet.')).toBeTruthy();
+  });
+});
+
+describe('EmbeddingsReprocessSection', () => {
+  it('renders the no-run state once the queue is drained', async () => {
+    render(<EmbeddingsReprocessSection />);
+
+    expect(await screen.findByText('No embedding reprocess runs yet.')).toBeTruthy();
+    expect(api.getPipelineStatus).toHaveBeenCalledWith('embeddings');
+    expect(screen.getByText('Online')).toBeTruthy();
+    expect(screen.getByText('Embedding dim 768')).toBeTruthy();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+  });
+
+  it('shows the last-run summary when the queue is drained', async () => {
+    api.getPipelineStatus.mockResolvedValue({
+      lastRun: {
+        startedAt: '2026-10-01T00:00:00.000Z',
+        total: 8,
+        enqueued: 5,
+        model: 'siglip2-b16-224',
+      },
+      queue: { waiting: 0, active: 0, completed: 5, failed: 0, delayed: 0 },
+    });
+
+    render(<EmbeddingsReprocessSection />);
+
+    expect(await screen.findByText(/5 of 8 photos\s+queued\./)).toBeTruthy();
+    expect(screen.queryByText('No embedding reprocess runs yet.')).toBeNull();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+  });
+});
+
+describe('DetectionsReprocessSection', () => {
+  it('renders the no-run state once the queue is drained', async () => {
+    render(<DetectionsReprocessSection />);
+
+    expect(await screen.findByText('No detection reprocess runs yet.')).toBeTruthy();
+    expect(api.getPipelineStatus).toHaveBeenCalledWith('detections');
+    expect(screen.getByText('Online')).toBeTruthy();
+    expect(screen.getByText('Idle')).toBeTruthy();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+  });
+
+  it('shows the last-run summary when the queue is drained', async () => {
+    api.getPipelineStatus.mockResolvedValue({
+      lastRun: { startedAt: '2026-10-01T00:00:00.000Z', total: 6, enqueued: 4 },
+      queue: { waiting: 0, active: 0, completed: 4, failed: 0, delayed: 0 },
+    });
+
+    render(<DetectionsReprocessSection />);
+
+    expect(await screen.findByText(/4 of 6 photos\s+queued\./)).toBeTruthy();
+    expect(screen.queryByText('No detection reprocess runs yet.')).toBeNull();
+    expect(screen.queryByRole('progressbar')).toBeNull();
   });
 });
