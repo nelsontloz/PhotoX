@@ -514,12 +514,7 @@ const DELETE_FAILED = new Set(['failed', 'partial']);
  * Poll the :id/delete-status endpoint until the removal lands or the budget runs out.
  * Only the core's terminal states settle the promise — anything unknown keeps polling.
  */
-export async function pollAdminUserDelete(
-  userId: string,
-  opts: { intervalMs?: number; timeoutMs?: number } = {},
-): Promise<void> {
-  const intervalMs = opts.intervalMs ?? 1000;
-  const timeoutMs = opts.timeoutMs ?? 60000;
+export async function pollAdminUserDelete(userId: string): Promise<void> {
   const started = Date.now();
   for (;;) {
     const state = await getAdminUserDeleteStatus(userId);
@@ -536,9 +531,9 @@ export async function pollAdminUserDelete(
       const message = state.error ?? 'User deletion failed';
       throw new Error(message === '' ? 'User deletion failed' : message);
     }
-    if (Date.now() - started >= timeoutMs) {
+    if (Date.now() - started >= 60_000) {
       throw new Error('Timed out waiting for the deletion — refresh the list to check.');
     }
-    await sleep(intervalMs);
+    await sleep(1000);
   }
 }

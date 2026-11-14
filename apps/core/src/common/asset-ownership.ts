@@ -1,12 +1,10 @@
 import { NotFoundException } from '@nestjs/common';
-import { QueryFailedError } from 'typeorm';
 import type { FindOptionsWhere, ObjectLiteral, Repository } from 'typeorm';
+import { isPostgresCode } from './sql-errors';
 
 /** Postgres `invalid input syntax for type uuid` — a malformed path id, not a server fault. */
 function isInvalidUuidError(err: unknown): boolean {
-  if (!(err instanceof QueryFailedError)) return false;
-  const driver = err.driverError as { code?: unknown } | null | undefined;
-  return driver?.code === '22P02';
+  return isPostgresCode(err, '22P02');
 }
 
 /**

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/app.dart';
 import 'package:photox_mobile/library/backup_status.dart';
@@ -462,14 +463,14 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('viewer-video-play-button')));
     await tester.pumpAndSettle();
-    expect(support.latest.state.playing, isTrue);
+    expect(support.latest.value.isPlaying, isTrue);
 
     await _tapPicture(tester);
 
     expect(find.byKey(const Key('viewer-video-play-button')), findsNothing);
     expect(support.latest.calls, isNot(contains('pause')));
     expect(
-      support.latest.state.playing,
+      support.latest.value.isPlaying,
       isTrue,
       reason: 'hiding chrome must not stop the clip',
     );
@@ -524,9 +525,9 @@ void main() {
     await tester.tap(find.byKey(const Key('viewer-video-play-button')));
     await tester.pumpAndSettle();
     support.latest.emit(
-      const VideoPlaybackState(
-        ready: true,
-        playing: true,
+      const VideoPlayerValue(
+        isInitialized: true,
+        isPlaying: true,
         position: Duration(seconds: 7),
         duration: Duration(seconds: 30),
       ),

@@ -14,7 +14,9 @@ import 'package:photox_mobile/core/api_client.dart';
 import 'package:photox_mobile/core/auth_manager.dart';
 import 'package:photox_mobile/core/auth_models.dart';
 import 'package:photox_mobile/core/refresh_lock.dart';
-import 'package:photox_mobile/core/token_store.dart';
+
+import '../support/memory_token_store.dart';
+
 import 'package:photox_mobile/media/hasher.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
@@ -427,7 +429,7 @@ void main() {
   test(
     'forwards progress ticks and refreshes counters on completion',
     () async {
-      await queue.enqueue(
+      await queue.enqueueAll(<AssetCandidate>[
         const AssetCandidate(
           localId: 'asset-a',
           platform: 'ios',
@@ -436,7 +438,7 @@ void main() {
           mimeType: 'image/jpeg',
           sizeBytes: 3,
         ),
-      );
+      ]);
       await controller.initialize();
       expect(controller.stats.pending, 1);
       expect(controller.stats.uploaded, 0);
@@ -468,7 +470,7 @@ void main() {
 
   test('initialize with a stored session runs an immediate pass', () async {
     await tokenStore.write(_tokens());
-    await queue.enqueue(
+    await queue.enqueueAll(<AssetCandidate>[
       const AssetCandidate(
         localId: 'asset-a',
         platform: 'ios',
@@ -477,7 +479,7 @@ void main() {
         mimeType: 'image/jpeg',
         sizeBytes: 3,
       ),
-    );
+    ]);
 
     await controller.initialize();
     await controller.syncNow();
@@ -590,7 +592,7 @@ void main() {
     'signOut clears the session, cancels schedules and resets counters',
     () async {
       await tokenStore.write(_tokens());
-      await queue.enqueue(
+      await queue.enqueueAll(<AssetCandidate>[
         const AssetCandidate(
           localId: 'asset-a',
           platform: 'ios',
@@ -599,7 +601,7 @@ void main() {
           mimeType: 'image/jpeg',
           sizeBytes: 3,
         ),
-      );
+      ]);
       await controller.initialize();
       await controller.syncNow();
       await controller.updateSettings(
@@ -654,7 +656,7 @@ void main() {
 
   test('signOut wipes account data even when cancelAll fails', () async {
     await tokenStore.write(_tokens());
-    await queue.enqueue(_assetCandidate('asset-a'));
+    await queue.enqueueAll(<AssetCandidate>[_assetCandidate('asset-a')]);
     await queue.setMeta(SyncCoordinator.scanWatermarkKey, '2026-01-01T00:00Z');
     await controller.initialize();
     registrar.failCancel = true;
@@ -672,7 +674,7 @@ void main() {
     );
   });
   test('signIn wipes a queue left behind while signed out', () async {
-    await queue.enqueue(_assetCandidate('asset-b'));
+    await queue.enqueueAll(<AssetCandidate>[_assetCandidate('asset-b')]);
     await queue.setMeta(SyncCoordinator.scanWatermarkKey, '2026-01-01T00:00Z');
 
     await controller.signIn('ada@example.com', 'correct horse', '');
@@ -752,7 +754,7 @@ void main() {
   );
 
   test('turning uploadAllFolders on purges queued work', () async {
-    await queue.enqueue(_assetCandidate('pending'));
+    await queue.enqueueAll(<AssetCandidate>[_assetCandidate('pending')]);
     await queue.markState(localId: 'pending', state: UploadState.pending);
 
     await controller.updateSettings(const AppSettings(uploadAllFolders: true));
@@ -763,7 +765,7 @@ void main() {
   test(
     'turning includeVideos on purges queued work and the watermark',
     () async {
-      await queue.enqueue(_assetCandidate('pending'));
+      await queue.enqueueAll(<AssetCandidate>[_assetCandidate('pending')]);
       await queue.markState(localId: 'pending', state: UploadState.pending);
       const watermark = '2026-10-19T12:00:00.000Z';
       await queue.setMeta(SyncCoordinator.scanWatermarkKey, watermark);
@@ -829,7 +831,7 @@ void main() {
   });
 
   test('an unrelated settings change keeps the queue and watermark', () async {
-    await queue.enqueue(_assetCandidate('pending'));
+    await queue.enqueueAll(<AssetCandidate>[_assetCandidate('pending')]);
     await queue.markState(localId: 'pending', state: UploadState.pending);
     const watermark = '2026-10-19T12:00:00.000Z';
     await queue.setMeta(SyncCoordinator.scanWatermarkKey, watermark);
@@ -852,7 +854,7 @@ void main() {
       progress: progress,
     );
     addTearDown(scoped.dispose);
-    await queue.enqueue(_assetCandidate('pending'));
+    await queue.enqueueAll(<AssetCandidate>[_assetCandidate('pending')]);
     await queue.markState(localId: 'pending', state: UploadState.pending);
     const watermark = '2026-10-19T12:00:00.000Z';
     await queue.setMeta(SyncCoordinator.scanWatermarkKey, watermark);
@@ -870,7 +872,7 @@ void main() {
 
   test('signOut during an in-flight pass discards its stale results', () async {
     await tokenStore.write(_tokens());
-    await queue.enqueue(
+    await queue.enqueueAll(<AssetCandidate>[
       const AssetCandidate(
         localId: 'asset-a',
         platform: 'ios',
@@ -879,7 +881,7 @@ void main() {
         mimeType: 'image/jpeg',
         sizeBytes: 3,
       ),
-    );
+    ]);
     final gate = Completer<void>();
     observer.gate = gate;
 

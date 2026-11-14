@@ -3,9 +3,8 @@ import sharp from 'sharp';
 import { resolveFaceDetectorModelPath } from '@photox/shared-config';
 import { SCRFD_INPUT_SIZE, decodeScrfdOutputs } from './scrfd.decode';
 import { toNchw } from './nchw';
-import { lazyOnce, loadSession } from './model-loader';
+import { lazyOnce, loadNamedSession } from './model-loader';
 import { FaceEmbedderService, alignFaceCrop, type RawImage } from './face.embedder';
-import type * as ort from 'onnxruntime-node';
 
 export interface DetectedBox {
   box: { x: number; y: number; w: number; h: number };
@@ -33,7 +32,16 @@ export const FACE_MIN_SIZE_PX = 40;
 @Injectable()
 export class FaceDetectorService implements OnModuleInit {
   private readonly logger = new Logger(FaceDetectorService.name);
-  private readonly session = lazyOnce(() => this.createSession());
+  private readonly session = lazyOnce(async () => {
+    const modelPath = resolveFaceDetectorModelPath();
+    const named = await loadNamedSession(
+      modelPath,
+      `Face detector model not found at ${modelPath} — run ` +
+        `'pnpm --filter @photox/worker-service face-model' or set FACE_DETECTOR_MODEL_PATH`,
+    );
+    this.logger.log(`SCRFD face detector loaded: ${modelPath}`);
+    return named;
+  });
 
   constructor(private readonly embedder: FaceEmbedderService) {}
 
@@ -49,21 +57,6 @@ export class FaceDetectorService implements OnModuleInit {
         `Face detector unavailable; detection will fail per-job until provisioned: ${message}`,
       );
     }
-  }
-
-  modelPath(): string {
-    return resolveFaceDetectorModelPath();
-  }
-
-  private async createSession(): Promise<ort.InferenceSession> {
-    const modelPath = this.modelPath();
-    const session = await loadSession(
-      modelPath,
-      `Face detector model not found at ${modelPath} — run ` +
-        `'pnpm --filter @photox/worker-service face-model' or set FACE_DETECTOR_MODEL_PATH`,
-    );
-    this.logger.log(`SCRFD face detector loaded: ${modelPath}`);
-    return session;
   }
 
   async detect(buffer: Buffer): Promise<DetectedFace[]> {
@@ -89,7 +82,7 @@ export class FaceDetectorService implements OnModuleInit {
   }
 
   private async detectBoxes(buffer: Buffer): Promise<DetectedBox[]> {
-    const session = await this.session();
+    const { session, inputName } = await this.session();
 
     // ponytail: upstream scrfd.py letterboxes (aspect-preserving resize + black pad, top-left),
     // not a squash; upscaling small images matches upstream too
@@ -127,7 +120,7 @@ export class FaceDetectorService implements OnModuleInit {
       [1, 3, SCRFD_INPUT_SIZE, SCRFD_INPUT_SIZE],
     );
 
-    const outputs = await session.run({ [session.inputNames[0]!]: tensor });
+    const outputs = await session.run({ [inputName]: tensor });
     const tensors = session.outputNames.map((name) => {
       const output = outputs[name]!;
       return { dims: output.dims, data: output.data as Float32Array };

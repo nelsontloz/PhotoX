@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,6 +12,7 @@ import {
   apiServer,
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
@@ -36,10 +37,6 @@ process.env.STORAGE_QUOTA_BYTES = String(QUOTA_BYTES);
 
 const PASSWORD = 'correcthorsebattery';
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-
-function jobSig(sub: string, scope: string): string {
-  return createHmac('sha256', TEST_WORKER_SECRET).update(`${sub}:${scope}`).digest('hex');
-}
 
 describe('open audit findings (fails first)', () => {
   let t: ApiTestApp;

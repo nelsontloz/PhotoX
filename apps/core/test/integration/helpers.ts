@@ -43,7 +43,6 @@ import { TextEncodeService } from '../../src/search/text-encode.service';
 import { UserFilesModule } from '../../src/ingest/user-files.module';
 import { UploadsModule } from '../../src/uploads/uploads.module';
 import { StorageModule } from '../../src/storage/storage.module';
-import { ObservabilityModule } from '../../src/common/observability/observability.module';
 import { HealthModule } from '../../src/health/health.module';
 import { WorkerModule } from '../../src/worker/worker.module';
 import { AdminModule } from '../../src/admin/admin.module';
@@ -147,7 +146,6 @@ export async function createApiTestApp(opts?: {
         TypeOrmModule.forFeature(ENTITIES),
         JwtModule.register({ secret: TEST_AUTH_SECRET, signOptions: { algorithm: 'HS256' } }),
         StorageModule,
-        ObservabilityModule,
         HealthModule,
         BullMqModule,
         AuthModule,
@@ -203,24 +201,19 @@ export async function createApiTestApp(opts?: {
     await app.init();
 
     const bullMq = app.get<BullMqService>(BullMqService);
-    const jwt = app.get<JwtService>(JwtService);
-    const signToken = (user: MockUser, opts?: { act?: boolean }): string =>
-      jwt.sign({
-        sub: user.id,
-        email: user.email,
-        role: user.role,
-        // RFC 8693 act claim marks a worker-minted delegated token
-        ...(opts?.act ? { act: { sub: 'worker-service' } } : {}),
-      });
+    const sign =
+      (service: JwtService) =>
+      (user: MockUser, opts?: { act?: boolean }): string =>
+        service.sign({
+          sub: user.id,
+          email: user.email,
+          role: user.role,
+          // RFC 8693 act claim marks a worker-minted delegated token
+          ...(opts?.act ? { act: { sub: 'worker-service' } } : {}),
+        });
+    const signToken = sign(app.get<JwtService>(JwtService));
     // worker-secret twin: real CoreClient tokens are minted under WORKER_JWT_SECRET
-    const workerJwt = new JwtService({ secret: TEST_WORKER_SECRET });
-    const signWorkerToken = (user: MockUser, opts?: { act?: boolean }): string =>
-      workerJwt.sign({
-        sub: user.id,
-        email: user.email,
-        role: user.role,
-        ...(opts?.act ? { act: { sub: 'worker-service' } } : {}),
-      });
+    const signWorkerToken = sign(new JwtService({ secret: TEST_WORKER_SECRET }));
     // ponytail: core verifies the Bearer JWT itself — no x-user-* mirror needed;
     // malformed tokens keep the Authorization header and hit the 401 path
     const authHeader = (token: string): Record<string, string> => ({
@@ -259,8 +252,39 @@ export async function createApiTestApp(opts?: {
   }
 }
 
-export function jobSig(sub: string, scope: string, secret = TEST_WORKER_SECRET): string {
-  return createHmac('sha256', secret).update(`${sub}:${scope}`).digest('hex');
+export function jobSig(sub: string, scope: string): string {
+  return createHmac('sha256', TEST_WORKER_SECRET).update(`${sub}:${scope}`).digest('hex');
+}
+
+export async function waitForJobId(
+  t: ApiTestApp,
+  queueName: string,
+  jobId: string,
+  timeoutMs = 10_000,
+): Promise<boolean> {
+  const start = Date.now();
+  const queue = t.getQueue(queueName);
+  while (Date.now() - start < timeoutMs) {
+    if (await queue.getJob(jobId)) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return false;
+}
+
+export async function waitForJobWithAsset(
+  t: ApiTestApp,
+  queueName: string,
+  assetId: string,
+  timeoutMs = 10_000,
+): Promise<boolean> {
+  const start = Date.now();
+  const queue = t.getQueue(queueName);
+  while (Date.now() - start < timeoutMs) {
+    const jobs = await queue.getJobs(['waiting', 'active', 'delayed']);
+    if (jobs.some((j) => (j.data as { assetId?: string }).assetId === assetId)) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return false;
 }
 
 export async function resetDb(t: ApiTestApp): Promise<void> {
@@ -365,6 +389,5 @@ export async function seedThumbnail(
 }
 
 export function apiServer(t: ApiTestApp): Express {
-  const server: unknown = t.app.getHttpServer();
-  return server as Express;
+  return t.app.getHttpServer() as Express;
 }

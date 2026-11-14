@@ -3,8 +3,6 @@ import 'package:photo_manager/photo_manager.dart';
 
 import 'app.dart';
 import 'app_services.dart';
-import 'settings/settings_store.dart';
-import 'ui/server_setup_screen.dart';
 import 'upload/database.dart';
 
 Future<void> main() async {
@@ -20,30 +18,7 @@ Future<void> main() async {
     // A cache that cannot be cleared is not a reason to refuse to start.
   }
 
-  final db = AppDatabase();
-  final settingsStore = SettingsStore(db);
-  final settings = await settingsStore.load();
-
-  // No server configured yet: ask once, then boot with the stored address.
-  if (settings.apiBaseUrl.isEmpty) {
-    runApp(
-      MaterialApp(
-        title: 'PhotoX',
-        debugShowCheckedModeBanner: false,
-        themeMode: ThemeMode.dark,
-        darkTheme: photoXTheme(),
-        home: ServerSetupScreen(
-          onSubmit: (url) async {
-            await settingsStore.save(settings.copyWith(apiBaseUrl: url));
-            await _launch(db);
-          },
-        ),
-      ),
-    );
-    return;
-  }
-
-  await _launch(db);
+  await _launch(AppDatabase());
 }
 
 Future<void> _launch(AppDatabase db) async {

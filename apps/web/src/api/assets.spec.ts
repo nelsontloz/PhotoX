@@ -107,18 +107,6 @@ describe('checkFilesExist', () => {
       { checksumSha256: 'def', exists: false },
     ]);
   });
-
-  it('passes an explicit timeout through to the exists POST', async () => {
-    postMock.mockResolvedValue({ data: { items: [] } });
-
-    await checkFilesExist([{ checksumSha256: 'abc' }], { timeout: 5000 });
-
-    expect(postMock).toHaveBeenCalledWith(
-      '/v1/files/exists',
-      { items: [{ checksumSha256: 'abc' }] },
-      { timeout: 5000 },
-    );
-  });
 });
 
 describe('listAllAssets', () => {

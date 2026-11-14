@@ -2,15 +2,22 @@ import { Injectable, Logger } from '@nestjs/common';
 import { join } from 'path';
 import { loadEnv } from '@photox/shared-config';
 import { FACE_EMBEDDING_DIM, l2Normalize } from '@photox/shared-types';
-import { lazyOnce, loadSession } from './model-loader';
+import { lazyOnce, loadNamedSession } from './model-loader';
 import { toNchw } from './nchw';
-import type * as ort from 'onnxruntime-node';
 
 // ponytail: InsightFace buffalo_l recognition weights (w600k_r50.onnx, ~174MB) are for
 // non-commercial research use — provision with `pnpm --filter @photox/worker-service face-model`
 // (official bundle, never committed) or point FACE_MODEL_PATH at your own copy.
 export const FACE_MODEL_FILE = 'w600k_r50.onnx';
 export const FACE_ALIGN_SIZE = 112;
+
+/** An empty `FACE_MODEL_PATH=` (a common way to leave an optional var unset) falls back too. */
+export function resolveFaceModelPath(): string {
+  // present-but-empty is the same as unset: `.env` keys left blank parse to ''
+  const configured = process.env.FACE_MODEL_PATH?.trim();
+  if (configured) return configured;
+  return join(loadEnv().STORAGE_DIR, 'models', FACE_MODEL_FILE);
+}
 
 // ponytail: standard ArcFace 112x112 reference template (leftEye, rightEye, nose, mouthL, mouthR)
 export const ARCFACE_TEMPLATE: [number, number][] = [
@@ -128,35 +135,24 @@ export function preprocessArcFace(rgb112: Buffer): Float32Array {
 @Injectable()
 export class FaceEmbedderService {
   private readonly logger = new Logger(FaceEmbedderService.name);
-  private inputName = '';
-  private outputName = '';
-  private readonly load = lazyOnce(() => this.createSession());
-
-  modelPath(): string {
-    if (process.env.FACE_MODEL_PATH) return process.env.FACE_MODEL_PATH;
-    return join(loadEnv().STORAGE_DIR, 'models', FACE_MODEL_FILE);
-  }
-
-  private async createSession(): Promise<ort.InferenceSession> {
-    const modelPath = this.modelPath();
-    const session = await loadSession(
+  private readonly load = lazyOnce(async () => {
+    const modelPath = resolveFaceModelPath();
+    const named = await loadNamedSession(
       modelPath,
       `Face embedding model not found at ${modelPath} — run ` +
         `'pnpm --filter @photox/worker-service face-model' or set FACE_MODEL_PATH`,
     );
-    this.inputName = session.inputNames[0]!;
-    this.outputName = session.outputNames[0]!;
     this.logger.log(`Face embedder loaded: ${modelPath}`);
-    return session;
-  }
+    return named;
+  });
 
   async embed(alignedRgb112: Buffer): Promise<number[]> {
-    const session = await this.load();
+    const { session, inputName, outputName } = await this.load();
     const { Tensor } = await import('onnxruntime-node');
     const input = preprocessArcFace(alignedRgb112);
     const tensor = new Tensor('float32', input, [1, 3, FACE_ALIGN_SIZE, FACE_ALIGN_SIZE]);
-    const output = await session.run({ [this.inputName]: tensor });
-    const vec = Array.from(output[this.outputName]!.data as Float32Array);
+    const output = await session.run({ [inputName]: tensor });
+    const vec = Array.from(output[outputName]!.data as Float32Array);
     if (vec.length !== FACE_EMBEDDING_DIM) {
       throw new Error(
         `Unexpected face embedding dim ${vec.length}, expected ${FACE_EMBEDDING_DIM}`,

@@ -2,9 +2,7 @@ import type {
   ComponentsObject,
   OpenAPIObject,
   OperationObject,
-  ParameterObject,
   PathItemObject,
-  ReferenceObject,
   ResponseObject,
   SchemaObject,
 } from '@nestjs/swagger';
@@ -80,36 +78,14 @@ function ensureResponse(operation: OperationObject, status: string, description:
   operation.responses[status] ??= errorResponse(description);
 }
 
-/** `parameters` may hold references; follow them through `components.parameters`. */
-function resolveParameter(
-  document: OpenAPIObject,
-  parameter: ParameterObject | ReferenceObject,
-): ParameterObject | undefined {
-  let current: ParameterObject | ReferenceObject = parameter;
-  // shortcut: ref chains longer than 5 hops are not something this repo emits
-  for (let hop = 0; hop < 5 && '$ref' in current; hop++) {
-    const name = current.$ref.split('/').pop();
-    const next = name ? document.components?.parameters?.[name] : undefined;
-    if (!next) return undefined;
-    current = next;
-  }
-  return '$ref' in current ? undefined : current;
-}
-
-function hasQueryParameter(
-  document: OpenAPIObject,
-  item: PathItemObject,
-  operation: OperationObject,
-): boolean {
+function hasQueryParameter(item: PathItemObject, operation: OperationObject): boolean {
+  // Nothing in this tree emits @ApiParam/@ApiQuery, so parameters are always inline (never $ref).
   const parameters = [...(item.parameters ?? []), ...(operation.parameters ?? [])];
-  return parameters.some((parameter) => resolveParameter(document, parameter)?.in === 'query');
+  return parameters.some((parameter) => 'in' in parameter && parameter.in === 'query');
 }
 
 function ensureSecuritySchemes(components: ComponentsObject): void {
   components.securitySchemes ??= {};
-  // createDocument already declares bearerAuth via DocumentBuilder.addBearerAuth(); kept here so
-  // the security requirement never dangles if that call is dropped from main.ts
-  components.securitySchemes.bearerAuth ??= { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' };
   components.securitySchemes.cookieAuth = { type: 'apiKey', in: 'cookie', name: 'photox_access' };
   // the internal job surface: a delegated `act` token plus the payload's job binding
   components.securitySchemes.workerJobSignature = {
@@ -143,7 +119,7 @@ export function applyErrorContract(document: OpenAPIObject): void {
       ensureResponse(operation, '500', 'Unexpected server error.');
       if (!open) ensureResponse(operation, '401', 'Missing, invalid or revoked credentials.');
       if (admin) ensureResponse(operation, '403', 'Authenticated, but not an admin.');
-      if (operation.requestBody || hasQueryParameter(document, item, operation)) {
+      if (operation.requestBody || hasQueryParameter(item, operation)) {
         ensureResponse(operation, '400', 'Request validation failed.');
       }
       if (RATE_LIMITED_ROUTES.has(`${method} ${path.replace(/\/$/, '')}`)) {

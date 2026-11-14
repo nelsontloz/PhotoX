@@ -163,7 +163,7 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
       .set(t.authHeader(userTok(b)));
     expect(stream.status).toBe(404);
     const download = await request(apiServer(t))
-      .get(`/api/v1/files/${file.id}/download`)
+      .get(`/api/v1/files/${file.id}/stream`)
       .set(t.authHeader(userTok(b)));
     expect(download.status).toBe(404);
   });
@@ -173,7 +173,7 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
     const b = await seedUser(t);
     const file = await seedFile(t, a.id);
     const res = await request(apiServer(t))
-      .get(`/api/v1/files/${file.id}/download`)
+      .get(`/api/v1/files/${file.id}/stream`)
       .set(t.authHeader(userTok(b)));
     expect(res.status).toBe(404);
   });

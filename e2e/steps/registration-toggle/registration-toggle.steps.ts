@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import {
   After,
   Given,
@@ -9,9 +9,10 @@ import {
   When,
   authHeaders,
   injectSession,
+  requireAdmin,
+  scenarioState,
   signInAdmin,
   type AuthResponse,
-  type Ctx,
 } from '../support';
 
 // --- public sign-up switch ----------------------------------------------------------------
@@ -23,28 +24,11 @@ import {
 const REGISTRATION_PATH = '/api/v1/admin/registration';
 const SWITCH_LABEL = 'Allow public sign-ups';
 
-/** Per-scenario toggle state, keyed by the scenario ctx (support.ts Ctx untouched). */
+/** Per-scenario toggle state (support.ts Ctx untouched). */
 interface ToggleState {
   admin?: AuthResponse;
   /** Set before the PATCH that closes sign-ups, so the After hook knows to restore them. */
   mayBeOff?: boolean;
-}
-
-const states = new WeakMap<Ctx, ToggleState>();
-
-function toggleState(ctx: Ctx): ToggleState {
-  let state = states.get(ctx);
-  if (!state) {
-    state = {};
-    states.set(ctx, state);
-  }
-  return state;
-}
-
-async function requireToggleAdmin(request: APIRequestContext, ctx: Ctx): Promise<AuthResponse> {
-  const state = toggleState(ctx);
-  state.admin ??= await signInAdmin(request);
-  return state.admin;
 }
 
 function switchControl(page: Page) {
@@ -77,7 +61,7 @@ async function flipSwitch(page: Page, enabled: boolean): Promise<void> {
 Given(
   'an administrator session is available for the sign-up switch',
   async ({ request, page, baseURL, ctx }) => {
-    const admin = await requireToggleAdmin(request, ctx);
+    const admin = await requireAdmin(ctx, request);
     ctx.auth = admin;
     await injectSession(page, admin, baseURL);
     await page.goto('/');
@@ -90,7 +74,7 @@ When('the sign-up-switch admin opens the users tab', async ({ page }) => {
 
 When('the sign-up-switch admin turns public sign-ups off', async ({ page, ctx }) => {
   // flag the intent BEFORE the request: a failure after the PATCH still leaves it off
-  toggleState(ctx).mayBeOff = true;
+  scenarioState<ToggleState>(ctx).mayBeOff = true;
   await flipSwitch(page, false);
 });
 
@@ -124,7 +108,7 @@ Then('an anonymous registration is refused with 403', async ({ request }) => {
 Then(
   'the admin can still create an account while sign-ups are closed',
   async ({ request, ctx }) => {
-    const admin = await requireToggleAdmin(request, ctx);
+    const admin = await requireAdmin(ctx, request);
     const email = `admin-created-${randomUUID()}@photox.test`;
     const response = await request.post('/api/v1/admin/users', {
       headers: authHeaders(admin),
@@ -166,7 +150,7 @@ Then(
 
 When('the sign-up-switch admin turns public sign-ups back on', async ({ page, ctx }) => {
   await flipSwitch(page, true);
-  toggleState(ctx).mayBeOff = false;
+  scenarioState<ToggleState>(ctx).mayBeOff = false;
 });
 
 Then('the login page offers the create-account link again', async ({ browser, baseURL }) => {
@@ -197,9 +181,9 @@ Then('an anonymous registration succeeds again', async ({ request }) => {
 // SAFETY NET: the parallel suite registers users constantly, so a scenario that dies between the
 // off-flip and the on-flip must never leave the global flag closed. Never fails the hook itself.
 After(async ({ request, ctx, $testInfo }) => {
-  if (!toggleState(ctx).mayBeOff) return;
+  if (!scenarioState<ToggleState>(ctx).mayBeOff) return;
   try {
-    const admin = toggleState(ctx).admin ?? (await signInAdmin(request));
+    const admin = scenarioState<ToggleState>(ctx).admin ?? (await signInAdmin(request));
     const response = await request.patch(REGISTRATION_PATH, {
       headers: authHeaders(admin),
       data: { enabled: true },

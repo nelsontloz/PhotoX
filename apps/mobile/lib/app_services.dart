@@ -15,7 +15,6 @@ import 'sync/transfer_progress.dart';
 import 'upload/database.dart';
 import 'upload/retry_policy.dart';
 import 'upload/session_client.dart';
-import 'upload/transports.dart';
 import 'upload/upload_queue.dart';
 import 'upload/uploader.dart';
 
@@ -174,8 +173,8 @@ class AppServices {
     final settingsStore = SettingsStore(db);
     final uploader = Uploader(
       queue: queue,
-      uploadTransport: ApiUploadTransport(api),
-      sessionTransport: SessionApiTransport(sessions),
+      uploadTransport: api,
+      sessionTransport: sessions,
       hasher: const Hasher(),
       observer: mediaObserver,
       progress: progress,
@@ -185,7 +184,7 @@ class AppServices {
       observer: mediaObserver,
       uploader: uploader,
       settingsStore: settingsStore,
-      dedupTransport: ApiUploadTransport(api),
+      dedupTransport: api,
       retryPolicy: RetryPolicy(),
       albumClient: albums,
       // One pass at a time across isolates: the UI and the Workmanager task

@@ -239,10 +239,6 @@ export class AssetsService {
         qb.andWhere('COALESCE(asset.takenAt, asset.uploadedAt) < :dateTo', { dateTo: q.dateTo });
       }
 
-      if (q.favorite !== undefined) {
-        qb.andWhere('asset.favorite = :favorite', { favorite: q.favorite });
-      }
-
       if (q.hasLocations === true) {
         qb.andWhere('asset.latitude IS NOT NULL AND asset.longitude IS NOT NULL');
       } else if (q.hasLocations === false) {

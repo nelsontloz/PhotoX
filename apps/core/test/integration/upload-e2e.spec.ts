@@ -1,4 +1,4 @@
-import { createHash, createHmac } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -50,12 +50,8 @@ import { runFfmpeg } from '../../../worker-service/src/queue/ffmpeg';
 import { CoreClient } from '../../../worker-service/src/core/core-client.service';
 import { HttpExceptionFilter } from '../../src/common/filters/http-exception.filter';
 import { createValidationPipe } from '../../src/common/validation';
-import {
-  TEST_AUTH_SECRET,
-  TEST_WORKER_SECRET,
-  setupTestInfra,
-  teardownTestInfra,
-} from './test-setup';
+import { TEST_AUTH_SECRET, setupTestInfra, teardownTestInfra } from './test-setup';
+import { jobSig } from './helpers';
 import { ENTITIES } from './entities';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -163,7 +159,7 @@ async function enqueueAndWait(
     typeof sub === 'string' && sub.length > 0 && scope !== undefined
       ? {
           ...data,
-          sig: createHmac('sha256', TEST_WORKER_SECRET).update(`${sub}:${scope}`).digest('hex'),
+          sig: jobSig(sub, scope),
         }
       : data;
   const job = await bullMq.getQueue(queueName).add(queueName, stamped);

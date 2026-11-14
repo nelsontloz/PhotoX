@@ -23,13 +23,10 @@ export const thumbnailJobSchema = z.object({
   metadataWaits: z.number().int().min(0).max(5).optional(),
 });
 
-// video/metadata/embedding/detection jobs carry only the three refs — one shared schema
+// video/metadata/embedding/detection/face jobs carry only the three refs — one shared schema
 export const assetRefsJobSchema = z.object({
   ...jobRefs,
 });
-
-// face jobs carry the same three refs
-export const faceJobSchema = assetRefsJobSchema;
 
 export const clusterJobSchema = z.object({
   userId: uuid,
@@ -47,7 +44,6 @@ export const userDeleteJobSchema = z.object({
 
 export type ThumbnailJob = z.infer<typeof thumbnailJobSchema>;
 export type AssetRefsJob = z.infer<typeof assetRefsJobSchema>;
-export type FaceJob = z.infer<typeof faceJobSchema>;
 export type ClusterJob = z.infer<typeof clusterJobSchema>;
 export type UserDeleteJob = z.infer<typeof userDeleteJobSchema>;
 

@@ -22,23 +22,20 @@ export interface AdminAuthHarnessOpts {
 }
 
 export async function adminAuthHarness(t: ApiTestApp, opts: AdminAuthHarnessOpts): Promise<void> {
-  for (const route of opts.post) {
-    const anon = await request(apiServer(t)).post(route);
-    expect(anon.status).toBe(401);
-  }
-  for (const route of opts.get) {
-    const anonStatus = await request(apiServer(t)).get(route);
-    expect(anonStatus.status).toBe(401);
+  const routes = { post: opts.post, get: opts.get };
+  for (const method of ['post', 'get'] as const) {
+    for (const route of routes[method]) {
+      const anon = await request(apiServer(t))[method](route);
+      expect(anon.status).toBe(401);
+    }
   }
   const user = await seedUser(t);
   const auth = t.authHeader(t.signToken({ id: user.id, email: user.email, role: user.role }));
-  for (const route of opts.post) {
-    const res = await request(apiServer(t)).post(route).set(auth);
-    expect(res.status).toBe(403);
-  }
-  for (const route of opts.get) {
-    const res = await request(apiServer(t)).get(route).set(auth);
-    expect(res.status).toBe(403);
+  for (const method of ['post', 'get'] as const) {
+    for (const route of routes[method]) {
+      const res = await request(apiServer(t))[method](route).set(auth);
+      expect(res.status).toBe(403);
+    }
   }
 }
 
@@ -64,43 +61,25 @@ export async function reprocessMatrix(
   expect(post.body).toEqual(opts.respKeys);
 
   const queue = t.getQueue(opts.queue);
-  if (opts.fanout) {
-    for (const { file, asset } of included) {
-      for (const size of opts.fanout) {
-        const job = await queue.getJob(opts.jobIdFn(asset.id, size));
-        expect(job).toBeTruthy();
-        expect(job?.opts.removeOnComplete).toBe(true);
-        expect(job?.data as Record<string, unknown>).toMatchObject({
-          assetId: asset.id,
-          fileId: file.id,
-          userId: ownerId,
-          size,
-          ...opts.jobDataExtra,
-        });
-        if (opts.jobName) expect(job?.name).toBe(opts.jobName);
-      }
-    }
-  } else {
-    for (const { file, asset } of included) {
-      const job = await queue.getJob(opts.jobIdFn(asset.id));
+  const sizes = opts.fanout ?? [undefined];
+  for (const { file, asset } of included) {
+    for (const size of sizes) {
+      const job = await queue.getJob(opts.jobIdFn(asset.id, size));
       expect(job).toBeTruthy();
       expect(job?.opts.removeOnComplete).toBe(true);
       expect(job?.data as Record<string, unknown>).toMatchObject({
         assetId: asset.id,
         fileId: file.id,
         userId: ownerId,
+        ...(size === undefined ? {} : { size }),
         ...opts.jobDataExtra,
       });
       if (opts.jobName) expect(job?.name).toBe(opts.jobName);
     }
   }
   for (const excludedId of opts.filter ?? []) {
-    if (opts.fanout) {
-      for (const size of opts.fanout) {
-        expect(await queue.getJob(opts.jobIdFn(excludedId, size))).toBeFalsy();
-      }
-    } else {
-      expect(await queue.getJob(opts.jobIdFn(excludedId))).toBeFalsy();
+    for (const size of sizes) {
+      expect(await queue.getJob(opts.jobIdFn(excludedId, size))).toBeFalsy();
     }
   }
 

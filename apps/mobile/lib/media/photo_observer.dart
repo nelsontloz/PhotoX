@@ -19,9 +19,6 @@ class AssetCandidate {
     required this.sizeBytes,
     this.takenAt,
     this.modifiedAt,
-    this.width,
-    this.height,
-    this.durationSeconds,
     this.folderId,
   });
 
@@ -48,15 +45,6 @@ class AssetCandidate {
 
   /// Last modification time reported by the platform library.
   final DateTime? modifiedAt;
-
-  /// Pixel width reported by the platform. Display-only, the queue ignores it.
-  final int? width;
-
-  /// Pixel height reported by the platform. Display-only, the queue ignores it.
-  final int? height;
-
-  /// Video length in seconds. Display-only, the queue ignores it.
-  final int? durationSeconds;
 
   /// Device album this asset was first seen in, when discovery knew one.
   ///

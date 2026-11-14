@@ -5,7 +5,6 @@ import 'package:photox_mobile/core/auth_manager.dart';
 import 'package:photox_mobile/core/auth_models.dart';
 import 'package:photox_mobile/core/refresh_lock.dart';
 import 'package:photox_mobile/upload/models.dart';
-import 'package:photox_mobile/upload/transports.dart';
 
 import 'support/harness.dart';
 import 'support/pipeline.dart';
@@ -57,7 +56,7 @@ void main() {
     final small = await seededAsset(services, smallPhotoName);
     final file = await services.observer.fileFor(small.localId);
     expect(file, isNotNull, reason: 'no bytes for ${small.localId}');
-    final summary = await ApiUploadTransport(restartedApi).uploadFile(
+    final summary = await restartedApi.uploadFile(
       file!,
       smallPhotoName,
       mimeType: small.mimeType.isEmpty ? 'image/jpeg' : small.mimeType,

@@ -6,9 +6,10 @@ import 'package:dio/dio.dart';
 import '../core/api_client.dart';
 import '../core/app_config.dart';
 import 'models.dart';
+import 'transports.dart';
 
 /// Client for the resumable part-based upload session API.
-class SessionClient {
+class SessionClient implements SessionTransport {
   SessionClient(this.api);
 
   static final RegExp _sha256HexPattern = RegExp(r'^[0-9a-fA-F]{64}$');
@@ -27,6 +28,7 @@ class SessionClient {
   /// The server fixes the part size at 8 MiB, and its DTO whitelists exactly
   /// these body fields: `forbidNonWhitelisted` turns anything else into a 400.
   /// The type is not one of them — the server sniffs the bytes itself.
+  @override
   Future<CreateSessionResult> createSession({
     required String sha256Hex,
     required int sizeBytes,
@@ -70,6 +72,7 @@ class SessionClient {
   /// Reads the server view of a session so a restart can skip received parts.
   ///
   /// A 410 means the session expired and must be recreated.
+  @override
   Future<UploadSessionStatus> getStatus(String uploadId) async {
     final json = await api.get<Map<String, dynamic>>(
       '/api/v1/uploads/$uploadId',
@@ -84,6 +87,7 @@ class SessionClient {
   ///
   /// The part digest is computed from [bytes] unless [sha256Hex] is supplied,
   /// and sent as `X-Part-Sha256` so the server rejects corrupt transport.
+  @override
   Future<void> putPart(
     String uploadId,
     int partIndex, {
@@ -113,6 +117,7 @@ class SessionClient {
   }
 
   /// Completes the session; a 409 carries the missing part indices.
+  @override
   Future<UploadCompleteResult> complete(String uploadId) async {
     final json = await api.post<Map<String, dynamic>>(
       '/api/v1/uploads/$uploadId/complete',
@@ -126,6 +131,7 @@ class SessionClient {
   /// Abandons a session whose bytes are no longer needed.
   ///
   /// The server treats a missing or expired session as already aborted.
+  @override
   Future<void> abort(String uploadId) async {
     try {
       await api.delete('/api/v1/uploads/$uploadId');

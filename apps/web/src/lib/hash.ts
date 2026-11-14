@@ -88,15 +88,11 @@ async function getWorker(): Promise<Worker | null> {
 
 /**
  * Hashes a file through the shared worker pool, reporting 0-100 progress. Resolves null
- * on any worker failure or after `timeoutMs` without a result — callers treat null as a
- * fail-open miss (upload as usual). Never rejects; never pends past `timeoutMs` (plus one
+ * on any worker failure or after HASH_TIMEOUT_MS without a result — callers treat null as a
+ * fail-open miss (upload as usual). Never rejects; never pends past HASH_TIMEOUT_MS (plus one
  * queue turn per earlier caller, each likewise bounded).
  */
-export function hashFile(
-  file: File,
-  onProgress?: ProgressCallback,
-  timeoutMs: number = HASH_TIMEOUT_MS,
-): Promise<string | null> {
+export function hashFile(file: File, onProgress?: ProgressCallback): Promise<string | null> {
   const run = async (): Promise<string | null> => {
     let timedOut = false;
     let id: string | null = null;
@@ -122,7 +118,7 @@ export function hashFile(
         timedOut = true;
         if (id) pending.delete(id);
         resolve(null);
-      }, timeoutMs);
+      }, HASH_TIMEOUT_MS);
     });
     try {
       return await Promise.race([work, timeout]);

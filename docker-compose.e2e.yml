@@ -1,6 +1,20 @@
 # Self-contained app stack for the e2e suite, merged over the infra-only
 # docker-compose.yml (postgres + redis) by e2e/run.sh — hence the full
 # core/worker-service/web definitions here, not just overrides.
+
+# Both apps start slowly under the cold image build; only the probe port differs.
+x-healthcheck: &healthcheck
+  interval: 10s
+  timeout: 5s
+  retries: 3
+  start_period: 10s
+
+# The two apps must agree on these, and so must the suite's workerHeaders helper.
+x-secrets: &secrets
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-photox_dev}
+  AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
+  WORKER_JWT_SECRET: dev-worker-secret-32-characters-minimum!!
+
 services:
   core:
     build:
@@ -8,6 +22,7 @@ services:
       dockerfile: apps/core/Dockerfile
     image: photox-e2e-core:latest
     environment:
+      <<: *secrets
       NODE_ENV: production
       API_PORT: 3000
       POSTGRES_HOST: postgres
@@ -18,11 +33,8 @@ services:
       STORAGE_DIR: /data/storage
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-photox_dev}
       AUTH_ACCESS_TTL: 30m
       AUTH_REFRESH_TTL: 1d
-      AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
-      WORKER_JWT_SECRET: dev-worker-secret-32-characters-minimum!!
       # e2e registers many users from one IP; prod/dev keep the default of 10/hour
       RATE_LIMIT_REGISTER: 1000
       # seeded admin (open registration only mints 'user'): core inserts this admin on
@@ -46,11 +58,8 @@ services:
       floci:
         condition: service_started
     healthcheck:
+      <<: *healthcheck
       test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/health || exit 1']
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     networks:
       - photox-net
 
@@ -60,15 +69,13 @@ services:
       dockerfile: apps/worker-service/Dockerfile
     image: photox-e2e-worker-service:latest
     environment:
+      <<: *secrets
       NODE_ENV: production
       WORKER_SERVICE_PORT: 3004
       CORE_URL: http://core:3000
       STORAGE_DIR: /data/storage
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-photox_dev}
-      AUTH_TOKEN_SECRET: dev-auth-secret-32-characters-minimum!!
-      WORKER_JWT_SECRET: dev-worker-secret-32-characters-minimum!!
     volumes:
       - storage-data:/data/storage
       - ./data/storage/models:/data/storage/models:ro
@@ -78,11 +85,8 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
+      <<: *healthcheck
       test: ['CMD-SHELL', 'wget -qO- http://localhost:3004/health || exit 1']
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     networks:
       - photox-net
 

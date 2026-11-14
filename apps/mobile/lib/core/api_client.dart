@@ -8,6 +8,7 @@ import 'auth_manager.dart';
 import 'auth_models.dart';
 import '../sync/transfer_progress.dart';
 import '../upload/models.dart';
+import '../upload/transports.dart';
 
 /// Typed failure for every non-2xx core API response.
 class ApiException implements Exception {
@@ -151,7 +152,7 @@ String envelopeMessage(Object? data, {required String fallback}) {
 }
 
 /// Dio transport for the PhotoX core API, signed with the stored Bearer token.
-class ApiClient {
+class ApiClient implements UploadTransport {
   ApiClient({required this.auth, Dio? dio, String? baseUrl, this.progress})
     : dio = dio ?? Dio() {
     final configured = this.dio.options.baseUrl;
@@ -240,6 +241,7 @@ class ApiClient {
   ///
   /// A 401 is refreshed once here because [FormData] cannot be replayed after a
   /// failed attempt; the request is rebuilt with the rotated token.
+  @override
   Future<AssetSummary> uploadFile(
     File file,
     String originalName, {
@@ -296,6 +298,7 @@ class ApiClient {
   }
 
   /// Batch dedup pre-check; at most 100 items per request.
+  @override
   Future<List<DedupHit>> exists(List<DedupCheck> items) async {
     if (items.length > 100) {
       throw ArgumentError.value(

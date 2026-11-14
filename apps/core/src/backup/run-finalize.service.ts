@@ -126,7 +126,13 @@ export class RunFinalizeService {
       const claimed = rowsOf<{ id: string }>(
         await this.dataSource.query(
           `UPDATE "backup_runs" SET "state" = 'finalizing', "updatedAt" = now()
-           WHERE "id" = $1 AND "state" = 'running' RETURNING "id"`,
+           WHERE "id" = $1 AND "state" = 'running'
+             AND NOT EXISTS (
+               SELECT 1 FROM "backup_run_items" i
+               WHERE i."runId" = $1
+                 AND i."state" IN ('pending', 'retrying', 'queued', 'running')
+             )
+           RETURNING "id"`,
           [row.id],
         ),
       );

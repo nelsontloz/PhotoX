@@ -26,7 +26,9 @@ void main() {
   tearDown(() => db.close());
 
   Future<void> markInProgress(String localId, {required int sizeBytes}) async {
-    await queue.enqueue(_candidate(localId, sizeBytes: sizeBytes));
+    await queue.enqueueAll(<AssetCandidate>[
+      _candidate(localId, sizeBytes: sizeBytes),
+    ]);
     await queue.markState(
       localId: localId,
       state: UploadState.failedRetryable,
@@ -49,12 +51,12 @@ void main() {
     test('is idempotent and preserves existing state', () async {
       final candidate = _candidate('asset-1', sizeBytes: 42);
 
-      await queue.enqueue(candidate);
+      await queue.enqueueAll(<AssetCandidate>[candidate]);
       await queue.markState(
         localId: candidate.localId,
         state: UploadState.uploaded,
       );
-      await queue.enqueue(candidate);
+      await queue.enqueueAll(<AssetCandidate>[candidate]);
 
       final rows = await db.select(db.queuedAssets).get();
       expect(rows, hasLength(1));
@@ -83,7 +85,9 @@ void main() {
     test(
       'refreshes scan metadata and preserves progress when unchanged',
       () async {
-        await queue.enqueue(_candidate('asset-1', sizeBytes: 10));
+        await queue.enqueueAll(<AssetCandidate>[
+          _candidate('asset-1', sizeBytes: 10),
+        ]);
         final nextAttempt = DateTime.utc(2026, 10, 20, 12);
         await queue.markState(
           localId: 'asset-1',
@@ -425,7 +429,7 @@ void main() {
   group('markState', () {
     test('persists every optional field and stamps lastAttemptAt', () async {
       final next = DateTime(2026, 10, 19, 13);
-      await queue.enqueue(_candidate('asset-1'));
+      await queue.enqueueAll(<AssetCandidate>[_candidate('asset-1')]);
 
       await queue.markState(
         localId: 'asset-1',
@@ -462,7 +466,7 @@ void main() {
     });
 
     test('omitted optional fields do not clear stored values', () async {
-      await queue.enqueue(_candidate('asset-1'));
+      await queue.enqueueAll(<AssetCandidate>[_candidate('asset-1')]);
       await queue.markState(
         localId: 'asset-1',
         state: UploadState.pending,
@@ -483,7 +487,7 @@ void main() {
     test(
       'requeues immediately without touching attempts or progress',
       () async {
-        await queue.enqueue(_candidate('asset-1'));
+        await queue.enqueueAll(<AssetCandidate>[_candidate('asset-1')]);
         await queue.markState(
           localId: 'asset-1',
           state: UploadState.failedRetryable,
@@ -669,7 +673,7 @@ void main() {
     );
 
     test('is a no-op when nothing failed', () async {
-      await queue.enqueue(_candidate('pending'));
+      await queue.enqueueAll(<AssetCandidate>[_candidate('pending')]);
       expect(await queue.retryFailed(), 0);
       expect(
         (await queue.byLocalId('pending'))!.state,
@@ -740,7 +744,7 @@ void main() {
     });
 
     test('is a no-op for an empty or untouched set', () async {
-      await queue.enqueue(_candidate('discovered'));
+      await queue.enqueueAll(<AssetCandidate>[_candidate('discovered')]);
       expect(await queue.requeueNow(const <String>[]), 0);
       expect(await queue.requeueNow(<String>['discovered']), 0);
       expect(

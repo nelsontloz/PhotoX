@@ -273,6 +273,7 @@ describe('user backup admin API', () => {
 
 describe('admin user deletion API', () => {
   beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.useRealTimers());
 
   it('deleteAdminUser passes the 202 body through untouched', async () => {
     const accepted = {
@@ -306,6 +307,7 @@ describe('admin user deletion API', () => {
   });
 
   it('pollAdminUserDelete returns once the job completes', async () => {
+    vi.useFakeTimers();
     getMock
       .mockResolvedValueOnce({
         data: {
@@ -327,7 +329,10 @@ describe('admin user deletion API', () => {
           queue: {},
         },
       });
-    await pollAdminUserDelete('u-1', { intervalMs: 1 });
+    const poll = pollAdminUserDelete('u-1');
+    const settled = expect(poll).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1000);
+    await settled;
     expect(getMock).toHaveBeenCalledTimes(2);
   });
 
@@ -343,7 +348,7 @@ describe('admin user deletion API', () => {
         error: 'disk full',
       },
     });
-    await expect(pollAdminUserDelete('u-1', { intervalMs: 1 })).rejects.toThrow('disk full');
+    await expect(pollAdminUserDelete('u-1')).rejects.toThrow('disk full');
   });
 
   it('pollAdminUserDelete reports a partial wipe as a failure with the leftover count', async () => {
@@ -358,12 +363,13 @@ describe('admin user deletion API', () => {
         error: 'originals/x.jpg: EACCES',
       },
     });
-    await expect(pollAdminUserDelete('u-1', { intervalMs: 1 })).rejects.toThrow(
+    await expect(pollAdminUserDelete('u-1')).rejects.toThrow(
       /Account removed, but 2 file\(s\) could not be deleted \(originals\/x\.jpg: EACCES\)/,
     );
   });
 
   it('pollAdminUserDelete keeps polling while the wipe is on the file sweep', async () => {
+    vi.useFakeTimers();
     getMock
       .mockResolvedValueOnce({
         data: {
@@ -383,11 +389,15 @@ describe('admin user deletion API', () => {
           backupPrefix: 'backups/ada%40example.com__u-1/',
         },
       });
-    await pollAdminUserDelete('u-1', { intervalMs: 1 });
+    const poll = pollAdminUserDelete('u-1');
+    const settled = expect(poll).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1000);
+    await settled;
     expect(getMock).toHaveBeenCalledTimes(2);
   });
 
   it('pollAdminUserDelete times out on a stuck job', async () => {
+    vi.useFakeTimers();
     getMock.mockResolvedValue({
       data: {
         userId: 'u-1',
@@ -398,12 +408,14 @@ describe('admin user deletion API', () => {
         queue: {},
       },
     });
-    await expect(pollAdminUserDelete('u-1', { intervalMs: 1, timeoutMs: 5 })).rejects.toThrow(
-      /Timed out/,
-    );
+    const poll = pollAdminUserDelete('u-1');
+    const settled = expect(poll).rejects.toThrow(/Timed out/);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await settled;
   });
 
   it('pollAdminUserDelete keeps polling on unknown states instead of misreading them', async () => {
+    vi.useFakeTimers();
     getMock
       .mockResolvedValueOnce({
         data: {
@@ -422,10 +434,12 @@ describe('admin user deletion API', () => {
           state: 'completed',
           backupKept: true,
           backupPrefix: 'backups/ada%40example.com__u-1/',
-          queue: {},
         },
       });
-    await pollAdminUserDelete('u-1', { intervalMs: 1 });
+    const poll = pollAdminUserDelete('u-1');
+    const settled = expect(poll).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1000);
+    await settled;
     expect(getMock).toHaveBeenCalledTimes(2);
   });
 });

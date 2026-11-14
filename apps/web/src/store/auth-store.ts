@@ -264,7 +264,8 @@ useAuthStore.subscribe((state) => {
 // from current state so a reload with an expired access token recovers immediately
 scheduleRefresh(useAuthStore.getState().accessToken);
 
-// Timers are throttled/suspended in background tabs, so re-check on wake signals.
+// Timers are throttled/suspended in background tabs, so re-check on wake signals. Focus and
+// pageshow need no listener of their own: the refresh timer and the 401 interceptor cover them.
 function maybeRefreshNow() {
   const { accessToken, refreshToken } = useAuthStore.getState();
   if (!accessToken || !refreshToken) return;
@@ -282,10 +283,6 @@ window.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') maybeRefreshNow();
 });
 window.addEventListener('online', maybeRefreshNow);
-window.addEventListener('focus', maybeRefreshNow);
-window.addEventListener('pageshow', (event) => {
-  if (event.persisted) maybeRefreshNow();
-});
 
 export function subscribeAuthFailure(cb: () => void): () => void {
   authFailureListeners.add(cb);

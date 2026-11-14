@@ -73,7 +73,8 @@ export MOBILE_E2E_CORE_PORT
 
 # The emulator's 10.0.2.2 is the host loopback through the emulator's own NAT,
 # so no adb reverse and no fixed device-side port: the app is pointed straight at
-# the port this run published. The setup screen names 10.0.2.2 for exactly this.
+# the port this run published. The sign-in form's server field names 10.0.2.2 for
+# exactly this.
 APP_URL="http://10.0.2.2:${MOBILE_E2E_CORE_PORT}"
 COMPOSE=(docker compose -p "$E2E_PROJECT" -f "$ROOT/docker-compose.yml" \
   -f "$ROOT/docker-compose.e2e.yml" -f "$ROOT/docker-compose.mobile-e2e.yml")

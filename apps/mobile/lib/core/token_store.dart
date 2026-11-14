@@ -73,19 +73,3 @@ class SecureTokenStore implements TokenStore {
   @override
   Future<void> clear() => _storage.delete(key: storageKey);
 }
-
-/// In-memory [TokenStore] for tests and short-lived isolates.
-class MemoryTokenStore implements TokenStore {
-  MemoryTokenStore([this._tokens]);
-
-  AuthTokens? _tokens;
-
-  @override
-  Future<AuthTokens?> read() async => _tokens;
-
-  @override
-  Future<void> write(AuthTokens tokens) async => _tokens = tokens;
-
-  @override
-  Future<void> clear() async => _tokens = null;
-}

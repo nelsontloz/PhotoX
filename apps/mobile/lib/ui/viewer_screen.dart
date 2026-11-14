@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import '../library/backup_status.dart';
 import '../library/library_item.dart';
@@ -454,7 +455,7 @@ class _VideoPageState extends State<_VideoPage> with WidgetsBindingObserver {
   late final Future<Uint8List?> _poster = widget.poster();
 
   VideoPlayback? _playback;
-  VideoPlaybackState _state = const VideoPlaybackState();
+  VideoPlayerValue _value = const VideoPlayerValue.uninitialized();
 
   /// iCloud download progress `0`..`1`, null once the file is on disk.
   double? _download;
@@ -482,7 +483,7 @@ class _VideoPageState extends State<_VideoPage> with WidgetsBindingObserver {
     final playback = _playback;
     _playback = null;
     if (playback != null) {
-      widget.onPosition(playback.state.position);
+      widget.onPosition(playback.value.position);
       playback.removeListener(_onPlayback);
       playback.dispose();
     }
@@ -531,16 +532,16 @@ class _VideoPageState extends State<_VideoPage> with WidgetsBindingObserver {
     setState(() {
       _loading = false;
       _download = null;
-      _state = playback.state;
+      _value = playback.value;
     });
   }
 
   void _onPlayback() {
     final playback = _playback;
     if (_disposed || playback == null) return;
-    final stopped = _state.playing && !playback.state.playing;
+    final stopped = _value.isPlaying && !playback.value.isPlaying;
     setState(() {
-      _state = playback.state;
+      _value = playback.value;
       // A clip that ran to its end must not leave a dead-looking frame with
       // no way back in.
       if (stopped) _controls = true;
@@ -550,7 +551,7 @@ class _VideoPageState extends State<_VideoPage> with WidgetsBindingObserver {
   Future<void> _toggle() async {
     final playback = _playback;
     if (playback == null) return;
-    if (_state.playing) {
+    if (_value.isPlaying) {
       await playback.pause();
     } else {
       await playback.play();
@@ -560,8 +561,8 @@ class _VideoPageState extends State<_VideoPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final surface = _playback?.surface;
-    final duration = _state.duration;
-    final error = _state.error ?? _error;
+    final duration = _value.duration;
+    final error = (_value.hasError ? _value.errorDescription : null) ?? _error;
 
     return Stack(
       fit: StackFit.expand,
@@ -588,7 +589,7 @@ class _VideoPageState extends State<_VideoPage> with WidgetsBindingObserver {
           ),
           // The centre button starts the clip; stopping is a decision the user
           // makes on the bar, never by tapping the picture.
-          if (_controls && !_state.playing)
+          if (_controls && !_value.isPlaying)
             Center(
               child: Semantics(
                 button: true,
@@ -606,13 +607,13 @@ class _VideoPageState extends State<_VideoPage> with WidgetsBindingObserver {
               right: 12,
               bottom: 8,
               child: _VideoTimeline(
-                playing: _state.playing,
-                position: _dragging ? _dragAt : _state.position,
+                playing: _value.isPlaying,
+                position: _dragging ? _dragAt : _value.position,
                 duration: duration,
                 onToggle: () => unawaited(_toggle()),
                 onStart: () => setState(() {
                   _dragging = true;
-                  _dragAt = _state.position;
+                  _dragAt = _value.position;
                 }),
                 onChanged: (value) => setState(() => _dragAt = value),
                 onEnd: (value) {
@@ -635,7 +636,7 @@ class _VideoPageState extends State<_VideoPage> with WidgetsBindingObserver {
     _playback?.dispose();
     _playback = null;
     setState(() {
-      _state = const VideoPlaybackState();
+      _value = const VideoPlayerValue.uninitialized();
       _error = null;
       _loading = true;
     });

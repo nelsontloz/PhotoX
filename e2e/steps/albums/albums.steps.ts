@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test';
+import {
+  expect,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+  type Response,
+} from '@playwright/test';
 import {
   Given,
   Then,
@@ -387,9 +393,15 @@ Then('only the album card {string} is visible', async ({ page }, name: string) =
 
 // --- albums page UI: hidden from timeline via the card menu -----------------
 
-async function toggleAlbumTimelineFromCard(page: Page, ctx: Ctx, label: string): Promise<void> {
+/** Opens an album's menu, clicks the timeline entry, and waits for its PATCH to land. */
+async function toggleAlbumTimeline(
+  page: Page,
+  ctx: Ctx,
+  label: string,
+  open: Locator,
+): Promise<Locator> {
   const album = currentAlbum(ctx);
-  await page.getByRole('button', { name: `Options for ${album.name}` }).click();
+  await open.click();
   const entry = page.getByRole('button', { name: label });
   const [response] = await Promise.all([
     page.waitForResponse(
@@ -400,15 +412,26 @@ async function toggleAlbumTimelineFromCard(page: Page, ctx: Ctx, label: string):
     entry.click(),
   ]);
   expect(response.status()).toBe(200);
-  await expect(entry).toHaveCount(0);
+  return entry;
+}
+
+function albumCardMenu(page: Page, ctx: Ctx): Locator {
+  return page.getByRole('button', { name: `Options for ${currentAlbum(ctx).name}` });
 }
 
 When('I hide the album from its card menu', async ({ page, ctx }) => {
-  await toggleAlbumTimelineFromCard(page, ctx, 'Hide from timeline');
+  const entry = await toggleAlbumTimeline(
+    page,
+    ctx,
+    'Hide from timeline',
+    albumCardMenu(page, ctx),
+  );
+  await expect(entry).toHaveCount(0);
 });
 
 When('I show the album from its card menu', async ({ page, ctx }) => {
-  await toggleAlbumTimelineFromCard(page, ctx, 'Show on timeline');
+  const entry = await toggleAlbumTimeline(page, ctx, 'Show on timeline', albumCardMenu(page, ctx));
+  await expect(entry).toHaveCount(0);
 });
 
 Then('the album card shows the hidden indicator', async ({ page, ctx }) => {
@@ -590,26 +613,22 @@ Then('the album page shows the not-found state', async ({ page }) => {
 
 // --- album detail UI: hidden from timeline ----------------------------------
 
-async function toggleAlbumTimelineFromMenu(page: Page, ctx: Ctx, label: string): Promise<void> {
-  const album = currentAlbum(ctx);
-  await page.locator('button[aria-label="Album options"]').click();
-  const [response] = await Promise.all([
-    page.waitForResponse(
-      (r) =>
-        r.request().method() === 'PATCH' &&
-        new URL(r.url()).pathname === `/api/v1/albums/${album.id}`,
-    ),
-    page.getByRole('button', { name: label }).click(),
-  ]);
-  expect(response.status()).toBe(200);
-}
-
 When('I hide the album from its options menu', async ({ page, ctx }) => {
-  await toggleAlbumTimelineFromMenu(page, ctx, 'Hide from timeline');
+  await toggleAlbumTimeline(
+    page,
+    ctx,
+    'Hide from timeline',
+    page.locator('button[aria-label="Album options"]'),
+  );
 });
 
 When('I show the album from its options menu', async ({ page, ctx }) => {
-  await toggleAlbumTimelineFromMenu(page, ctx, 'Show on timeline');
+  await toggleAlbumTimeline(
+    page,
+    ctx,
+    'Show on timeline',
+    page.locator('button[aria-label="Album options"]'),
+  );
 });
 
 Then('the album page shows the hidden badge', async ({ page }) => {

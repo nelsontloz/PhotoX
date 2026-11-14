@@ -6,9 +6,8 @@ import {
   authHeaders,
   injectSession,
   requireAuth,
-  seedEmbedding,
+  seedFaces,
   signInAdmin,
-  workerHeaders,
   type AuthResponse,
 } from '../support';
 
@@ -34,30 +33,6 @@ interface FaceAsset {
 /** Wire shape of GET /api/v1/persons, trimmed to the fields the cluster assertion needs. */
 interface PersonList {
   items: { id: string; faceCount: number }[];
-}
-
-interface SeedFace {
-  box: { x: number; y: number; w: number; h: number };
-}
-
-/**
- * Appends faces via the authenticated user endpoint. The worker's face job DELETEs + re-detects,
- * so a seeded face is the probe that proves the job actually executed.
- */
-async function seedFaces(
-  request: APIRequestContext,
-  auth: AuthResponse,
-  assetId: string,
-  faces: SeedFace[],
-): Promise<void> {
-  const response = await request.post(`/worker/assets/${assetId}/faces`, {
-    headers: workerHeaders(auth.user.id, assetId),
-    data: {
-      faces: faces.map((face) => ({ ...face, confidence: 0.9, embedding: seedEmbedding() })),
-    },
-  });
-  expect(response.status()).toBe(201);
-  expect(((await response.json()) as { count: number }).count).toBe(faces.length);
 }
 
 async function fetchFaceAsset(

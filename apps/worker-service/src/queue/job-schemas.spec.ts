@@ -3,9 +3,9 @@ import { UnrecoverableError } from 'bullmq';
 import { createHmac, randomUUID } from 'crypto';
 import {
   assertOwnership,
+  assetRefsJobSchema,
   bindingOf,
   clusterJobSchema,
-  faceJobSchema,
   parseJobData,
   thumbnailJobSchema,
 } from './job-schemas';
@@ -51,11 +51,11 @@ describe('job payload schemas', () => {
       userId: randomUUID(),
     };
     const signed = signJob(payload);
-    expect(parseJobData(faceJobSchema, signed, 'process-faces')).toEqual(signed);
+    expect(parseJobData(assetRefsJobSchema, signed, 'process-faces')).toEqual(signed);
     // redis may still hold pre-SCRFD-only jobs that carried `detector` — zod strips the unknown key
-    expect(parseJobData(faceJobSchema, { ...signed, detector: 'legacy' }, 'process-faces')).toEqual(
-      signed,
-    );
+    expect(
+      parseJobData(assetRefsJobSchema, { ...signed, detector: 'legacy' }, 'process-faces'),
+    ).toEqual(signed);
   });
 
   it('rejects metadataWaits above the processor wait budget', () => {

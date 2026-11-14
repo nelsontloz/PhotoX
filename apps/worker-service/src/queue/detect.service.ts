@@ -2,10 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { join } from 'path';
 import sharp from 'sharp';
 import { loadEnv } from '@photox/shared-config';
-import { lazyOnce, loadSession } from './model-loader';
+import { lazyOnce, loadNamedSession } from './model-loader';
 import { toNchw } from './nchw';
 import type { DetectedObjectInput } from '@photox/shared-types';
-import type * as ort from 'onnxruntime-node';
 
 // ponytail: YOLO26n ONNX export (AGPL-3.0, Ultralytics yolo26n.pt via model.export(format="onnx"))
 // provisioned by `pnpm --filter @photox/worker-service detect-model` into STORAGE_DIR/models/<dir>/ —
@@ -213,17 +212,9 @@ export function parseDetections(
 @Injectable()
 export class DetectService {
   private readonly logger = new Logger(DetectService.name);
-  private inputName = '';
-  private outputName = '';
-  private readonly load = lazyOnce(() => this.createSession());
-
-  modelPath(): string {
-    return join(loadEnv().STORAGE_DIR, 'models', DETECT_MODEL_DIR, DETECT_MODEL_FILE);
-  }
-
-  private async createSession(): Promise<ort.InferenceSession> {
-    const modelPath = this.modelPath();
-    const session = await loadSession(
+  private readonly load = lazyOnce(async () => {
+    const modelPath = join(loadEnv().STORAGE_DIR, 'models', DETECT_MODEL_DIR, DETECT_MODEL_FILE);
+    const named = await loadNamedSession(
       modelPath,
       `Detection model not found at ${modelPath} — run ` +
         `'pnpm --filter @photox/worker-service detect-model'`,
@@ -231,14 +222,12 @@ export class DetectService {
       // are co-hosted in this process; raise only if detection throughput starves the other queues
       { intraOpNumThreads: 2 },
     );
-    this.inputName = session.inputNames[0]!;
-    this.outputName = session.outputNames[0]!;
     this.logger.log(`Detection model loaded: ${modelPath}`);
-    return session;
-  }
+    return named;
+  });
 
   async detect(image: Buffer): Promise<DetectedObjectInput[]> {
-    const session = await this.load();
+    const { session, inputName, outputName } = await this.load();
     const { Tensor } = await import('onnxruntime-node');
 
     const meta = await sharp(image).metadata();
@@ -265,8 +254,8 @@ export class DetectService {
     const chw = toNchw(padded, size, size, 0, 255);
 
     const tensor = new Tensor('float32', chw, [1, 3, size, size]);
-    const output = await session.run({ [this.inputName]: tensor });
-    const result = output[this.outputName]!;
+    const output = await session.run({ [inputName]: tensor });
+    const result = output[outputName]!;
     const dims = result.dims;
     const rows = dims[1];
     if (dims.length !== 3 || rows === undefined || dims[2] !== 6) {

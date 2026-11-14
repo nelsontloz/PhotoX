@@ -5,54 +5,14 @@ import 'package:flutter/widgets.dart';
 import 'package:video_player/video_player.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
-/// What one video is doing right now.
-@immutable
-class VideoPlaybackState {
-  const VideoPlaybackState({
-    this.ready = false,
-    this.playing = false,
-    this.position = Duration.zero,
-    this.duration = Duration.zero,
-    this.error,
-  });
-
-  /// True once a first frame exists, so a surface can be shown.
-  final bool ready;
-
-  /// True while the clock is running.
-  final bool playing;
-
-  /// Current playhead.
-  final Duration position;
-
-  /// Full length, or zero before the player reports one.
-  final Duration duration;
-
-  /// Player failure, already phrased for the user.
-  final String? error;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      (other is VideoPlaybackState &&
-          other.ready == ready &&
-          other.playing == playing &&
-          other.position == position &&
-          other.duration == duration &&
-          other.error == error);
-
-  @override
-  int get hashCode => Object.hash(ready, playing, position, duration, error);
-}
-
 /// One video behind an interface.
 ///
 /// The viewer drives a [VideoPlayback] and never touches a player plugin
 /// directly, so its state machine is testable off-device and the engine can be
 /// swapped (for example `fvp` over `video_player`) without touching the UI.
 abstract class VideoPlayback extends ChangeNotifier {
-  /// Latest known state; also pushed through [notifyListeners].
-  VideoPlaybackState get state;
+  /// Latest player value; also pushed through [notifyListeners].
+  VideoPlayerValue get value;
 
   /// Opens [file] and decodes its first frame.
   Future<void> load(File file);
@@ -85,12 +45,17 @@ class VideoSupport {
 /// Android. Those are the decoders that produced the file in the first place.
 class VideoPlayerPlayback extends VideoPlayback {
   VideoPlayerController? _controller;
-  VideoPlaybackState _state = const VideoPlaybackState();
+  VideoPlayerValue _last = const VideoPlayerValue.uninitialized();
+  String? _failure;
   bool _disposed = false;
   bool _awake = false;
 
   @override
-  VideoPlaybackState get state => _state;
+  VideoPlayerValue get value {
+    final failure = _failure;
+    if (failure != null) return VideoPlayerValue.erroneous(failure);
+    return _controller?.value ?? const VideoPlayerValue.uninitialized();
+  }
 
   @override
   Widget? get surface {
@@ -112,9 +77,8 @@ class VideoPlayerPlayback extends VideoPlayback {
     try {
       await controller.initialize();
     } on Object {
-      _update(
-        const VideoPlaybackState(error: 'This video could not be played.'),
-      );
+      _failure = 'This video could not be played.';
+      _onTick();
       return;
     }
     if (_disposed) {
@@ -161,26 +125,12 @@ class VideoPlayerPlayback extends VideoPlayback {
   }
 
   void _onTick() {
-    final value = _controller?.value;
-    if (_disposed || value == null) return;
+    if (_disposed) return;
+    final next = value;
     // A finished video stops the clock: let the screen sleep again.
-    if (!value.isPlaying) unawaited(_keepAwake(false));
-    _update(
-      VideoPlaybackState(
-        ready: value.isInitialized,
-        playing: value.isPlaying,
-        position: value.position,
-        duration: value.duration,
-        error: value.hasError
-            ? (value.errorDescription ?? 'This video could not be played.')
-            : null,
-      ),
-    );
-  }
-
-  void _update(VideoPlaybackState next) {
-    if (_disposed || next == _state) return;
-    _state = next;
+    if (!next.isPlaying) unawaited(_keepAwake(false));
+    if (next == _last) return;
+    _last = next;
     notifyListeners();
   }
 

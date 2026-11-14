@@ -46,7 +46,7 @@ export class BackupStorageIo {
     try {
       return { manifest: userBackupManifestSchema.parse(JSON.parse(raw.toString('utf-8'))) };
     } catch (err) {
-      return { error: 'corrupt', cause: err };
+      return { error: 'corrupt', cause: err, raw };
     }
   }
 

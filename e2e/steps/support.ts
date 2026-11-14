@@ -316,13 +316,13 @@ export async function signInAdmin(request: APIRequestContext): Promise<AuthRespo
 // suite mints its own delegated tokens with node:crypto (no new deps). Same HS256 shape as the
 // worker's CoreClient; the secret mirrors docker-compose.e2e.yml (override with
 // E2E_AUTH_TOKEN_SECRET when it diverges).
-const E2E_AUTH_TOKEN_SECRET =
+export const E2E_AUTH_TOKEN_SECRET =
   process.env.E2E_AUTH_TOKEN_SECRET ?? 'dev-auth-secret-32-characters-minimum!!';
 // The job binding is verified with the worker secret even for a user-secret act token.
 const E2E_WORKER_JWT_SECRET =
   process.env.E2E_WORKER_JWT_SECRET ?? 'dev-worker-secret-32-characters-minimum!!';
 
-function base64url(input: string | Buffer): string {
+export function base64url(input: string | Buffer): string {
   return (typeof input === 'string' ? Buffer.from(input) : input).toString('base64url');
 }
 
@@ -349,6 +349,25 @@ export function requireAuth(ctx: Ctx): AuthResponse {
   return ctx.auth;
 }
 
+const scenarioStates = new WeakMap<Ctx, object>();
+
+/** Per-scenario state owned by one step file, keyed by the scenario ctx (Ctx stays untouched). */
+export function scenarioState<T extends object>(ctx: Ctx, init?: T): T {
+  let state = scenarioStates.get(ctx) as T | undefined;
+  if (!state) {
+    state = init ?? ({} as T);
+    scenarioStates.set(ctx, state);
+  }
+  return state;
+}
+
+/** Signs in as the seeded admin once per scenario, caching it on the scenario state. */
+export async function requireAdmin(ctx: Ctx, request: APIRequestContext): Promise<AuthResponse> {
+  const state = scenarioState<{ admin?: AuthResponse }>(ctx);
+  state.admin ??= await signInAdmin(request);
+  return state.admin;
+}
+
 /** The second user a scenario registered for isolation checks. */
 export function requireOtherAuth(ctx: Ctx): AuthResponse {
   if (!ctx.otherAuth) throw new Error('register the other user first');
@@ -363,6 +382,41 @@ export function requireAssetId(ctx: Ctx): string {
 /** Deterministic unit vector along `axis` — fixtures have no real faces, so seeds are synthetic. */
 export function seedEmbedding(axis = 0): number[] {
   return Array.from({ length: FACE_EMBEDDING_DIM }, (_, i) => (i === axis ? 1 : 0));
+}
+
+/** A face accepted by POST /worker/assets/:id/faces; the seeding defaults are optional. */
+export interface SeedFace {
+  box: { x: number; y: number; w: number; h: number };
+  confidence?: number;
+  embedding?: number[];
+}
+
+/**
+ * Appends faces through the worker route and asserts the stored count (test seeding only). The
+ * worker's face job DELETEs + re-detects, so a seeded face is the probe that proves it executed.
+ */
+export async function seedFaces(
+  request: APIRequestContext,
+  auth: AuthResponse,
+  assetId: string,
+  faces: SeedFace[],
+): Promise<void> {
+  const response = await request.post(`/worker/assets/${assetId}/faces`, {
+    headers: workerHeaders(auth.user.id, assetId),
+    data: {
+      faces: faces.map((face) => ({ confidence: 0.9, embedding: seedEmbedding(), ...face })),
+    },
+  });
+  expect(response.status()).toBe(201);
+  expect(((await response.json()) as { count: number }).count).toBe(faces.length);
+}
+
+/** Narrows the admin users table to one row and waits for the search-scoped footer to settle. */
+export async function searchUsersFor(page: Page, email: string): Promise<void> {
+  await page.getByLabel('Search users').fill(email);
+  await expect(page.getByText('Showing 1 registered user(s)', { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
 }
 
 /** Creates an album via the API and returns it as an AlbumRef. */

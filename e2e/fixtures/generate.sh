@@ -18,19 +18,18 @@ FFMPEG="$ROOT/apps/worker-service/node_modules/ffmpeg-static/ffmpeg"
 
 # photo-text.jpg: a high-contrast text card, uploaded alongside photo.jpg by features that need a
 # second, text-bearing image. Rendered with sharp (a worker dep) instead of ffmpeg drawtext for
-# clean glyphs.
-FIXTURE_ROOT="$ROOT" node - <<'EOF'
-const { createRequire } = require('node:module')
-const workerRequire = createRequire(process.env.FIXTURE_ROOT + '/apps/worker-service/package.json')
-const sharp = workerRequire('sharp')
+# clean glyphs; node runs from the worker package so require('sharp') resolves there.
+FIXTURES="$PWD"
+(cd "$ROOT/apps/worker-service" && node -e "
+const sharp = require('sharp')
 const svg = Buffer.from(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="260">' +
-    '<rect width="1000" height="260" fill="white"/>' +
-    '<text x="500" y="160" font-family="sans-serif" font-size="110" font-weight="bold" ' +
-    'text-anchor="middle" fill="black">PHOTOX-OCR-123</text></svg>',
+  '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1000\" height=\"260\">' +
+    '<rect width=\"1000\" height=\"260\" fill=\"white\"/>' +
+    '<text x=\"500\" y=\"160\" font-family=\"sans-serif\" font-size=\"110\" font-weight=\"bold\" ' +
+    'text-anchor=\"middle\" fill=\"black\">PHOTOX-OCR-123</text></svg>',
 )
 sharp(svg)
   .jpeg({ quality: 90 })
-  .toFile('photo-text.jpg')
+  .toFile('$FIXTURES/photo-text.jpg')
   .then(() => console.log('photo-text.jpg'))
-EOF
+")

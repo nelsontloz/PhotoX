@@ -235,6 +235,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : null,
                           ),
                         ),
+                        if (_server.text.trim().isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              'On the Android emulator use http://10.0.2.2:3000.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
                         if (insecureWarning != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 8),

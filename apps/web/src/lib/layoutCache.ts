@@ -2,7 +2,7 @@ import type { AssetLayoutMonth } from '@photox/shared-types';
 import type { TimelineItem } from './timelineLayout';
 
 /**
- * Browser-side cache of timeline layout month windows (docs/timeline-layout-paging.md).
+ * Browser-side cache of timeline layout month windows.
  * Only `{ t, w, h }` + window metadata is stored. There is no eviction beyond `pruneExcept`:
  * the exact scroll track needs every window, so a full cache is the point, not a leak.
  */

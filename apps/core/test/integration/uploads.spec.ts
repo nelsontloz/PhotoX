@@ -11,6 +11,8 @@ import {
   seedAsset,
   seedFile,
   apiServer,
+  waitForJobId,
+  waitForJobWithAsset,
 } from './helpers';
 import type { ApiTestApp } from './helpers';
 import {
@@ -102,37 +104,6 @@ async function sessionDirExists(t: ApiTestApp, userId: string, uploadId: string)
   } catch {
     return false;
   }
-}
-
-async function waitForJobId(
-  t: ApiTestApp,
-  queueName: string,
-  jobId: string,
-  timeoutMs = 10_000,
-): Promise<boolean> {
-  const start = Date.now();
-  const queue = t.getQueue(queueName);
-  while (Date.now() - start < timeoutMs) {
-    if (await queue.getJob(jobId)) return true;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  return false;
-}
-
-async function waitForJobWithAsset(
-  t: ApiTestApp,
-  queueName: string,
-  assetId: string,
-  timeoutMs = 10_000,
-): Promise<boolean> {
-  const start = Date.now();
-  const queue = t.getQueue(queueName);
-  while (Date.now() - start < timeoutMs) {
-    const jobs = await queue.getJobs(['waiting', 'active', 'delayed']);
-    if (jobs.some((j) => (j.data as { assetId?: string }).assetId === assetId)) return true;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  return false;
 }
 
 describe('upload sessions', () => {

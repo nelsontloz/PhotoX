@@ -67,6 +67,14 @@ describe('face detector helpers', () => {
       join('/tmp/photox-storage-test', 'models', FACE_DETECTOR_MODEL_FILE),
     );
   });
+
+  it('resolveFaceDetectorModelPath treats an empty variable as unset', () => {
+    process.env.FACE_DETECTOR_MODEL_PATH = '';
+    process.env.STORAGE_DIR = '/tmp/photox-storage-test';
+    expect(resolveFaceDetectorModelPath()).toBe(
+      join('/tmp/photox-storage-test', 'models', FACE_DETECTOR_MODEL_FILE),
+    );
+  });
 });
 
 // The repo ships `.env.example` and the README says `cp .env.example .env`. Any secret that is

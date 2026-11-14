@@ -30,24 +30,6 @@ const CLUSTER_MIN_CONFIDENCE = 0.4;
 // ponytail: cap legacy re-embed enqueues per run — rest follow on later runs, no storm on big libraries
 const LEGACY_REEMBED_PER_RUN = 100;
 
-function cosineDistance(a: number[], b: number[]): number {
-  // ponytail: cross-dim rows (legacy 1024-dim vs current 512-dim) are incomparable — max distance, never match
-  if (a.length !== b.length || a.length === 0) return 1;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    const ai = a[i]!;
-    const bi = b[i]!;
-    dot += ai * bi;
-    normA += ai * ai;
-    normB += bi * bi;
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  if (denom === 0) return 1;
-  return 1 - dot / denom;
-}
-
 function centroidOf(embeddings: number[][]): number[] {
   const dim = embeddings[0]!.length;
   const centroid = new Array<number>(dim).fill(0);
@@ -64,7 +46,7 @@ function normOf(v: number[]): number {
   return Math.sqrt(sum);
 }
 
-// exact same value as cosineDistance, with the norms computed once per point instead of per pair
+// cosine distance from norms computed once per point instead of per pair
 function distanceWithNorms(a: number[], b: number[], normA: number, normB: number): number {
   // ponytail: cross-dim rows (legacy 1024-dim vs current 512-dim) are incomparable — max distance, never match
   if (a.length !== b.length || a.length === 0) return 1;
@@ -229,8 +211,10 @@ export class FaceClusterService {
 
     const nearestPerson = (embedding: number[]): NearestPerson | null => {
       let best: NearestPerson | null = null;
+      const embeddingNorm = normOf(embedding);
       for (const [pid, acc] of personCentroids) {
-        const d = cosineDistance(embedding, centroidMean(acc));
+        const centroid = centroidMean(acc);
+        const d = distanceWithNorms(embedding, centroid, embeddingNorm, normOf(centroid));
         if (best === null) {
           best = { id: pid, dist: d, runnerUp: Infinity };
         } else if (d < best.dist) {

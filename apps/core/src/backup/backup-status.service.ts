@@ -23,12 +23,10 @@ import {
 } from './backup-overview.builder';
 import type { BackupStorageIo } from './backup-storage-io';
 import {
-  userBackupManifestSchema,
   type BackupOverviewRow,
   type BackupProgress,
   type BackupSnapshot,
   type BackupStatus,
-  type UserBackupManifest,
 } from './backup.types';
 import { isNotFound, type S3BackupService } from './s3-backup.service';
 
@@ -67,36 +65,35 @@ export class BackupStatusService {
     manifestObjectKey: string;
     userId: string;
   }): Promise<BackupStatus> {
-    let raw: Buffer;
-    try {
-      raw = await this.s3.getBuffer(located.manifestObjectKey);
-    } catch (err) {
-      if (isNotFound(err)) return { exists: false };
-      const name = (err as { name?: string }).name ?? 'Unknown';
-      try {
-        await this.s3.headObject(located.manifestObjectKey);
-      } catch (headErr) {
-        if (isNotFound(headErr)) return { exists: false };
-        throw new ServiceUnavailableException('Backup storage (S3) unreachable');
+    const read = await this.storageIo.readManifest(located.manifestObjectKey);
+    if ('error' in read) {
+      const name = (read.cause as { name?: string } | undefined)?.name ?? 'Unknown';
+      if (read.error === 'missing') return { exists: false };
+      if (read.error === 'unreadable') {
+        try {
+          await this.s3.headObject(located.manifestObjectKey);
+        } catch (headErr) {
+          if (isNotFound(headErr)) return { exists: false };
+          throw new ServiceUnavailableException('Backup storage (S3) unreachable');
+        }
+        this.logger.warn(
+          `Backup manifest at ${located.manifestObjectKey} unreadable (${name}) — ` +
+            'object exists, reporting degraded status',
+        );
+        return { exists: true, degraded: 'unreadable', ...this.prefixIdentity(located) };
       }
-      this.logger.warn(
-        `Backup manifest at ${located.manifestObjectKey} unreadable (${name}) — ` +
-          'object exists, reporting degraded status',
-      );
-      return { exists: true, degraded: 'unreadable', ...this.prefixIdentity(located) };
-    }
-    let manifest: UserBackupManifest;
-    try {
-      manifest = userBackupManifestSchema.parse(JSON.parse(raw.toString('utf-8')));
-    } catch (err) {
       // never log the payload — the manifest carries the user's passwordHash
-      const name = (err as { name?: string }).name ?? 'Unknown';
       this.logger.warn(
         `Backup manifest at ${located.manifestObjectKey} failed validation (${name}) — ` +
           'reporting degraded status',
       );
-      return { exists: true, degraded: 'corrupt', ...this.manifestIdentity(raw, located) };
+      return {
+        exists: true,
+        degraded: 'corrupt',
+        ...this.manifestIdentity(read.raw ?? Buffer.alloc(0), located),
+      };
     }
+    const manifest = read.manifest;
     // Legacy manifests embed derivative rows — report original-only counts so a
     // pre-fix backup reads the same as the bytes a new backup would upload.
     const originalFiles = manifest.files.filter((f) => !isDerivativeStorageKey(f.storageKey));

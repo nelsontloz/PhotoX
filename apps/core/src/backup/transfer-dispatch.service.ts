@@ -191,7 +191,7 @@ export class TransferDispatchService {
       await this.performTransfer(run, item);
       await this.runItems.delete(item.id);
       await this.bumpRun(run.id, 'uploaded');
-      await this.finalizeRunIfDone(run.id);
+      await this.finalize.finalizeDueRuns(run.id);
     } catch (err) {
       await this.handleQueueTransferError(run, item, err, job);
     }
@@ -248,7 +248,7 @@ export class TransferDispatchService {
         claimedAt: null,
       });
       await this.bumpRun(run.id, 'failed');
-      await this.finalizeRunIfDone(run.id);
+      await this.finalize.finalizeDueRuns(run.id);
       this.logger.warn(
         `Transfer ${missing ? 'missing' : 'failed'} (${run.kind}) item=${item.id} ` +
           `run=${run.id}: ${message}`,
@@ -262,31 +262,6 @@ export class TransferDispatchService {
       `Transfer retry (${run.kind}) item=${item.id} attempt=${attempts}: ${message}`,
     );
     throw err;
-  }
-
-  /** Atomically promote a run with no outstanding items to finalizing, then finish it once. */
-  async finalizeRunIfDone(runId: string): Promise<void> {
-    const claimed = rowsOf<{ id: string }>(
-      await this.dataSource.query(
-        `UPDATE "backup_runs" SET "state" = 'finalizing', "updatedAt" = now()
-         WHERE "id" = $1 AND "state" = 'running'
-           AND NOT EXISTS (
-             SELECT 1 FROM "backup_run_items" i
-             WHERE i."runId" = $1
-               AND i."state" IN ('pending', 'retrying', 'queued', 'running')
-           )
-         RETURNING "id"`,
-        [runId],
-      ),
-    );
-    if (claimed.length === 0) return;
-    try {
-      await this.finalize.finalizeRun(runId);
-    } catch (err) {
-      const message = errorMessage(err);
-      this.logger.error(`Backup run ${runId} finalize failed: ${message}`);
-      await this.finalize.failRun(runId, `Finalize failed: ${message}`);
-    }
   }
 
   /** The actual byte movement shared by the synchronous driver and the queue consumer. */

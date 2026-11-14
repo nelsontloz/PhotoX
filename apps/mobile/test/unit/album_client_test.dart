@@ -7,7 +7,9 @@ import 'package:photox_mobile/core/api_client.dart';
 import 'package:photox_mobile/core/auth_manager.dart';
 import 'package:photox_mobile/core/auth_models.dart';
 import 'package:photox_mobile/core/refresh_lock.dart';
-import 'package:photox_mobile/core/token_store.dart';
+
+import '../support/memory_token_store.dart';
+
 import 'package:photox_mobile/server/album_client.dart';
 
 void main() {

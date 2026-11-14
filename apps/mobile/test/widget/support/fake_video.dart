@@ -2,9 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:photox_mobile/media/video_playback.dart';
+import 'package:video_player/video_player.dart';
 
 /// [VideoPlayback] with no platform behind it: records calls and lets a test
-/// push states, so the viewer's video behaviour is testable off-device.
+/// push values, so the viewer's video behaviour is testable off-device.
 class FakeVideoPlayback extends VideoPlayback {
   /// Every call in order, e.g. `load`, `play`, `seek:5`, `dispose`.
   final List<String> calls = <String>[];
@@ -12,18 +13,18 @@ class FakeVideoPlayback extends VideoPlayback {
   /// File handed to [load], for assertions about the resolved bytes.
   File? loaded;
 
-  VideoPlaybackState _state = const VideoPlaybackState();
+  VideoPlayerValue _value = const VideoPlayerValue.uninitialized();
 
   @override
-  VideoPlaybackState get state => _state;
+  VideoPlayerValue get value => _value;
 
   @override
   Widget? get surface =>
-      _state.ready ? const ColoredBox(color: Colors.black) : null;
+      _value.isInitialized ? const ColoredBox(color: Colors.black) : null;
 
-  /// Pushes a state as the platform player would.
-  void emit(VideoPlaybackState next) {
-    _state = next;
+  /// Pushes a value as the platform player would.
+  void emit(VideoPlayerValue next) {
+    _value = next;
     notifyListeners();
   }
 
@@ -32,7 +33,10 @@ class FakeVideoPlayback extends VideoPlayback {
     calls.add('load');
     loaded = file;
     emit(
-      const VideoPlaybackState(ready: true, duration: Duration(seconds: 30)),
+      const VideoPlayerValue(
+        isInitialized: true,
+        duration: Duration(seconds: 30),
+      ),
     );
   }
 
@@ -40,11 +44,11 @@ class FakeVideoPlayback extends VideoPlayback {
   Future<void> play() async {
     calls.add('play');
     emit(
-      VideoPlaybackState(
-        ready: true,
-        playing: true,
-        position: _state.position,
-        duration: _state.duration,
+      VideoPlayerValue(
+        isInitialized: true,
+        isPlaying: true,
+        position: _value.position,
+        duration: _value.duration,
       ),
     );
   }
@@ -53,10 +57,10 @@ class FakeVideoPlayback extends VideoPlayback {
   Future<void> pause() async {
     calls.add('pause');
     emit(
-      VideoPlaybackState(
-        ready: true,
-        position: _state.position,
-        duration: _state.duration,
+      VideoPlayerValue(
+        isInitialized: true,
+        position: _value.position,
+        duration: _value.duration,
       ),
     );
   }
@@ -65,11 +69,11 @@ class FakeVideoPlayback extends VideoPlayback {
   Future<void> seek(Duration position) async {
     calls.add('seek:${position.inSeconds}');
     emit(
-      VideoPlaybackState(
-        ready: true,
-        playing: _state.playing,
+      VideoPlayerValue(
+        isInitialized: true,
+        isPlaying: _value.isPlaying,
         position: position,
-        duration: _state.duration,
+        duration: _value.duration,
       ),
     );
   }
