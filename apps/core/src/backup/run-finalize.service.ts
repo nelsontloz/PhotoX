@@ -77,6 +77,11 @@ export class RunFinalizeService {
     return this.toRunStatus(run);
   }
 
+  /**
+   * The user's original files. `purpose='original'` alone also matches thumbnail rows (they share
+   * the enum value but live under `derivatives/thumbnails/...`), so the storageKey prefix is the
+   * second arbiter — keep both predicates, no register/storage layout change.
+   */
   originalFiles(userId: string) {
     return this.files
       .createQueryBuilder('f')
@@ -362,6 +367,13 @@ export class RunFinalizeService {
     });
   }
 
+  /**
+   * Loads the previous backup's file map for the incremental gate: fetches the
+   * manifest bytes, parses JSON, validates with the manifest schema, and indexes
+   * original-only entries by file id. Returns null (never throws) on a missing
+   * manifest (first backup), unreadable bytes, or corrupt JSON/schema — callers
+   * fall back to a full upload.
+   */
   async loadPreviousFileMap(
     manifestObjectKey: string,
   ): Promise<Map<string, PreviousFileEntry> | null> {
@@ -384,6 +396,32 @@ export class RunFinalizeService {
     return map;
   }
 
+  /**
+   * Derivative regeneration after restore/merge, in pipeline order: metadata first
+   * for both kinds (every restored/merged asset is `pending`; mirrors the upload
+   * path which enqueues process-metadata for photos and videos alike), thumbnails
+   * photo+video, per-asset video loop (no admin bulk exists), faces re-embed,
+   * embeddings/detect, cluster, then places backfill. Runs twice:
+   * offset-paged readers assume a stable set, so a second pass catches anything
+   * the first missed under concurrent writes (jobIds dedupe, making it idempotent).
+   * Existing reprocess filters are reused untouched.
+   *
+   * `assetFilter` limits the pass to freshly inserted rows (merge must not churn
+   * the account for assets it deduped or skipped). `mode` switches the jobId
+   * family so a merge never collides with a restore's in-flight job ids.
+   *
+   * Every add is awaited and one refused add throws 503 — the caller fails the
+   * run (restore) or the request (merge) instead of reporting jobs that do not
+   * exist; a retry re-runs this under a fresh run tag.
+   *
+   * Every jobId carries a per-run tag: BullMQ silently rejects any add whose jobId
+   * already exists, and a delayed or active job holds its id until it runs. Without
+   * the tag, a later restore of the same user (delete → restore again) could enqueue
+   * nothing while still reporting success. Completed jobs are removed now
+   * (`removeOnComplete` defaults to true), so only that in-flight window remains —
+   * still enough to dedupe a re-enqueue away. Both passes of one run share the tag,
+   * so their double-enqueue keeps deduping.
+   */
   async reenqueueDerivatives(
     userId: string,
     assetFilter?: Set<string>,
