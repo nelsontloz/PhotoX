@@ -1,12 +1,5 @@
 import { expect, type APIRequestContext, type Page, type Response } from '@playwright/test';
-import {
-  Then,
-  When,
-  authHeaders,
-  requireAuth,
-  type AuthResponse,
-  type Ctx,
-} from '../support';
+import { Then, When, authHeaders, requireAuth, type AuthResponse, type Ctx } from '../support';
 
 /** Code-matched subsets of the person wire shapes (support.ts has no person types). */
 interface PersonSummary {

@@ -6,14 +6,7 @@ import type {
   UploadSessionCreated,
   UploadSessionStatusResponse,
 } from '@photox/shared-types';
-import {
-  FIXTURES_DIR,
-  Then,
-  When,
-  authHeaders,
-  requireAuth,
-  type Ctx,
-} from '../support';
+import { FIXTURES_DIR, Then, When, authHeaders, requireAuth, type Ctx } from '../support';
 
 // Per-scenario upload-session state, keyed by the scenario ctx (support.ts Ctx untouched).
 interface UploadSessionState {

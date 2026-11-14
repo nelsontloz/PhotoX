@@ -59,6 +59,7 @@ Feature: Albums UI flows
     And I add the selected album photos
     Then the album page shows 2 album photos
     And the first album photo thumbnail loads
+
   Scenario: Removing a photo from an album keeps it on the timeline
     Given I am signed in
     And I created an album via the API named "Removable album"
@@ -93,6 +94,7 @@ Feature: Albums UI flows
     And I select the album "Timeline album" in the picker
     And I add the selected photos to the selected albums
     Then the album asset count is 1
+
   Scenario: Hiding an album from its options menu removes its photo from the timeline
     Given I am signed in
     And I created an album via the API named "Menu-hidden album"
@@ -104,6 +106,7 @@ Feature: Albums UI flows
     And the album page shows 1 album photos
     When I open "/"
     Then my timeline does not contain the album photo
+
   Scenario: Toggling an album from its card menu hides it from the timeline
     Given I am signed in
     And I created an album via the API named "Card-menu album"

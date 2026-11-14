@@ -1,4 +1,5 @@
 Feature: Admin user deletion
+
   Scenario: The delete dialog gates confirmation behind typed DELETE
     Given I am signed in as the seeded administrator
     And a regular user with one photo is registered for deletion
@@ -16,6 +17,7 @@ Feature: Admin user deletion
     When I confirm deletion of that user while the delete response is delayed
     Then the delete dialog is closed
     And the users list no longer matches the deleted user
+
   Scenario: Deleting a user wipes the library but keeps the S3 backup and spares siblings
     Given I am signed in as the seeded administrator
     And a victim user with a full library and backup is registered

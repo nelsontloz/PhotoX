@@ -1,4 +1,5 @@
 Feature: Search page readiness and related tray
+
   Scenario: Viewer shows similar photos in the related tray
     Given I am signed in
     When I upload "photo.jpg" for semantic processing

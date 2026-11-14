@@ -31,6 +31,7 @@ Feature: Anonymous access to public share links
     When that share is revoked through the API
     When I open the public share page for that share
     Then the public share page shows not found
+
   Scenario: An anonymous visitor can play a shared video
     Given I am not signed in
     And a share exists for an uploaded video

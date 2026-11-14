@@ -10,7 +10,6 @@ import {
   type SemanticUpload,
 } from '../support';
 
-
 /** Code-matched subset of GET /api/v1/assets/:id. */
 interface FaceAsset {
   id: string;

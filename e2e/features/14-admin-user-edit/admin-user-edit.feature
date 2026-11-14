@@ -17,6 +17,7 @@ Feature: Admin account editing
     Then the edit dialog closes after a successful save
     And the account edit toast reports the new name
     And the users list shows the updated name and email
+
   Scenario: The S3 backup moves to the new address immediately
     Given an administrator session is available for account editing
     And a regular account is registered for the edit flow

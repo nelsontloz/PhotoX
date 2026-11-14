@@ -25,68 +25,68 @@ browser speed, on a shared mutable stack, with no retries.
 
 ## 2. What only E2E can prove (and therefore must stay)
 
-| Boundary | Only proven in E2E because |
-|---|---|
-| Container/volume wiring | `docker-compose.e2e.yml`: shared `storage-data` volume, `CORE_URL`, both JWT secrets, worker model mount, Floci. Integration runs core+worker in-process and mocks `CoreClient` elsewhere. |
-| Worker consumes what core enqueued | Thumbnails/transcode actually appear as bytes after an HTTP upload. `upload-e2e.spec.ts` runs processors in-process, not across the process boundary. |
-| Cookie-authenticated subresources | `<img src="/api/v1/files/:id/stream">`, `<video>`, share pages: the HttpOnly cookie path (no Bearer) is browser-only. |
-| Real media pipeline | ffmpeg output plays; `currentSrc` picks the transcode; SigLIP/ArcFace/SCRFD models loaded from `STORAGE_DIR/models` produce a similarity/person that renders. |
-| Client-only UX | typed-`DELETE` gate, Leaflet map + URL view state, lightbox, upload exists-check, viewer Escape, retry-toast for a failed S3 move. |
-| Auth-exempt surface | Anonymous share pages (`/share/:token`) with no session at all. |
-| Boot seeding | `ADMIN_EMAIL`/`ADMIN_PASSWORD` seed → login → admin role → admin UI. |
+| Boundary                           | Only proven in E2E because                                                                                                                                                                 |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Container/volume wiring            | `docker-compose.e2e.yml`: shared `storage-data` volume, `CORE_URL`, both JWT secrets, worker model mount, Floci. Integration runs core+worker in-process and mocks `CoreClient` elsewhere. |
+| Worker consumes what core enqueued | Thumbnails/transcode actually appear as bytes after an HTTP upload. `upload-e2e.spec.ts` runs processors in-process, not across the process boundary.                                      |
+| Cookie-authenticated subresources  | `<img src="/api/v1/files/:id/stream">`, `<video>`, share pages: the HttpOnly cookie path (no Bearer) is browser-only.                                                                      |
+| Real media pipeline                | ffmpeg output plays; `currentSrc` picks the transcode; SigLIP/ArcFace/SCRFD models loaded from `STORAGE_DIR/models` produce a similarity/person that renders.                              |
+| Client-only UX                     | typed-`DELETE` gate, Leaflet map + URL view state, lightbox, upload exists-check, viewer Escape, retry-toast for a failed S3 move.                                                         |
+| Auth-exempt surface                | Anonymous share pages (`/share/:token`) with no session at all.                                                                                                                            |
+| Boot seeding                       | `ADMIN_EMAIL`/`ADMIN_PASSWORD` seed → login → admin role → admin UI.                                                                                                                       |
 
 ## 3. Critical set to keep (56 scenarios)
 
-| Feature | Keep | Why it is critical |
-|---|---|---|
-| `01-bootstrap/seeded-admin` | 2/2 | only real boot-seed identity check; also the only guard for `/admin` redirect for a non-admin and the sidebar admin link |
-| `02-auth/session` | 1/1 | logout through the account menu + refresh cookie path (`/api/v1/auth` scope); store clearing is unit-covered, the cookie is not |
-| `03-media/photo-upload` | 2/2 | the highest-value test in the repo: multipart → core → worker → `STORAGE_DIR` → cookie-authed `<img>` decode; second scenario proves the client exists-check/dedupe path |
-| `03-media/photo-viewer` | 1/1 | large preview over the cookie-authed stream + Escape |
-| `03-media/upload-sessions` | 1/2 | session → real worker assembly → thumbnail in timeline (slim it, see §5) |
-| `03-media/video` | 2/2 | real SVT-AV1 transcode, h264 skip, browser decoder, `currentSrc === transcode` |
-| `04-faces/admin-faces` | 1/2 | reprocess through the admin UI drains the real `process-faces` queue and replaces seeded faces — the only consumer-side proof after an admin action |
-| `05-semantic/search-ready` | 1/2 | related tray populated from a real embedding similarity |
-| `05-semantic/semantic-upload` | 1/3 | worker embeds an uploaded photo in the compose stack (real model + queue) |
-| `06-albums/albums` | 11/16 | album journeys have **no** component tests: create, search, rename, add-photos dialog, remove, delete-keeps-photos, viewer picker, selection bar, hidden badge + menu/card toggles |
-| `07-favorites` | 2/8 | star from the viewer → favorites grid; day grouping |
-| `08-people` | 3/9 | cluster button → person card; rename/clear; person detail day header + no face overlay |
-| `09-sharing/own-shares` | 4/10 | create album/asset share from UI, copy confirmation, revoke from list, trashed-photo mixed list |
-| `09-sharing/public-share` | 5/8 | anonymous photo page, album grid + lightbox, unknown/revoked token page, shared video playback |
-| `10-trash` | 2/2 | trash/restore/purge/empty through the timeline and viewer |
-| `11-places` | 4/4 | Leaflet cluster bubble, URL view mirroring, viewer overlay — zero integration alternative |
-| `12-backups/backups` | 2/4 | full + incremental against a **real S3** (Floci) and the admin UI |
-| `12-backups/backup-orphans` | 2/5 | orphan restore dialog and live-backup delete dialog (typed-DELETE, counts, prefix) |
-| `13-admin-user-delete` | 3/11 | typed-DELETE gate, delete → list refresh, wipe keeps the victim's backup and spares the sibling (cross-service: worker purge + storage sweep + S3) |
-| `14-admin-user-edit` | 4/6 | prefill, save + list, S3 move toast, failed-move warning + Retry |
-| `15-admin-user-create` | 2/3 | create regular/admin user through the dialog; new account signs in |
+| Feature                       | Keep  | Why it is critical                                                                                                                                                                 |
+| ----------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `01-bootstrap/seeded-admin`   | 2/2   | only real boot-seed identity check; also the only guard for `/admin` redirect for a non-admin and the sidebar admin link                                                           |
+| `02-auth/session`             | 1/1   | logout through the account menu + refresh cookie path (`/api/v1/auth` scope); store clearing is unit-covered, the cookie is not                                                    |
+| `03-media/photo-upload`       | 2/2   | the highest-value test in the repo: multipart → core → worker → `STORAGE_DIR` → cookie-authed `<img>` decode; second scenario proves the client exists-check/dedupe path           |
+| `03-media/photo-viewer`       | 1/1   | large preview over the cookie-authed stream + Escape                                                                                                                               |
+| `03-media/upload-sessions`    | 1/2   | session → real worker assembly → thumbnail in timeline (slim it, see §5)                                                                                                           |
+| `03-media/video`              | 2/2   | real SVT-AV1 transcode, h264 skip, browser decoder, `currentSrc === transcode`                                                                                                     |
+| `04-faces/admin-faces`        | 1/2   | reprocess through the admin UI drains the real `process-faces` queue and replaces seeded faces — the only consumer-side proof after an admin action                                |
+| `05-semantic/search-ready`    | 1/2   | related tray populated from a real embedding similarity                                                                                                                            |
+| `05-semantic/semantic-upload` | 1/3   | worker embeds an uploaded photo in the compose stack (real model + queue)                                                                                                          |
+| `06-albums/albums`            | 11/16 | album journeys have **no** component tests: create, search, rename, add-photos dialog, remove, delete-keeps-photos, viewer picker, selection bar, hidden badge + menu/card toggles |
+| `07-favorites`                | 2/8   | star from the viewer → favorites grid; day grouping                                                                                                                                |
+| `08-people`                   | 3/9   | cluster button → person card; rename/clear; person detail day header + no face overlay                                                                                             |
+| `09-sharing/own-shares`       | 4/10  | create album/asset share from UI, copy confirmation, revoke from list, trashed-photo mixed list                                                                                    |
+| `09-sharing/public-share`     | 5/8   | anonymous photo page, album grid + lightbox, unknown/revoked token page, shared video playback                                                                                     |
+| `10-trash`                    | 2/2   | trash/restore/purge/empty through the timeline and viewer                                                                                                                          |
+| `11-places`                   | 4/4   | Leaflet cluster bubble, URL view mirroring, viewer overlay — zero integration alternative                                                                                          |
+| `12-backups/backups`          | 2/4   | full + incremental against a **real S3** (Floci) and the admin UI                                                                                                                  |
+| `12-backups/backup-orphans`   | 2/5   | orphan restore dialog and live-backup delete dialog (typed-DELETE, counts, prefix)                                                                                                 |
+| `13-admin-user-delete`        | 3/11  | typed-DELETE gate, delete → list refresh, wipe keeps the victim's backup and spares the sibling (cross-service: worker purge + storage sweep + S3)                                 |
+| `14-admin-user-edit`          | 4/6   | prefill, save + list, S3 move toast, failed-move warning + Retry                                                                                                                   |
+| `15-admin-user-create`        | 2/3   | create regular/admin user through the dialog; new account signs in                                                                                                                 |
 
 ## 4. Removals — assertions already owned one layer down
 
 Each row is "delete after the migration in §7 lands". Counts are scenario entries; the second number in §3 is each
 feature's current size.
 
-| Feature | Drop | Integration/unit owner today |
-|---|---|---|
-| `02-auth/gating` | 5 (18 rows) | page redirects: `apps/web/src/App.spec.tsx:74` covers **all** gated routes incl. detail routes; API 401/403: `api-error-contract.spec.ts:37,43`, `jwt-files.spec.ts:69`, `admin-user-create.spec.ts:181,192`; public share 404: `jwt-shares.spec.ts:236` |
-| `06-albums/albums-api` | 7 | `jwt-albums.spec.ts:62` (isolation CRUD 404), `:142` (cross-user add/remove), `:176` (missing name 400), `album-assets-list.spec.ts:127` (addedAt DESC paging), `:238` (foreign album assets 404) — see §7.6 for the real gaps |
-| `06-albums/albums-hidden` | 8 | `assets-layout.spec.ts:365` (hidden toggles, window version, membership), `:415` (album-scoped bypass), `assets.service.spec.ts:356` (list omits hidden) — 2 gaps in §7.7 |
-| `07-favorites` (API + empty state) | 6 | **no favorites spec exists** — migrate first (§7.1) |
-| `08-people` (API + empty state) | 6 | `jwt-persons.spec.ts:77` (paging), `:111` (rename/clear/isolation), `:142` (cross rename 404), `:156` (cluster 202), `faces-http.spec.ts:243` (assign/unassign faceCount) |
-| `09-sharing/own-shares` (API + empty state) | 6 | `jwt-shares.spec.ts:210` (rotation), `:255` (trashed), `album-shares.spec.ts:124` (zero/two targets 400), `:132` (foreign album 404) |
-| `09-sharing/public-share` (stream scenarios) | 3 | `streaming.spec.ts:48,91,126`, `album-shares.spec.ts:380,411,489` — share-route 416 is a gap (§7.4) |
-| `12-backups/backups` (API scenarios) | 2 | `user-backup-incremental.spec.ts:23,38,122,178`, `user-backup-maintenance.spec.ts:34,59,246`, `user-backup-roundtrip.spec.ts:29,525` |
-| `12-backups/backup-gating` | 2 (16 rows) | **nothing** covers it (§7.2) — this feature is a true gap masquerading as duplication |
-| `12-backups/backup-orphans` (filter/search/delete-orphan) | 3 | filter + search are client state: `apps/web/src/pages/admin/backup.spec.tsx:509,712`; orphan union and orphan delete: `user-backup-incremental.spec.ts:178`, `user-backup-maintenance.spec.ts:59` |
-| `13-admin-user-delete` (guards, race, Actions column, restore/merge rows) | 8 | forged token `admin-user-delete.spec.ts:139`; wipe `:187`; re-delete/restore `:384`; conflicts/fallback `user-backup-restore.spec.ts:24,52,257`; merge `user-backup-maintenance.spec.ts:106,435`; Actions/Delete rendering `users.spec.tsx:208,218` |
-| `14-admin-user-edit` (API scenarios) | 2 | `admin-user-edit.spec.ts:146` (role 400), `:218` (email change, sessions revoked, prefix moved) |
-| `15-admin-user-create` (mocked flag) | 1 | `admin-user-create.spec.ts:195` flips the **real** flag; login/register UI in `login/index.spec.tsx:40`, `register/index.spec.tsx:38` |
-| `00-serial/registration-toggle` | 1 | all six assertions already covered (above + `users.spec.tsx:660`); retiring it removes the serial prologue's only other reason to exist |
-| `05-semantic/semantic-upload` (2 extra) | 2 | embeddings `embeddings-http.spec.ts:49`, detections replace-set `detections-http.spec.ts:76`, reprocess enqueue `:229`, face detect `face-pipeline.spec.ts:92,126` |
-| `04-faces/admin-faces` (recluster) | 1 | `admin-face-reprocess.spec.ts:102`, `face-pipeline.spec.ts:194`, `face-detection.spec.tsx:149` |
-| `05-semantic/search-ready` (tri-state page) | 1 | `search-http.spec.ts:233` (503/model path); the tri-state render is worth a `pages/search` web spec (not yet written) |
-| `03-media/upload-sessions` (idempotent replay) | 1 | `uploads.spec.ts:231` (replay), `:417` (foreign session) |
-| `06-albums/albums` (duplicate journeys) | 5 | description prompt folds into the rename journey; the not-found page is route-level; three "add photos" variants collapse to one |
+| Feature                                                                   | Drop        | Integration/unit owner today                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `02-auth/gating`                                                          | 5 (18 rows) | page redirects: `apps/web/src/App.spec.tsx:74` covers **all** gated routes incl. detail routes; API 401/403: `api-error-contract.spec.ts:37,43`, `jwt-files.spec.ts:69`, `admin-user-create.spec.ts:181,192`; public share 404: `jwt-shares.spec.ts:236` |
+| `06-albums/albums-api`                                                    | 7           | `jwt-albums.spec.ts:62` (isolation CRUD 404), `:142` (cross-user add/remove), `:176` (missing name 400), `album-assets-list.spec.ts:127` (addedAt DESC paging), `:238` (foreign album assets 404) — see §7.6 for the real gaps                           |
+| `06-albums/albums-hidden`                                                 | 8           | `assets-layout.spec.ts:365` (hidden toggles, window version, membership), `:415` (album-scoped bypass), `assets.service.spec.ts:356` (list omits hidden) — 2 gaps in §7.7                                                                                |
+| `07-favorites` (API + empty state)                                        | 6           | **no favorites spec exists** — migrate first (§7.1)                                                                                                                                                                                                      |
+| `08-people` (API + empty state)                                           | 6           | `jwt-persons.spec.ts:77` (paging), `:111` (rename/clear/isolation), `:142` (cross rename 404), `:156` (cluster 202), `faces-http.spec.ts:243` (assign/unassign faceCount)                                                                                |
+| `09-sharing/own-shares` (API + empty state)                               | 6           | `jwt-shares.spec.ts:210` (rotation), `:255` (trashed), `album-shares.spec.ts:124` (zero/two targets 400), `:132` (foreign album 404)                                                                                                                     |
+| `09-sharing/public-share` (stream scenarios)                              | 3           | `streaming.spec.ts:48,91,126`, `album-shares.spec.ts:380,411,489` — share-route 416 is a gap (§7.4)                                                                                                                                                      |
+| `12-backups/backups` (API scenarios)                                      | 2           | `user-backup-incremental.spec.ts:23,38,122,178`, `user-backup-maintenance.spec.ts:34,59,246`, `user-backup-roundtrip.spec.ts:29,525`                                                                                                                     |
+| `12-backups/backup-gating`                                                | 2 (16 rows) | **nothing** covers it (§7.2) — this feature is a true gap masquerading as duplication                                                                                                                                                                    |
+| `12-backups/backup-orphans` (filter/search/delete-orphan)                 | 3           | filter + search are client state: `apps/web/src/pages/admin/backup.spec.tsx:509,712`; orphan union and orphan delete: `user-backup-incremental.spec.ts:178`, `user-backup-maintenance.spec.ts:59`                                                        |
+| `13-admin-user-delete` (guards, race, Actions column, restore/merge rows) | 8           | forged token `admin-user-delete.spec.ts:139`; wipe `:187`; re-delete/restore `:384`; conflicts/fallback `user-backup-restore.spec.ts:24,52,257`; merge `user-backup-maintenance.spec.ts:106,435`; Actions/Delete rendering `users.spec.tsx:208,218`      |
+| `14-admin-user-edit` (API scenarios)                                      | 2           | `admin-user-edit.spec.ts:146` (role 400), `:218` (email change, sessions revoked, prefix moved)                                                                                                                                                          |
+| `15-admin-user-create` (mocked flag)                                      | 1           | `admin-user-create.spec.ts:195` flips the **real** flag; login/register UI in `login/index.spec.tsx:40`, `register/index.spec.tsx:38`                                                                                                                    |
+| `00-serial/registration-toggle`                                           | 1           | all six assertions already covered (above + `users.spec.tsx:660`); retiring it removes the serial prologue's only other reason to exist                                                                                                                  |
+| `05-semantic/semantic-upload` (2 extra)                                   | 2           | embeddings `embeddings-http.spec.ts:49`, detections replace-set `detections-http.spec.ts:76`, reprocess enqueue `:229`, face detect `face-pipeline.spec.ts:92,126`                                                                                       |
+| `04-faces/admin-faces` (recluster)                                        | 1           | `admin-face-reprocess.spec.ts:102`, `face-pipeline.spec.ts:194`, `face-detection.spec.tsx:149`                                                                                                                                                           |
+| `05-semantic/search-ready` (tri-state page)                               | 1           | `search-http.spec.ts:233` (503/model path); the tri-state render is worth a `pages/search` web spec (not yet written)                                                                                                                                    |
+| `03-media/upload-sessions` (idempotent replay)                            | 1           | `uploads.spec.ts:231` (replay), `:417` (foreign session)                                                                                                                                                                                                 |
+| `06-albums/albums` (duplicate journeys)                                   | 5           | description prompt folds into the rename journey; the not-found page is route-level; three "add photos" variants collapse to one                                                                                                                         |
 
 Dropped: 70 of 126 (the §5 trims are step-level, not scenario-level). Net: **126 → 56 scenarios**, and `setup`
 drops from 3 features to `04-faces` only (or none, if §7.5 lands).
@@ -122,7 +122,7 @@ Keep the browser action, delete the invariant steps (they are already integratio
    people (1). Consider moving people clustering to a worker integration test that drives the real DBSCAN
    service, leaving only the "person card renders" E2E.
 5. **No retries is correct** for a wiring suite — keep it, but that is the argument for cutting scenarios
-   that are slow *and* invariant-checking rather than flaky-and-important.
+   that are slow _and_ invariant-checking rather than flaky-and-important.
 
 ## 7. Migration backlog (must land before the deletions)
 
