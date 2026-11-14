@@ -20,7 +20,6 @@ import { AdminModule } from './admin/admin.module';
 import { WorkerModule } from './worker/worker.module';
 import { BackupModule } from './backup/backup.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
-import { ObservabilityModule } from './common/observability/observability.module';
 
 // runs before DatabaseModule.forRoot()'s loadEnv() below — replicates @nestjs/config's envFilePath
 loadRootEnvFile();
@@ -28,7 +27,6 @@ loadRootEnvFile();
 @Module({
   imports: [
     DatabaseModule.forRoot(),
-    ObservabilityModule,
     HealthModule,
     AuthModule,
     BullMqModule,
