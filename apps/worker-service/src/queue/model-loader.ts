@@ -36,3 +36,14 @@ export async function loadSession(
   await requireModelFile(path, notFoundMessage);
   return InferenceSession.create(path, { executionProviders: ['cpu'], ...options });
 }
+
+// single-input single-output session plus the head names its callers feed it; `notFoundMessage`
+// keeps the model-specific provisioning hint (the processors match on its prefix)
+export async function loadNamedSession(
+  path: string,
+  notFoundMessage: string,
+  options: ort.InferenceSession.SessionOptions = {},
+): Promise<{ session: ort.InferenceSession; inputName: string; outputName: string }> {
+  const session = await loadSession(path, notFoundMessage, options);
+  return { session, inputName: session.inputNames[0]!, outputName: session.outputNames[0]! };
+}

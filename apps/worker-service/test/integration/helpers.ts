@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -96,6 +96,35 @@ export function makeVideoFixture(path: string, args: string[]): Buffer {
   if (!FFMPEG_PATH) throw new Error('ffmpeg binary not available');
   execFileSync(FFMPEG_PATH, [...args, '-y', path], { timeout: 30_000, stdio: 'pipe' });
   return readFileSync(path);
+}
+
+// the h264+aac input that exercises the skip-transcode path
+export function makeH264AacMp4(dir: string): Buffer {
+  return makeVideoFixture(join(dir, 'h264-aac.mp4'), [
+    '-f',
+    'lavfi',
+    '-i',
+    'color=c=black:s=320x240:d=1',
+    '-f',
+    'lavfi',
+    '-i',
+    'anullsrc=r=44100:cl=mono',
+    '-c:v',
+    'libx264',
+    '-c:a',
+    'aac',
+    '-t',
+    '1',
+  ]);
+}
+
+export function hasEncoder(name: string): boolean {
+  try {
+    execSync(`"${FFMPEG_PATH}" -encoders 2>/dev/null | grep ${name}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function waitForJob(

@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { readFileSync, unlinkSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, unlinkSync, mkdtempSync, rmSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -9,7 +9,8 @@ import { FFMPEG_PATH, runFfprobeJson } from '../../src/queue/ffmpeg';
 import {
   closeTestApp,
   createTestApp,
-  makeVideoFixture,
+  hasEncoder,
+  makeH264AacMp4,
   resetTestApp,
   seedOriginal,
   signJob,
@@ -18,62 +19,19 @@ import {
 } from './helpers';
 
 const TEST_VIDEO_DIR = mkdtempSync(join(tmpdir(), 'video-test-'));
-const H264_AAC_PATH = join(TEST_VIDEO_DIR, 'h264-aac.mp4');
-
-function createH264AacVideo() {
-  return makeVideoFixture(H264_AAC_PATH, [
-    '-f',
-    'lavfi',
-    '-i',
-    'color=c=black:s=320x240:d=1',
-    '-f',
-    'lavfi',
-    '-i',
-    'anullsrc=r=44100:cl=mono',
-    '-c:v',
-    'libx264',
-    '-c:a',
-    'aac',
-    '-t',
-    '1',
-  ]);
-}
-
-function hasAomAv1(): boolean {
-  try {
-    execSync(`"${FFMPEG_PATH}" -encoders 2>/dev/null | grep libaom-av1`, { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function hasSvtAv1(): boolean {
-  try {
-    execSync(`"${FFMPEG_PATH}" -encoders 2>/dev/null | grep libsvtav1`, { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 describe('VideoProcessor (integration)', () => {
   let testApp: TestApp;
   let h264AacBuffer: Buffer;
 
   beforeAll(async () => {
-    h264AacBuffer = createH264AacVideo();
+    h264AacBuffer = makeH264AacMp4(TEST_VIDEO_DIR);
     testApp = await createTestApp();
   }, 180_000);
 
   afterAll(async () => {
     await closeTestApp(testApp);
-    if (existsSync(H264_AAC_PATH)) unlinkSync(H264_AAC_PATH);
-    try {
-      rmSync(TEST_VIDEO_DIR, { recursive: true, force: true });
-    } catch {
-      // ignore
-    }
+    rmSync(TEST_VIDEO_DIR, { recursive: true, force: true });
   });
 
   beforeEach(() => resetTestApp(testApp));
@@ -112,7 +70,7 @@ describe('VideoProcessor (integration)', () => {
   });
 
   describe('transcode path', () => {
-    it.skipIf(!hasAomAv1())(
+    it.skipIf(!hasEncoder('libaom-av1'))(
       'transcodes non-h264 video and registers the derivative before marking ready',
       async () => {
         const transcodePath = join(TEST_VIDEO_DIR, 'mjpeg.avi');
@@ -167,7 +125,7 @@ describe('VideoProcessor (integration)', () => {
       120_000,
     );
 
-    it.skipIf(!hasSvtAv1())(
+    it.skipIf(!hasEncoder('libsvtav1'))(
       'caps a slow-motion source above 60 fps',
       async () => {
         // phone slow-motion clips probe at ~240 fps; the web derivative is capped to 60
@@ -203,7 +161,7 @@ describe('VideoProcessor (integration)', () => {
   });
 
   describe('concurrent jobs for one asset', () => {
-    it.skipIf(!hasSvtAv1())(
+    it.skipIf(!hasEncoder('libsvtav1'))(
       "keeps each job's output separate so neither registers the other's partial file",
       async () => {
         // long enough that the two encodes actually overlap (worker concurrency 2)

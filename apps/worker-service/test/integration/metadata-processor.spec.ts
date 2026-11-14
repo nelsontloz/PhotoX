@@ -7,7 +7,7 @@ import { makeAsset, makeFileRecord } from '../fake-core-client';
 import {
   closeTestApp,
   createTestApp,
-  makeVideoFixture,
+  makeH264AacMp4,
   resetTestApp,
   seedOriginal,
   signJob,
@@ -16,33 +16,13 @@ import {
 } from './helpers';
 
 const FIXTURE_DIR = mkdtempSync(join(tmpdir(), 'metadata-int-'));
-const VIDEO_PATH = join(FIXTURE_DIR, 'h264-aac.mp4');
-
-function makeH264AacMp4(): Buffer {
-  return makeVideoFixture(VIDEO_PATH, [
-    '-f',
-    'lavfi',
-    '-i',
-    'color=c=black:s=320x240:d=1',
-    '-f',
-    'lavfi',
-    '-i',
-    'anullsrc=r=44100:cl=mono',
-    '-c:v',
-    'libx264',
-    '-c:a',
-    'aac',
-    '-t',
-    '1',
-  ]);
-}
 
 describe('MetadataProcessor (integration)', () => {
   let testApp: TestApp;
   let videoBuffer: Buffer;
 
   beforeAll(async () => {
-    videoBuffer = makeH264AacMp4();
+    videoBuffer = makeH264AacMp4(FIXTURE_DIR);
     testApp = await createTestApp();
   }, 180_000);
 

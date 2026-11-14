@@ -1,23 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 import ExifReader from 'exifreader';
+import type { Asset } from '@photox/shared-types';
 import { runFfprobeJson, type FfprobeResult } from './ffmpeg';
 
-interface ExtractedMetadata {
-  takenAt: Date | null;
-  cameraMake: string | null;
-  cameraModel: string | null;
-  lensModel: string | null;
-  orientation: number | null;
-  width: number | null;
-  height: number | null;
-  latitude: number | null;
-  longitude: number | null;
-  altitude: number | null;
-  iso: number | null;
-  fNumber: number | null;
-  exposureTime: number | null;
-  focalLength: number | null;
-}
+// the Asset columns a metadata write fills, plus `takenAt` (a Date, not Asset's wire string) —
+// derived so a column rename cannot drift from the entity
+export type ExtractedMetadata = Pick<
+  Asset,
+  | 'cameraMake'
+  | 'cameraModel'
+  | 'lensModel'
+  | 'orientation'
+  | 'width'
+  | 'height'
+  | 'latitude'
+  | 'longitude'
+  | 'altitude'
+  | 'iso'
+  | 'fNumber'
+  | 'exposureTime'
+  | 'focalLength'
+> & { takenAt: Date | null };
 
 const EMPTY: ExtractedMetadata = {
   takenAt: null,
@@ -165,22 +168,22 @@ export class MetadataExtractor {
   }
 }
 
-interface VideoMetadataPatch {
-  durationSeconds: number | null;
-  width: number | null;
-  height: number | null;
-  codec: string | null;
-  fps: number | null;
-  hasAudio: boolean | null;
-  orientation: number | null;
-  takenAt: Date | null;
-  cameraMake: string | null;
-  cameraModel: string | null;
-  lensModel: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  altitude: number | null;
-}
+export type VideoMetadataPatch = Pick<
+  Asset,
+  | 'durationSeconds'
+  | 'width'
+  | 'height'
+  | 'codec'
+  | 'fps'
+  | 'hasAudio'
+  | 'orientation'
+  | 'cameraMake'
+  | 'cameraModel'
+  | 'lensModel'
+  | 'latitude'
+  | 'longitude'
+  | 'altitude'
+> & { takenAt: Date | null };
 
 function readOrientation(result: FfprobeResult): number | null {
   for (const stream of result.streams) {

@@ -5,6 +5,7 @@ import { assetRefsJobSchema, bindingOf, type AssetRefsJob } from './job-schemas'
 import { patchStatusFailed, runAssetFileJob } from './asset-file-job';
 import type { ProcessorDeps, ProcessorSpec } from './processor-spec';
 import type { MetadataPatch } from '../core/core-client.service';
+import type { ExtractedMetadata, VideoMetadataPatch } from './metadata.extractor';
 import { computeDhash, DHASH_HEIGHT, DHASH_WIDTH } from './dhash';
 
 export function branchFor(mimeType: string | null): 'photo' | 'video' | null {
@@ -46,18 +47,14 @@ export function metadataProcessor({
             return;
           }
 
-          let patch: MetadataPatch;
+          let extracted: ExtractedMetadata | VideoMetadataPatch;
+          // ponytail: dHash must never fail the metadata job — on error warn and OMIT the field
+          // (a missing hash only costs dupe detection; a failed patch loses all metadata)
+          let phash: string | null = null;
           if (branch === 'photo') {
-            const metadata = metadataExtractor.extract(await readFile(filePath));
-            const hasAnyField = Object.values(metadata).some((v) => v !== null);
-            const metadataStatus = hasAnyField ? 'ready' : 'failed';
-            // never send a null takenAt: the upload request may carry a client-supplied one that a
-            // patch field would overwrite
-            const { takenAt, ...metadataFields } = metadata;
-
-            // ponytail: dHash must never fail the metadata job — on error warn and OMIT the field
-            // (a missing hash only costs dupe detection; a failed patch loses all metadata)
-            let phash: string | null = null;
+            const photo = metadataExtractor.extract(await readFile(filePath));
+            // EXIF iso can be rational (e.g. 201/2) — the DTO gates iso with @IsInt
+            extracted = { ...photo, iso: photo.iso === null ? null : Math.round(photo.iso) };
             try {
               const grayscale = await sharp(filePath)
                 .rotate()
@@ -70,27 +67,19 @@ export function metadataProcessor({
               const message = err instanceof Error ? err.message : String(err);
               logger.warn(`dHash failed: asset=${assetId} — ${message}`);
             }
-
-            patch = {
-              ...metadataFields,
-              // EXIF iso can be rational (e.g. 201/2) — the DTO gates iso with @IsInt
-              iso: metadata.iso === null ? null : Math.round(metadata.iso),
-              status: metadataStatus,
-              ...(phash === null ? {} : { phash }),
-              ...(takenAt === null ? {} : { takenAt }),
-            };
           } else {
-            const videoMeta = await videoMetadataExtractor.extract(filePath);
-            const hasAnyVideoField = Object.values(videoMeta).some((v) => v !== null);
-            const videoMetadataStatus = hasAnyVideoField ? 'ready' : 'failed';
-            // same rule as photos: an absent probe date must not clobber a client-supplied takenAt
-            const { takenAt: videoTakenAt, ...videoFields } = videoMeta;
-            patch = {
-              ...videoFields,
-              status: videoMetadataStatus,
-              ...(videoTakenAt === null ? {} : { takenAt: videoTakenAt }),
-            };
+            extracted = await videoMetadataExtractor.extract(filePath);
           }
+
+          // never send a null takenAt: the upload request may carry a client-supplied one that a
+          // patch field would overwrite
+          const { takenAt, ...fields } = extracted;
+          const patch: MetadataPatch = {
+            ...fields,
+            status: Object.values(extracted).some((v) => v !== null) ? 'ready' : 'failed',
+            ...(phash === null ? {} : { phash }),
+            ...(takenAt === null ? {} : { takenAt }),
+          };
 
           await core.patchMetadata(
             userId,

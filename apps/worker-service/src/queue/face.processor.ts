@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { faceJobSchema, bindingOf, type FaceJob } from './job-schemas';
+import { assetRefsJobSchema, bindingOf, type AssetRefsJob } from './job-schemas';
 import { orientedPrep, patchStatusFailed, runAssetFileJob } from './asset-file-job';
 import type { ProcessorDeps, ProcessorSpec } from './processor-spec';
 import { scaleDetectionsToOriginal } from './detect.service';
@@ -12,7 +12,10 @@ export function faceProcessor({
   core,
   storage,
   faceDetector,
-}: Pick<ProcessorDeps, 'bullMq' | 'core' | 'storage' | 'faceDetector'>): ProcessorSpec<FaceJob> {
+}: Pick<
+  ProcessorDeps,
+  'bullMq' | 'core' | 'storage' | 'faceDetector'
+>): ProcessorSpec<AssetRefsJob> {
   const logger = new Logger('FaceProcessor');
 
   return {
@@ -20,7 +23,7 @@ export function faceProcessor({
     run: async (job) => {
       await runAssetFileJob({ core, storage, logger }, job, {
         queue: 'process-faces',
-        schema: faceJobSchema,
+        schema: assetRefsJobSchema,
         label: 'Faces',
         // ponytail: missing model weights are provisioning, not a job bug — warn + no retry
         missingModelMarkers: ['Face embedding model not found', 'Face detector model not found'],
