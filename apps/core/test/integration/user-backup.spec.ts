@@ -338,6 +338,16 @@ describe('user backup round-trip', () => {
     return jobs.map((j) => j.data as JobData).filter((d) => d.userId === userId);
   }
 
+  /** Refuses adds to one queue only: a blanket false would also break the run's own transfers. */
+  function refuseQueue(queueName: string) {
+    const realEnqueue = bullMq.enqueue.bind(bullMq);
+    return vi
+      .spyOn(bullMq, 'enqueue')
+      .mockImplementation((queue, jobName, data, opts) =>
+        queue === queueName ? Promise.resolve(false) : realEnqueue(queue, jobName, data, opts),
+      );
+  }
+
   /**
    * Drives the real ledger path (claim -> consume -> finalize) to a terminal run. The
    * production executor is the queue pair; this is only its synchronous stand-in.
@@ -1012,14 +1022,7 @@ describe('user backup round-trip', () => {
 
     // Only the derivative family is refused: a blanket false also breaks the restore's own
     // transfer adds, which would prove nothing about this contract.
-    const realEnqueue = bullMq.enqueue.bind(bullMq);
-    const spy = vi
-      .spyOn(bullMq, 'enqueue')
-      .mockImplementation((queue, jobName, data, opts) =>
-        queue === 'process-metadata'
-          ? Promise.resolve(false)
-          : realEnqueue(queue, jobName, data, opts),
-      );
+    const spy = refuseQueue('process-metadata');
     let runId: string;
     try {
       ({ runId } = await svc.startRestore(user.id));
@@ -2083,14 +2086,7 @@ describe('user backup round-trip', () => {
         }),
       );
 
-      const realEnqueue = bullMq.enqueue.bind(bullMq);
-      const spy = vi
-        .spyOn(bullMq, 'enqueue')
-        .mockImplementation((queue, jobName, data, opts) =>
-          queue === 'process-metadata'
-            ? Promise.resolve(false)
-            : realEnqueue(queue, jobName, data, opts),
-        );
+      const spy = refuseQueue('process-metadata');
       try {
         await expect(
           svc.mergeUserBackup({ targetEmailOrId: target.id, backupUserId: legacyId }),

@@ -40,93 +40,92 @@ function connectionOptions(database: string) {
   };
 }
 
-async function recreate(db: string): Promise<void> {
-  await withAdminDb(
-    process.env.POSTGRES_HOST ?? 'localhost',
-    Number(process.env.POSTGRES_PORT ?? 5432),
-    'photox',
-    async (ds) => {
-      await ds.query(`DROP DATABASE IF EXISTS "${db}" WITH (FORCE)`);
-      await ds.query(`CREATE DATABASE "${db}"`);
-    },
-  );
-}
-
-/** Column type, nullability, unique keys and index definitions — no names, no defaults. */
-async function shapeOf(database: string): Promise<Map<string, TableShape>> {
+function admin<T>(database: string, fn: (ds: DataSource) => Promise<T>): Promise<T> {
   return withAdminDb(
     process.env.POSTGRES_HOST ?? 'localhost',
     Number(process.env.POSTGRES_PORT ?? 5432),
     database,
-    async (ds) => {
-      const tables = new Map<string, TableShape>();
-      const table = (name: string): TableShape => {
-        const existing = tables.get(name);
-        if (existing) return existing;
-        const created: TableShape = { columns: new Map(), indexes: new Set() };
-        tables.set(name, created);
-        return created;
-      };
-
-      const columns: {
-        table_name: string;
-        column_name: string;
-        data_type: string;
-        udt_name: string;
-        is_nullable: string;
-        character_maximum_length: number | null;
-        numeric_precision: number | null;
-        numeric_scale: number | null;
-      }[] = await ds.query(
-        `SELECT table_name, column_name, data_type, udt_name, is_nullable,
-                character_maximum_length, numeric_precision, numeric_scale
-           FROM information_schema.columns
-          WHERE table_schema = 'public'`,
-      );
-      for (const c of columns) {
-        table(c.table_name).columns.set(
-          c.column_name,
-          [
-            c.data_type,
-            c.udt_name,
-            c.is_nullable,
-            c.character_maximum_length ?? '',
-            c.numeric_precision ?? '',
-            c.numeric_scale ?? '',
-          ].join('|'),
-        );
-      }
-
-      // Unique constraints and unique indexes are the same object to the planner (every
-      // constraint has a backing index, and this comparison sees both), so comparing pg_index
-      // covers PKs, `@Unique` and `@Index({unique})` without the constraint-vs-index false
-      // positive that `backup_merges` would otherwise produce.
-      const indexes: {
-        table_name: string;
-        indunique: boolean;
-        predicate: string | null;
-        cols: string | null;
-      }[] = await ds.query(
-        `SELECT c.relname AS table_name, i.indisunique,
-                pg_get_expr(i.indpred, i.indrelid) AS predicate,
-                (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
-                   FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
-                   JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum) AS cols
-           FROM pg_index i
-           JOIN pg_class c ON c.oid = i.indrelid
-           JOIN pg_namespace n ON n.oid = c.relnamespace
-          WHERE n.nspname = 'public' AND c.relkind = 'r'`,
-      );
-      for (const i of indexes) {
-        if (i.cols === null) continue; // expression index: neither builder creates one
-        table(i.table_name).indexes.add(
-          `${i.indunique ? 'unique' : 'plain'}:${i.cols}:${i.predicate ?? ''}`,
-        );
-      }
-
-      return tables;
-    },
+    fn,
   );
+}
+
+async function recreate(db: string): Promise<void> {
+  await admin('photox', async (ds) => {
+    await ds.query(`DROP DATABASE IF EXISTS "${db}" WITH (FORCE)`);
+    await ds.query(`CREATE DATABASE "${db}"`);
+  });
+}
+
+/** Column type, nullability, unique keys and index definitions — no names, no defaults. */
+async function shapeOf(database: string): Promise<Map<string, TableShape>> {
+  return admin(database, async (ds) => {
+    const tables = new Map<string, TableShape>();
+    const table = (name: string): TableShape => {
+      const existing = tables.get(name);
+      if (existing) return existing;
+      const created: TableShape = { columns: new Map(), indexes: new Set() };
+      tables.set(name, created);
+      return created;
+    };
+
+    const columns: {
+      table_name: string;
+      column_name: string;
+      data_type: string;
+      udt_name: string;
+      is_nullable: string;
+      character_maximum_length: number | null;
+      numeric_precision: number | null;
+      numeric_scale: number | null;
+    }[] = await ds.query(
+      `SELECT table_name, column_name, data_type, udt_name, is_nullable,
+              character_maximum_length, numeric_precision, numeric_scale
+         FROM information_schema.columns
+        WHERE table_schema = 'public'`,
+    );
+    for (const c of columns) {
+      table(c.table_name).columns.set(
+        c.column_name,
+        [
+          c.data_type,
+          c.udt_name,
+          c.is_nullable,
+          c.character_maximum_length ?? '',
+          c.numeric_precision ?? '',
+          c.numeric_scale ?? '',
+        ].join('|'),
+      );
+    }
+
+    // Unique constraints and unique indexes are the same object to the planner (every
+    // constraint has a backing index, and this comparison sees both), so comparing pg_index
+    // covers PKs, `@Unique` and `@Index({unique})` without the constraint-vs-index false
+    // positive that `backup_merges` would otherwise produce.
+    const indexes: {
+      table_name: string;
+      indunique: boolean;
+      predicate: string | null;
+      cols: string | null;
+    }[] = await ds.query(
+      `SELECT c.relname AS table_name, i.indisunique,
+              pg_get_expr(i.indpred, i.indrelid) AS predicate,
+              (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
+                 FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
+                 JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum) AS cols
+         FROM pg_index i
+         JOIN pg_class c ON c.oid = i.indrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'r'`,
+    );
+    for (const i of indexes) {
+      if (i.cols === null) continue; // expression index: neither builder creates one
+      table(i.table_name).indexes.add(
+        `${i.indunique ? 'unique' : 'plain'}:${i.cols}:${i.predicate ?? ''}`,
+      );
+    }
+
+    return tables;
+  });
 }
 
 describe('migrations schema parity', () => {
@@ -161,14 +160,9 @@ describe('migrations schema parity', () => {
 
   afterAll(async () => {
     for (const db of [MIG_DB, SYNC_DB]) {
-      await withAdminDb(
-        process.env.POSTGRES_HOST ?? 'localhost',
-        Number(process.env.POSTGRES_PORT ?? 5432),
-        'photox',
-        async (ds) => {
-          await ds.query(`DROP DATABASE IF EXISTS "${db}" WITH (FORCE)`);
-        },
-      );
+      await admin('photox', async (ds) => {
+        await ds.query(`DROP DATABASE IF EXISTS "${db}" WITH (FORCE)`);
+      });
     }
   });
 

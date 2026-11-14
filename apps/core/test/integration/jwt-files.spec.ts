@@ -35,7 +35,7 @@ describe('files JWT identity', () => {
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const record = await seedFile(t, user.id, { bytes: Buffer.from('hello-bytes') });
     const download = await request(apiServer(t))
-      .get(`/api/v1/files/${record.id}/download`)
+      .get(`/api/v1/files/${record.id}/stream`)
       .set(t.authHeader(token));
     expect(download.status).toBe(200);
     expect(download.headers.etag).toBe(`"${record.checksumSha256}"`);
@@ -47,7 +47,7 @@ describe('files JWT identity', () => {
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const record = await seedFile(t, user.id, { bytes: Buffer.from('download-304-bytes') });
     const res = await request(apiServer(t))
-      .get(`/api/v1/files/${record.id}/download`)
+      .get(`/api/v1/files/${record.id}/stream`)
       .set(t.authHeader(token))
       .set('If-None-Match', `"${record.checksumSha256}"`);
     expect(res.status).toBe(304);
@@ -60,7 +60,7 @@ describe('files JWT identity', () => {
     const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role });
     const record = await seedFile(t, a.id);
     const res = await request(apiServer(t))
-      .get(`/api/v1/files/${record.id}/download`)
+      .get(`/api/v1/files/${record.id}/stream`)
       .query({ userId: a.id })
       .set(t.authHeader(tokenB));
     expect(res.status).toBe(404);
@@ -89,7 +89,7 @@ describe('files JWT identity', () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const res = await request(apiServer(t))
-      .get(`/api/v1/files/${randomUUID()}/download`)
+      .get(`/api/v1/files/${randomUUID()}/stream`)
       .set(t.authHeader(token));
     expect(res.status).toBe(404);
   });

@@ -1,16 +1,16 @@
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import {
   apiServer,
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
   seedUser,
 } from './helpers';
 import type { ApiTestApp } from './helpers';
-import { TEST_WORKER_SECRET } from './test-setup';
 
 /**
  * Regression tests for the path-policy bypass (API security audit, findings #1-#3 — Critical).
@@ -206,9 +206,7 @@ describe('path-policy bypass: the route policy must not depend on the case of th
     const file = await seedFile(t, user.id);
     const asset = await seedAsset(t, user.id, file.id);
     const job = t.signWorkerToken({ id: user.id, email: user.email, role: 'user' }, { act: true });
-    const sig = createHmac('sha256', TEST_WORKER_SECRET)
-      .update(`${user.id}:${asset.id}`)
-      .digest('hex');
+    const sig = jobSig(user.id, asset.id);
 
     const res = await request(apiServer(t))
       .get(`/worker/assets/${asset.id}`)

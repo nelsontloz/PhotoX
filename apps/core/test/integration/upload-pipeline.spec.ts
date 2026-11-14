@@ -1,6 +1,15 @@
 import request from 'supertest';
 import sharp from 'sharp';
-import { closeTestApp, createApiTestApp, resetDb, seedFile, seedUser, apiServer } from './helpers';
+import {
+  closeTestApp,
+  createApiTestApp,
+  resetDb,
+  seedFile,
+  seedUser,
+  apiServer,
+  waitForJobId,
+  waitForJobWithAsset,
+} from './helpers';
 import type { ApiTestApp } from './helpers';
 
 // ponytail red test for h2-storage-compute-quota: no per-user quota exists yet, and the key is not
@@ -16,38 +25,6 @@ async function pngBytes(): Promise<Buffer> {
   return sharp({ create: { width: 64, height: 64, channels: 3, background: 'red' } })
     .png()
     .toBuffer();
-}
-
-async function waitForJobId(
-  t: ApiTestApp,
-  queueName: string,
-  jobId: string,
-  timeoutMs = 10_000,
-): Promise<boolean> {
-  const start = Date.now();
-  const queue = t.getQueue(queueName);
-  while (Date.now() - start < timeoutMs) {
-    const job = await queue.getJob(jobId);
-    if (job) return true;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  return false;
-}
-
-async function waitForJobWithAsset(
-  t: ApiTestApp,
-  queueName: string,
-  assetId: string,
-  timeoutMs = 10_000,
-): Promise<boolean> {
-  const start = Date.now();
-  const queue = t.getQueue(queueName);
-  while (Date.now() - start < timeoutMs) {
-    const jobs = await queue.getJobs(['waiting', 'active', 'delayed']);
-    if (jobs.some((j) => (j.data as { assetId?: string }).assetId === assetId)) return true;
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  return false;
 }
 
 describe('upload pipeline', () => {

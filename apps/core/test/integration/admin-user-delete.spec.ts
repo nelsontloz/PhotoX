@@ -1,13 +1,14 @@
 import request from 'supertest';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { randomBytes, randomUUID, createHmac } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { backupPrefix } from '@photox/shared-config';
 import { FACE_EMBEDDING_DIM, SEARCH_EMBEDDING_DIM } from '@photox/shared-types';
 import {
   closeTestApp,
   createApiTestApp,
+  jobSig,
   resetDb,
   seedAsset,
   seedFile,
@@ -16,7 +17,6 @@ import {
   apiServer,
 } from './helpers';
 import type { ApiTestApp } from './helpers';
-import { TEST_WORKER_SECRET } from './test-setup';
 import { runQueuedDelete, waitForDeleteState } from './helpers/user-delete';
 
 async function seedFullUser(t: ApiTestApp) {
@@ -304,10 +304,7 @@ describe('admin async user deletion', () => {
           t.signWorkerToken({ id: user.id, email: 'worker@internal', role: 'user' }, { act: true }),
         ),
       )
-      .set(
-        'X-Job-Signature',
-        createHmac('sha256', TEST_WORKER_SECRET).update(`${user.id}:${user.id}`).digest('hex'),
-      )
+      .set('X-Job-Signature', jobSig(user.id, user.id))
       .send({ backupPrefix: backupPrefix(user.email, user.id) });
 
     expect(replay.status).toBe(200);
@@ -338,10 +335,7 @@ describe('admin async user deletion', () => {
           t.signWorkerToken({ id: user.id, email: 'worker@internal', role: 'user' }, { act: true }),
         ),
       )
-      .set(
-        'X-Job-Signature',
-        createHmac('sha256', TEST_WORKER_SECRET).update(`${user.id}:${user.id}`).digest('hex'),
-      )
+      .set('X-Job-Signature', jobSig(user.id, user.id))
       .send({ backupPrefix: prefix });
 
     expect(step.status).toBe(200);
@@ -403,7 +397,7 @@ describe('admin async user deletion', () => {
         email: user.email,
         backupPrefix: backupPrefix(user.email, user.id),
         // core stamps this at enqueue; the worker's consumer rejects an unsigned payload
-        sig: createHmac('sha256', TEST_WORKER_SECRET).update(`${user.id}:${user.id}`).digest('hex'),
+        sig: jobSig(user.id, user.id),
       },
       { jobId },
     );

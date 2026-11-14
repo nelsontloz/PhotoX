@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   closeTestApp,
   createApiTestApp,
@@ -11,7 +11,6 @@ import {
   apiServer,
 } from './helpers';
 import type { ApiTestApp } from './helpers';
-import { TEST_WORKER_SECRET } from './test-setup';
 
 describe('assets JWT identity', () => {
   let t: ApiTestApp;
@@ -286,9 +285,7 @@ describe('assets JWT identity', () => {
     );
     const file = await seedFile(t, user.id);
     const asset = await seedAsset(t, user.id, file.id);
-    const valid = createHmac('sha256', TEST_WORKER_SECRET)
-      .update(`${user.id}:${asset.id}`)
-      .digest('hex');
+    const valid = jobSig(user.id, asset.id);
     // sub is always an accepted scope, so a "wrong route scope" sig would pass for the wrong
     // reason: tamper the correct-length hex instead
     const tampered = (valid.startsWith('0') ? '1' : '0') + valid.slice(1);

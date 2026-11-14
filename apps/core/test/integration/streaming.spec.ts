@@ -173,7 +173,7 @@ describe('HTTP range streaming', () => {
     const file = await seedFile(t, user.id, { originalName: 'x";\r\nX-Evil: 1.png' });
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const res = await request(apiServer(t))
-      .get(`/api/v1/files/${file.id}/download`)
+      .get(`/api/v1/files/${file.id}/stream`)
       .set(t.authHeader(token));
     expect(res.status).toBe(200);
     const disposition = res.headers['content-disposition'] ?? '';
