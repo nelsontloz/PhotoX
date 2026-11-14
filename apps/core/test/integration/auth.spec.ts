@@ -5,6 +5,8 @@ import { closeTestApp, createApiTestApp, resetDb, apiServer } from './helpers';
 import type { ApiTestApp } from './helpers';
 import { BullMqService } from '../../src/queue/bullmq.service';
 import { RATE_LIMITS } from '../../src/auth/rate-limit.service';
+import { User } from '../../src/database/entities/user.entity';
+import { RefreshToken } from '../../src/database/entities/refresh-token.entity';
 
 interface AuthBody {
   accessToken: string;
@@ -19,7 +21,7 @@ describe('auth HTTP surface', () => {
   let t: ApiTestApp;
 
   beforeAll(async () => {
-    t = await createApiTestApp({ mockUser: null });
+    t = await createApiTestApp();
   }, 120_000);
 
   afterAll(async () => {
@@ -383,6 +385,45 @@ describe('auth HTTP surface', () => {
         'x-user-role': 'admin',
       });
       expect(res.status).toBe(401);
+    });
+  });
+
+  // A failed auth-state read is an outage, not an anonymous caller: answering 401 made a
+  // transient DB error look like a logout, and the client's refresh-retry then killed real
+  // sessions. These pin the retryable answer on both lookups the guard performs.
+  describe('auth state outage', () => {
+    it('answers 503, not 401, when the session lookup fails', async () => {
+      const registered = await registerUser('session-outage@example.com');
+      const { accessToken } = registered.body as AuthBody;
+      const exists = vi
+        .spyOn(t.dataSource.getRepository(RefreshToken), 'exists')
+        .mockRejectedValue(new Error('connection terminated unexpectedly'));
+      try {
+        const res = await request(apiServer(t))
+          .get('/api/v1/assets')
+          .set('Authorization', `Bearer ${accessToken}`);
+        expect(res.status).toBe(503);
+        expect(res.body).toMatchObject({ statusCode: 503, code: 'SERVICE_UNAVAILABLE' });
+      } finally {
+        exists.mockRestore();
+      }
+    });
+
+    it('answers 503, not 401, when the user lookup fails', async () => {
+      const registered = await registerUser('user-outage@example.com');
+      const { accessToken } = registered.body as AuthBody;
+      const findOne = vi
+        .spyOn(t.dataSource.getRepository(User), 'findOne')
+        .mockRejectedValue(new Error('timeout exceeded when trying to connect'));
+      try {
+        const res = await request(apiServer(t))
+          .get('/api/v1/assets')
+          .set('Authorization', `Bearer ${accessToken}`);
+        expect(res.status).toBe(503);
+        expect(res.body).toMatchObject({ statusCode: 503, code: 'SERVICE_UNAVAILABLE' });
+      } finally {
+        findOne.mockRestore();
+      }
     });
   });
 });
