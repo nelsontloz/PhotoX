@@ -27,8 +27,13 @@ The rules the code follows, so a new file has one obvious home. Enforced where i
 2. **The data layer does not import features.** `database/**` may import `../scripts/**`,
    `common/**` and `../shared/**` only. ESLint enforces this.
 3. **A table has one owner.** A feature that needs another feature's rows calls its exported
-   service. Cross-feature repository access is reserved for `backup/`, which is declared as
-   cross-cutting at the top of `backup.module.ts`.
+   service, and that service returns a narrow shape (`{id, fileId}`, `Set<string>`), never the
+   entity: a caller may learn about a row, not mutate it. Cross-feature repository access is
+   reserved for `backup/`, which is declared as cross-cutting at the top of `backup.module.ts`.
+   `Repository<Asset>` is the worked example — it exists only in `assets/` plus four stated
+   exceptions (`backup/`, `admin/`, the token-scoped public reads in `shares/`, and `faces/`,
+   which cannot depend back on `assets/` because `AssetsModule` imports `FacesModule`).
+   `src/structure.spec.ts` fails the build on any other directory, and on a stale exemption.
 4. **Helpers move up before they spread.** A function used by three features belongs in `common/`.
    A pure helper exported from a `*.service.ts` is a boundary leak, not a convenience.
 5. **Controllers are thin.** Validation, cookies and streaming aside, a controller may not decide
