@@ -7,7 +7,7 @@ function requireOpenTrashedId(ctx: Ctx): string {
   return id;
 }
 
-const trashFigure = (page: Page) => page.locator('figure[role="button"]');
+const trashItems = (page: Page) => page.getByTestId('gallery-item');
 
 Given('I uploaded two photos through the API', async ({ request, ctx }) => {
   const auth = requireAuth(ctx);
@@ -36,11 +36,11 @@ When('I trash both uploaded photos through the API', async ({ request, ctx }) =>
 });
 
 Then('the trash page shows exactly one item', async ({ page }) => {
-  await expect(trashFigure(page)).toHaveCount(1, { timeout: 60_000 });
+  await expect(trashItems(page)).toHaveCount(1, { timeout: 60_000 });
 });
 
 Then('the trash page shows exactly two items', async ({ page }) => {
-  await expect(trashFigure(page)).toHaveCount(2, { timeout: 60_000 });
+  await expect(trashItems(page)).toHaveCount(2, { timeout: 60_000 });
 });
 
 When('I restore the photo from the viewer', async ({ page, ctx }) => {
@@ -54,21 +54,21 @@ When('I restore the photo from the viewer', async ({ page, ctx }) => {
     page.locator('button[aria-label="Restore from trash"]:visible').click(),
   ]);
   expect(response.status()).toBe(204);
-  await expect(page.locator('div.fixed.inset-0.z-50')).toHaveCount(0);
+  await expect(page.getByTestId('asset-viewer')).toHaveCount(0);
 });
 
 Then('the trash is empty', async ({ page }) => {
   await expect(page.getByText('Trash is empty')).toBeVisible();
-  await expect(trashFigure(page)).toHaveCount(0);
+  await expect(trashItems(page)).toHaveCount(0);
 });
 
 When('I open the first trashed item in the viewer', async ({ page, ctx }) => {
-  await trashFigure(page).first().click();
+  await trashItems(page).first().click();
   await expect(page).toHaveURL(/[?&]asset=/);
   const id = new URL(page.url()).searchParams.get('asset');
   if (!id) throw new Error('no ?asset= id in the URL after opening the viewer');
   ctx.openTrashedId = id;
-  await expect(page.locator('div.fixed.inset-0.z-50')).toBeVisible();
+  await expect(page.getByTestId('asset-viewer')).toBeVisible();
 });
 
 When('I permanently delete the open photo from the viewer', async ({ page, ctx }) => {
@@ -82,7 +82,7 @@ When('I permanently delete the open photo from the viewer', async ({ page, ctx }
     page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click(),
   ]);
   expect(response.status()).toBe(204);
-  await expect(page.locator('div.fixed.inset-0.z-50')).toHaveCount(0);
+  await expect(page.getByTestId('asset-viewer')).toHaveCount(0);
 });
 
 Then('the permanently deleted photo is gone through the API', async ({ request, ctx }) => {

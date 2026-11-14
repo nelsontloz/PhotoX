@@ -5,8 +5,7 @@ import { dirname, join } from 'node:path';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
-import { type ExecutionContext, type INestApplication } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import type { INestApplication } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import type { Queue } from 'bullmq';
@@ -102,14 +101,7 @@ export interface ApiTestApp {
   signWorkerToken: (user: MockUser, opts?: { act?: boolean }) => string;
 }
 
-const DEFAULT_MOCK_USER: MockUser = {
-  id: '11111111-1111-4111-8111-111111111111',
-  email: 'test@example.com',
-  role: 'user',
-};
-
 export async function createApiTestApp(opts?: {
-  mockUser?: MockUser | null;
   storageDir?: string;
   /** stubs TextEncodeService so search specs never need the real ONNX text tower */
   encodeQuery?: (q: string) => Promise<number[]>;
@@ -118,7 +110,6 @@ export async function createApiTestApp(opts?: {
   /** build the Swagger document (only the API error-contract spec needs /docs-json) */
   swagger?: boolean;
 }): Promise<ApiTestApp> {
-  const mockUser = opts?.mockUser === undefined ? DEFAULT_MOCK_USER : opts.mockUser;
   const { pgHost, pgPort, pgDb } = await setupTestInfra();
 
   const storageDir = opts?.storageDir ?? mkdtempSync(join(tmpdir(), 'api-int-storage-'));
@@ -172,17 +163,6 @@ export async function createApiTestApp(opts?: {
 
     for (const override of opts?.overrides ?? []) {
       builder.overrideProvider(override.token).useValue(override.value);
-    }
-
-    if (mockUser !== null) {
-      const current: MockUser = mockUser;
-      builder.overrideProvider(APP_GUARD).useValue({
-        canActivate: (ctx: ExecutionContext) => {
-          const req = ctx.switchToHttp().getRequest<{ user?: MockUser }>();
-          req.user = current;
-          return true;
-        },
-      });
     }
 
     const moduleRef = await builder.compile();
@@ -288,9 +268,11 @@ export async function waitForJobWithAsset(
 }
 
 export async function resetDb(t: ApiTestApp): Promise<void> {
-  await t.dataSource.query(
-    'TRUNCATE users, refresh_tokens, albums, album_assets, shares, files, assets, asset_thumbnails, faces, persons, app_settings, asset_embeddings, asset_detections, places, upload_sessions, upload_session_parts, backup_merges, backup_runs RESTART IDENTITY CASCADE',
-  );
+  // derived from the registered entities so a new entity cannot silently survive a reset;
+  // FK-free tables (user_deletes, backup_merges.backupUserId) still belong here, CASCADE
+  // cannot reach them from users
+  const tables = t.dataSource.entityMetadatas.map((meta) => `"${meta.tableName}"`).join(', ');
+  await t.dataSource.query(`TRUNCATE ${tables} RESTART IDENTITY CASCADE`);
   rmSync(t.storageDir, { recursive: true, force: true });
   await t.storage.ensureDir();
 }

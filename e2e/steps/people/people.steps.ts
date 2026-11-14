@@ -253,8 +253,8 @@ When('I go back to the people page', async ({ page }) => {
 });
 
 Then('the person detail shows one asset without a face box overlay', async ({ page }) => {
-  await expect(page.locator('figure[role="button"]')).toHaveCount(1, { timeout: 60_000 });
-  await expect(page.locator('figure[role="button"] div.border-2')).toHaveCount(0);
+  await expect(page.getByTestId('gallery-item')).toHaveCount(1, { timeout: 60_000 });
+  await expect(page.getByTestId('gallery-item').getByTestId('face-box')).toHaveCount(0);
 });
 
 Then('the person detail shows a {string} day header', async ({ page }, label: string) => {
@@ -263,20 +263,20 @@ Then('the person detail shows a {string} day header', async ({ page }, label: st
 
 When('I open my latest person photo in the viewer', async ({ page, ctx }) => {
   await page.goto(`/?asset=${requireAssetId(ctx)}`);
-  await expect(page.locator('div.fixed.inset-0.z-50')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('asset-viewer')).toBeVisible({ timeout: 30_000 });
 });
 
 When('I open the person info panel', async ({ page }) => {
   await page.locator('button[title="Toggle Info"]').click();
   // AssetMetadataPanel also renders an h4 "Details" — anchor the panel header by level + container
-  const panel = page.locator('div.fixed.inset-0.z-50 aside');
+  const panel = page.getByTestId('asset-viewer').locator('aside');
   await expect(panel.getByRole('heading', { level: 2, name: 'Details' })).toBeVisible();
 });
 
 When('I assign the viewer face to the seeded person', async ({ page, ctx }) => {
   const personId = requirePersonId(ctx);
   const faceId = requirePersonFaceId(ctx);
-  const select = page.locator('div.fixed.inset-0.z-50 aside select');
+  const select = page.getByTestId('asset-viewer').locator('aside select');
   await expect(select.locator(`option[value="${personId}"]`)).toHaveCount(1, { timeout: 30_000 });
   const [response] = await Promise.all([
     page.waitForResponse((response) => isFacePersonPatch(faceId, response)),
@@ -303,7 +303,7 @@ Then('the seeded person face is assigned to the person', async ({ request, ctx }
 
 When('I unassign the viewer face from the person', async ({ page, ctx }) => {
   const faceId = requirePersonFaceId(ctx);
-  const select = page.locator('div.fixed.inset-0.z-50 aside select');
+  const select = page.getByTestId('asset-viewer').locator('aside select');
   const [response] = await Promise.all([
     page.waitForResponse((response) => isFacePersonPatch(faceId, response)),
     select.selectOption(''),

@@ -536,12 +536,12 @@ export async function uploadViaApi(
 }
 
 export async function expectSingleTimelineItem(page: Page): Promise<void> {
-  await expect(page.locator('figure[role="button"]')).toHaveCount(1, { timeout: 60_000 });
+  await expect(page.getByTestId('gallery-item')).toHaveCount(1, { timeout: 60_000 });
 }
 
 /** Thumbnails load behind IntersectionObserver + scroll-idle gating — scroll first, then wait. */
 export async function expectThumbnailLoaded(page: Page): Promise<void> {
-  const img = page.locator('figure[role="button"] img').first();
+  const img = page.getByTestId('gallery-item').locator('img').first();
   await img.waitFor({ state: 'attached', timeout: 60_000 });
   await img.scrollIntoViewIfNeeded();
   await expectImageLoaded(img);
@@ -575,7 +575,7 @@ export async function waitForThumbnails(
 
 /** Clicks the first tile, waits for the viewer URL, then caches and returns the ?asset= id. */
 export async function openViewerAndCaptureAssetId(page: Page, ctx: Ctx): Promise<string> {
-  await page.locator('figure[role="button"]').first().click();
+  await page.getByTestId('gallery-item').first().click();
   await expect(page).toHaveURL(/[?&]asset=/);
   const id = new URL(page.url()).searchParams.get('asset');
   if (!id) throw new Error('no ?asset= id in the URL after opening the viewer');
@@ -588,7 +588,7 @@ export async function discoverAssetId(page: Page, ctx: Ctx): Promise<string> {
   if (ctx.assetId) return ctx.assetId;
   const id = await openViewerAndCaptureAssetId(page, ctx);
   await page.keyboard.press('Escape');
-  await expect(page.locator('div.fixed.inset-0.z-50')).toHaveCount(0);
+  await expect(page.getByTestId('asset-viewer')).toHaveCount(0);
   return id;
 }
 

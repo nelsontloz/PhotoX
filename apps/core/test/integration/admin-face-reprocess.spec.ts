@@ -16,7 +16,7 @@ describe('admin face reprocess and recluster', () => {
   let auth: Record<string, string>;
 
   beforeAll(async () => {
-    t = await createApiTestApp({ mockUser: null });
+    t = await createApiTestApp();
   }, 120_000);
 
   afterAll(async () => {

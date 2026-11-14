@@ -14,6 +14,7 @@ import { DataSource } from 'typeorm';
 import { loadAuthEnv, loadEnv } from '@photox/shared-config';
 import type { JwtPayload, Role } from '@photox/shared-types';
 import { bearerToken, clearAccessCookie, readAccessCookie, setAccessCookie } from './auth-cookie';
+import { apiError } from '../common/api-error';
 import {
   allowsJobScopeHeader,
   isActListRoute,
@@ -179,16 +180,21 @@ export class JwtAuthGuard implements CanActivate {
     let storedRole: Role | undefined;
     if (this.dataSource) {
       if (typeof payload.iat !== 'number') throw new UnauthorizedException();
-      // a failed lookup reads as "no row": non-act tokens still fail closed below, while
-      // worker-actor pseudo-subs (e.g. worker-service, not a uuid Postgres can cast) pass
-      let row: { role: Role; tokensValidAfter: Date | null } | null;
-      try {
-        row = await this.dataSource.getRepository(User).findOne({
-          where: { id: sub },
-          select: { id: true, role: true, tokensValidAfter: true },
-        });
-      } catch {
-        row = null;
+      // non-uuid subjects (the worker-actor pseudo-sub 'worker-service') are not identities:
+      // skip the lookup instead of letting Postgres reject the cast
+      let row: { role: Role; tokensValidAfter: Date | null } | null = null;
+      if (UUID_RE.test(sub)) {
+        try {
+          row = await this.dataSource.getRepository(User).findOne({
+            where: { id: sub },
+            select: { id: true, role: true, tokensValidAfter: true },
+          });
+        } catch {
+          // an auth-state read failure is an outage, not an anonymous caller. Reporting 401
+          // here made a transient DB error look like a logout: the client refresh-retried and
+          // real sessions died. Fail as retryable instead (503), which is what it is.
+          throw apiError(503, 'SERVICE_UNAVAILABLE', 'Authentication state unavailable');
+        }
       }
       // no user row fails closed — except worker-actor pseudo-subs (e.g. worker-service),
       // which have no users row; user-sub worker tokens still hit the floor above
@@ -204,10 +210,15 @@ export class JwtAuthGuard implements CanActivate {
       // ponytail: per-request indexed existence check — fold into the users lookup or cache in
       // Redis if this shows up hot
       if (typeof payload.sid === 'string') {
-        const alive = await this.dataSource
-          .getRepository(RefreshToken)
-          .exists({ where: { sessionId: payload.sid } })
-          .catch(() => false);
+        let alive: boolean;
+        try {
+          alive = await this.dataSource
+            .getRepository(RefreshToken)
+            .exists({ where: { sessionId: payload.sid } });
+        } catch {
+          // same rule as the user lookup: a failed read is an outage, never a dead session
+          throw apiError(503, 'SERVICE_UNAVAILABLE', 'Authentication state unavailable');
+        }
         if (!alive) throw new UnauthorizedException();
       }
     }

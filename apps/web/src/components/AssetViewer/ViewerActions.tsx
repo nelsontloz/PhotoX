@@ -76,6 +76,7 @@ export function ViewerActions({
     <>
       <button
         onClick={onToggleFavorite}
+        aria-pressed={asset.favorite}
         className="p-2 text-white/80 hover:text-white transition-colors"
         title="Favorite"
       >

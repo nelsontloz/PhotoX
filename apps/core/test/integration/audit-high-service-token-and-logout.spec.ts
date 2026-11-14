@@ -67,8 +67,8 @@ describe('audit High #3/#4: service-token scope and logout revocation (expect se
   let t: ApiTestApp;
 
   beforeAll(async () => {
-    // mockUser: null keeps the real JwtAuthGuard in place — the guard is what is under test
-    t = await createApiTestApp({ mockUser: null });
+    // the real JwtAuthGuard stays in place — the guard is what is under test
+    t = await createApiTestApp();
   }, 120_000);
 
   afterAll(async () => {

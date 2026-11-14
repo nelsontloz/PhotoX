@@ -130,7 +130,7 @@ export function AssetViewer({
       : undefined;
 
   return (
-    <div className="fixed inset-0 z-50 flex overflow-hidden bg-black">
+    <div className="fixed inset-0 z-50 flex overflow-hidden bg-black" data-testid="asset-viewer">
       {imageUrl && !isVideo && (
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <img

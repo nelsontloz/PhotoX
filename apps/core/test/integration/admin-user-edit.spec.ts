@@ -79,7 +79,6 @@ describe('admin user edit (PATCH /api/v1/admin/users/:id)', () => {
 
   beforeAll(async () => {
     t = await createApiTestApp({
-      mockUser: null,
       overrides: [
         { token: UserBackupService, value: backupStub },
         { token: S3BackupService, value: {} },

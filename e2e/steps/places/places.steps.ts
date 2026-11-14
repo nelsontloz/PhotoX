@@ -190,13 +190,13 @@ When('I click the cluster bubble', async ({ page, ctx }) => {
 Then('the places panel lists {int} photos', async ({ page }, count: number) => {
   const panel = placesPanel(page);
   await expect(panel.getByRole('heading', { level: 2, name: panelLabel(count) })).toBeVisible();
-  await expect(panel.locator('figure[role="button"]')).toHaveCount(count);
+  await expect(panel.getByTestId('gallery-item')).toHaveCount(count);
 });
 
 Then('the places panel lists a single photo', async ({ page }) => {
   const panel = placesPanel(page);
   await expect(panel.getByRole('heading', { level: 2, name: '1 photo' })).toBeVisible();
-  await expect(panel.locator('figure[role="button"]')).toHaveCount(1);
+  await expect(panel.getByTestId('gallery-item')).toHaveCount(1);
 });
 
 Then('the map view in the URL is unchanged', ({ page, ctx }) => {
@@ -209,7 +209,7 @@ Then('the map view in the URL is unchanged', ({ page, ctx }) => {
 });
 
 When('I click the first photo in the places panel', async ({ page, ctx }) => {
-  await placesPanel(page).locator('figure[role="button"]').first().click();
+  await placesPanel(page).getByTestId('gallery-item').first().click();
   await expect(page).toHaveURL(/[?&]asset=/);
   const id = new URL(page.url()).searchParams.get('asset');
   if (!id) throw new Error('no ?asset= id in the URL after opening the places viewer');
@@ -217,7 +217,7 @@ When('I click the first photo in the places panel', async ({ page, ctx }) => {
 });
 
 Then('the viewer is open on a placed photo', async ({ page, ctx }) => {
-  await expect(page.locator('div.fixed.inset-0.z-50')).toBeVisible();
+  await expect(page.getByTestId('asset-viewer')).toBeVisible();
   const id = new URL(page.url()).searchParams.get('asset');
   if (!id) throw new Error('no ?asset= id in the URL');
   expect(ctx.placesAssetIds ?? []).toContain(id);
@@ -241,8 +241,8 @@ Then('the viewer walked every placed photo', ({ ctx }) => {
 
 When('I close the places viewer', async ({ page }) => {
   // the top bar renders before the media, so its back button is the overlay's first button
-  await page.locator('div.fixed.inset-0.z-50 button').first().click();
-  await expect(page.locator('div.fixed.inset-0.z-50')).toHaveCount(0);
+  await page.getByTestId('asset-viewer').locator('button').first().click();
+  await expect(page.getByTestId('asset-viewer')).toHaveCount(0);
 });
 
 Then('the places map shows a single location marker', async ({ page }) => {
@@ -300,7 +300,7 @@ When('I click the location marker', async ({ page }) => {
 });
 
 Then('the viewer opens above the map and stays clickable', async ({ page }) => {
-  const overlay = page.locator('div.fixed.inset-0.z-50');
+  const overlay = page.getByTestId('asset-viewer');
   await expect(overlay).toBeVisible();
   // Leaflet panes/controls carry z-index 400-1000; `.places-map`'s `isolation: isolate` confines
   // that band under this z-50 overlay. Without it the map paints through the viewer, and the

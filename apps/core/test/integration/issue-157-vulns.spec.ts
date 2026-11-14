@@ -37,7 +37,7 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
   beforeAll(async () => {
     // the rotation test needs the previous secret at app boot (guard reads env in constructor)
     process.env.AUTH_TOKEN_SECRET_PREVIOUS = TEST_AUTH_SECRET_PREVIOUS;
-    t = await createApiTestApp({ mockUser: null });
+    t = await createApiTestApp();
   }, 120_000);
 
   afterAll(async () => {

@@ -44,6 +44,7 @@ export function FaceOverlay({
         return (
           <div
             key={face.id}
+            data-testid="face-box"
             className={`absolute border-2 rounded-md transition duration-150 ${boxClass}`}
             style={style}
           >
