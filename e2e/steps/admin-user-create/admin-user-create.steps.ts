@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import {
   After,
   Given,
@@ -9,6 +9,9 @@ import {
   When,
   authHeaders,
   injectSession,
+  requireAdmin,
+  scenarioState,
+  searchUsersFor,
   signInAdmin,
   type AuthResponse,
   type Ctx,
@@ -37,7 +40,7 @@ interface UserDraft {
   role: 'user' | 'admin';
 }
 
-/** Per-scenario creation state, keyed by the scenario ctx (support.ts Ctx untouched). */
+/** Per-scenario creation state (support.ts Ctx untouched). */
 interface UserCreateState {
   admin?: AuthResponse;
   draft?: UserDraft;
@@ -45,39 +48,14 @@ interface UserCreateState {
   createStatus?: number;
 }
 
-const states = new WeakMap<Ctx, UserCreateState>();
-
-function createState(ctx: Ctx): UserCreateState {
-  let state = states.get(ctx);
-  if (!state) {
-    state = {};
-    states.set(ctx, state);
-  }
-  return state;
-}
-
 function requireDraft(ctx: Ctx): UserDraft {
-  const draft = createState(ctx).draft;
+  const draft = scenarioState<UserCreateState>(ctx).draft;
   if (!draft) throw new Error('describe the account to create first');
   return draft;
 }
 
-async function requireCreateAdmin(request: APIRequestContext, ctx: Ctx): Promise<AuthResponse> {
-  const state = createState(ctx);
-  state.admin ??= await signInAdmin(request);
-  return state.admin;
-}
-
 function draftFor(name: string, role: 'user' | 'admin'): UserDraft {
   return { name, email: `created-${randomUUID()}@photox.test`, password: PASSWORD, role };
-}
-
-/** Narrows the users table to one row and waits for the search-scoped footer to settle. */
-async function searchUsersFor(page: Page, email: string): Promise<void> {
-  await page.getByLabel('Search users').fill(email);
-  await expect(page.getByText('Showing 1 registered user(s)', { exact: true })).toBeVisible({
-    timeout: 15_000,
-  });
 }
 
 function createUserDialog(page: Page) {
@@ -87,7 +65,7 @@ function createUserDialog(page: Page) {
 Given(
   'an administrator session is available for account creation',
   async ({ request, page, baseURL, ctx }) => {
-    const admin = await requireCreateAdmin(request, ctx);
+    const admin = await requireAdmin(ctx, request);
     ctx.auth = admin;
     await injectSession(page, admin, baseURL);
     await page.goto('/');
@@ -95,11 +73,11 @@ Given(
 );
 
 Given('a regular account will be created through the dialog', ({ ctx }) => {
-  createState(ctx).draft = draftFor('E2E Created User', 'user');
+  scenarioState<UserCreateState>(ctx).draft = draftFor('E2E Created User', 'user');
 });
 
 Given('an administrator account will be created through the dialog', ({ ctx }) => {
-  createState(ctx).draft = draftFor('E2E Created Admin', 'admin');
+  scenarioState<UserCreateState>(ctx).draft = draftFor('E2E Created Admin', 'admin');
 });
 
 Given('the public sign-up flag is mocked off for this page', async ({ page }) => {
@@ -165,7 +143,7 @@ Then('the create-user submit stays disabled until every field is valid', async (
 });
 
 When('the account-creating admin submits the new account', async ({ page, ctx }) => {
-  const state = createState(ctx);
+  const state = scenarioState<UserCreateState>(ctx);
   const draft = requireDraft(ctx);
   const dialog = createUserDialog(page);
   await dialog.locator('#create-user-name').fill(draft.name);
@@ -186,7 +164,7 @@ When('the account-creating admin submits the new account', async ({ page, ctx })
 });
 
 Then('the admin account create request returned 201', ({ ctx }) => {
-  expect(createState(ctx).createStatus).toBe(201);
+  expect(scenarioState<UserCreateState>(ctx).createStatus).toBe(201);
 });
 
 Then('the create-user dialog closes with a Created toast', async ({ page, ctx }) => {
@@ -235,10 +213,10 @@ Then('the created admin can reach the admin users API', async ({ request, ctx })
 Then('the created admin account is removed again', async ({ request, ctx }) => {
   // a second admin left in the database would let feature 13's last-admin DELETE through (the
   // guard only counts role=admin rows), so the scenario must end with the seeded admin alone
-  const state = createState(ctx);
+  const state = scenarioState<UserCreateState>(ctx);
   const created = state.created;
   if (!created) throw new Error('create the admin account first');
-  const admin = await requireCreateAdmin(request, ctx);
+  const admin = await requireAdmin(ctx, request);
   const response = await request.delete(`/api/v1/admin/users/${created.id}`, {
     headers: authHeaders(admin),
   });
@@ -260,11 +238,11 @@ Then('the created admin account is removed again', async ({ request, ctx }) => {
 
 // Best-effort backstop for a scenario that fails before the removal step.
 After(async ({ request, ctx, $testInfo }) => {
-  const state = states.get(ctx);
-  const created = state?.created;
+  const state = scenarioState<UserCreateState>(ctx);
+  const created = state.created;
   if (created?.role !== 'admin') return;
   try {
-    const admin = state?.admin ?? (await signInAdmin(request));
+    const admin = state.admin ?? (await signInAdmin(request));
     await request.delete(`/api/v1/admin/users/${created.id}`, { headers: authHeaders(admin) });
   } catch (err) {
     // never fail the hook — annotate so the leftover account is visible in the report

@@ -8,7 +8,7 @@ import {
   requireAssetId,
   requireAuth,
   seedEmbedding,
-  workerHeaders,
+  seedFaces,
   type AuthResponse,
   type Ctx,
 } from '../support';
@@ -42,28 +42,6 @@ function requirePersonFaceId(ctx: Ctx): string {
   const id = ctx.personFaceId;
   if (!id) throw new Error('seed a person face first');
   return id;
-}
-
-interface SeedPersonFace {
-  box: { x: number; y: number; w: number; h: number };
-  embedding: number[];
-}
-
-/** Appends faces via the authenticated user endpoint (same wire shape as faces.steps.ts). */
-async function seedPersonFaces(
-  request: APIRequestContext,
-  auth: AuthResponse,
-  assetId: string,
-  faces: SeedPersonFace[],
-): Promise<void> {
-  const response = await request.post(`/worker/assets/${assetId}/faces`, {
-    headers: workerHeaders(auth.user.id, assetId),
-    data: {
-      faces: faces.map((face) => ({ ...face, confidence: 0.9 })),
-    },
-  });
-  expect(response.status()).toBe(201);
-  expect(((await response.json()) as { count: number }).count).toBe(faces.length);
 }
 
 async function fetchAssetFaces(
@@ -153,7 +131,7 @@ Given('I seed one unassigned person face on my latest photo', async ({ request, 
   const auth = requireAuth(ctx);
   const assetId = requireAssetId(ctx);
   const before = await fetchAssetFaces(request, auth, assetId);
-  await seedPersonFaces(request, auth, assetId, [
+  await seedFaces(request, auth, assetId, [
     { box: { x: 20, y: 20, w: 60, h: 60 }, embedding: seedEmbedding(1) },
   ]);
   const added = (await fetchAssetFaces(request, auth, assetId)).filter(
@@ -167,7 +145,7 @@ Given('I seed two distinct person clusters on my latest photo', async ({ request
   const auth = requireAuth(ctx);
   const assetId = requireAssetId(ctx);
   // two identical-embedding pairs, far apart in vector space -> two DBSCAN clusters -> two persons
-  await seedPersonFaces(request, auth, assetId, [
+  await seedFaces(request, auth, assetId, [
     { box: { x: 10, y: 10, w: 60, h: 60 }, embedding: seedEmbedding(0) },
     { box: { x: 80, y: 10, w: 60, h: 60 }, embedding: seedEmbedding(0) },
     { box: { x: 10, y: 80, w: 60, h: 60 }, embedding: seedEmbedding(1) },

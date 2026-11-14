@@ -1,4 +1,4 @@
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import {
   Given,
   Then,
@@ -7,8 +7,10 @@ import {
   authHeaders,
   injectSession,
   registerUser,
+  requireAdmin,
+  scenarioState,
+  searchUsersFor,
   signIn,
-  signInAdmin,
   startAndWaitForRun,
   type AuthResponse,
   type Ctx,
@@ -46,7 +48,7 @@ interface AdminUserUpdateBody {
   };
 }
 
-/** Per-scenario edit state, keyed by the scenario ctx (support.ts Ctx untouched). */
+/** Per-scenario edit state (support.ts Ctx untouched). */
 interface UserEditState {
   admin?: AuthResponse;
   account?: AuthResponse;
@@ -56,53 +58,28 @@ interface UserEditState {
   roleChangeStatus?: number;
 }
 
-const states = new WeakMap<Ctx, UserEditState>();
-
-function editState(ctx: Ctx): UserEditState {
-  let state = states.get(ctx);
-  if (!state) {
-    state = {};
-    states.set(ctx, state);
-  }
-  return state;
-}
-
 function requireAccount(ctx: Ctx): AuthResponse {
-  const account = editState(ctx).account;
+  const account = scenarioState<UserEditState>(ctx).account;
   if (!account) throw new Error('register the account for the edit flow first');
   return account;
 }
 
 function requireNewEmail(ctx: Ctx): string {
-  const email = editState(ctx).newEmail;
+  const email = scenarioState<UserEditState>(ctx).newEmail;
   if (!email) throw new Error('save the account edit first');
   return email;
 }
 
 function requireUpdateBody(ctx: Ctx): AdminUserUpdateBody {
-  const body = editState(ctx).updateBody;
+  const body = scenarioState<UserEditState>(ctx).updateBody;
   if (!body) throw new Error('change the email through the admin API first');
   return body;
-}
-
-async function requireEditAdmin(request: APIRequestContext, ctx: Ctx): Promise<AuthResponse> {
-  const state = editState(ctx);
-  state.admin ??= await signInAdmin(request);
-  return state.admin;
 }
 
 /** `<local>-edited@<domain>` — unique per scenario and derived from the registered address. */
 function editedEmail(email: string): string {
   const at = email.indexOf('@');
   return at < 0 ? `${email}-edited` : `${email.slice(0, at)}-edited${email.slice(at)}`;
-}
-
-/** Narrows the users table to one row and waits for the search-scoped footer to settle. */
-async function searchUsersFor(page: Page, email: string): Promise<void> {
-  await page.getByLabel('Search users').fill(email);
-  await expect(page.getByText('Showing 1 registered user(s)', { exact: true })).toBeVisible({
-    timeout: 15_000,
-  });
 }
 
 function editDialog(page: Page) {
@@ -119,7 +96,7 @@ async function openEditDialog(page: Page, displayName: string) {
 Given(
   'an administrator session is available for account editing',
   async ({ request, page, baseURL, ctx }) => {
-    const admin = await requireEditAdmin(request, ctx);
+    const admin = await requireAdmin(ctx, request);
     ctx.auth = admin;
     await injectSession(page, admin, baseURL);
     await page.goto('/');
@@ -127,14 +104,14 @@ Given(
 );
 
 Given('a regular account is registered for the edit flow', async ({ request, ctx }) => {
-  editState(ctx).account = await registerUser(request);
+  scenarioState<UserEditState>(ctx).account = await registerUser(request);
 });
 
 Given(
   'that account has an S3 backup taken through the admin API',
   async ({ request, ctx, $testInfo }) => {
     $testInfo.setTimeout(360_000);
-    const admin = await requireEditAdmin(request, ctx);
+    const admin = await requireAdmin(ctx, request);
     await startAndWaitForRun(request, admin, '/api/v1/admin/backups', {
       emailOrId: requireAccount(ctx).user.id,
     });
@@ -185,7 +162,7 @@ When(
   'the account-editing admin saves a new name and email for that account',
   async ({ page, ctx }) => {
     const account = requireAccount(ctx);
-    const state = editState(ctx);
+    const state = scenarioState<UserEditState>(ctx);
     state.newName = EDITED_DISPLAY_NAME;
     state.newEmail = editedEmail(account.user.email);
     await searchUsersFor(page, account.user.email);
@@ -203,7 +180,7 @@ Then('the edit dialog closes after a successful save', async ({ page }) => {
 });
 
 Then('the account edit toast reports the new name', async ({ page, ctx }) => {
-  const name = editState(ctx).newName;
+  const name = scenarioState<UserEditState>(ctx).newName;
   if (!name) throw new Error('save the new name first');
   // the fresh account has no S3 backup, so the toast carries the no-backup note
   await expect(
@@ -212,7 +189,7 @@ Then('the account edit toast reports the new name', async ({ page, ctx }) => {
 });
 
 Then('the users list shows the updated name and email', async ({ page, ctx }) => {
-  const state = editState(ctx);
+  const state = scenarioState<UserEditState>(ctx);
   if (!state.newName || !state.newEmail) {
     throw new Error('save the updated name and email first');
   }
@@ -226,9 +203,9 @@ Then('the users list shows the updated name and email', async ({ page, ctx }) =>
 When(
   "the account-editing admin changes that account's email through the admin API",
   async ({ request, ctx }) => {
-    const admin = await requireEditAdmin(request, ctx);
+    const admin = await requireAdmin(ctx, request);
     const account = requireAccount(ctx);
-    const state = editState(ctx);
+    const state = scenarioState<UserEditState>(ctx);
     const newEmail = editedEmail(account.user.email);
     state.newEmail = newEmail;
     // the admin-set address is stored normalized: send mixed case, expect the lowercase form
@@ -269,7 +246,7 @@ When(
   async ({ page, ctx, $testInfo }) => {
     $testInfo.setTimeout(360_000);
     const account = requireAccount(ctx);
-    const state = editState(ctx);
+    const state = scenarioState<UserEditState>(ctx);
     const newEmail = editedEmail(account.user.email);
     state.newEmail = newEmail;
     await searchUsersFor(page, account.user.email);
@@ -294,7 +271,7 @@ Then(
   "the account's S3 backup is reported at the new address",
   async ({ request, ctx, $testInfo }) => {
     $testInfo.setTimeout(360_000);
-    const admin = await requireEditAdmin(request, ctx);
+    const admin = await requireAdmin(ctx, request);
     const account = requireAccount(ctx);
     const response = await request.get(
       `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(account.user.id)}`,
@@ -316,7 +293,7 @@ When(
   async ({ page, ctx, $testInfo }) => {
     $testInfo.setTimeout(360_000);
     const account = requireAccount(ctx);
-    const state = editState(ctx);
+    const state = scenarioState<UserEditState>(ctx);
     const newEmail = editedEmail(account.user.email);
     state.newEmail = newEmail;
     await searchUsersFor(page, account.user.email);
@@ -388,22 +365,22 @@ Then('the backup warning box is cleared', async ({ page }) => {
 When(
   'the account-editing admin attempts a role change through the admin API',
   async ({ request, ctx }) => {
-    const admin = await requireEditAdmin(request, ctx);
+    const admin = await requireAdmin(ctx, request);
     const account = requireAccount(ctx);
     const response = await request.patch(`/api/v1/admin/users/${account.user.id}`, {
       headers: authHeaders(admin),
       data: { role: 'admin' },
     });
-    editState(ctx).roleChangeStatus = response.status();
+    scenarioState<UserEditState>(ctx).roleChangeStatus = response.status();
   },
 );
 
 Then('the role change is rejected as a bad request', ({ ctx }) => {
-  expect(editState(ctx).roleChangeStatus).toBe(400);
+  expect(scenarioState<UserEditState>(ctx).roleChangeStatus).toBe(400);
 });
 
 Then("the account's role is unchanged", async ({ request, ctx }) => {
-  const admin = await requireEditAdmin(request, ctx);
+  const admin = await requireAdmin(ctx, request);
   const account = requireAccount(ctx);
   const response = await request.get(
     `/api/v1/admin/users?q=${encodeURIComponent(account.user.email)}`,

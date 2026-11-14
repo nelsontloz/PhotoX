@@ -1,18 +1,22 @@
 import { createHmac } from 'node:crypto';
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
 import {
+  E2E_AUTH_TOKEN_SECRET,
   Given,
   Then,
   When,
   addAssetsViaApi,
   authHeaders,
+  base64url,
   createAlbumViaApi,
   getAsset,
   injectSession,
   registerUser,
+  requireAdmin,
+  scenarioState,
+  searchUsersFor,
   seedEmbedding,
   signIn,
-  signInAdmin,
   startAndWaitForRun,
   uploadViaApi,
   waitForThumbnails,
@@ -21,18 +25,11 @@ import {
   type Ctx,
 } from '../support';
 
-// The suite mints its own tokens with node:crypto (same precedent as workerHeaders in
-// support.ts). Open registration only ever mints role 'user' and there is no promote
-// endpoint, so this forges the admin role onto a REAL registered user row purely to prove the
-// server guard ignores the claim: the last-admin 409 stays unit-tested, while the forged token
-// must be rejected with 403 before the delete guard runs. Test seeding only, never prod.
-const E2E_AUTH_TOKEN_SECRET =
-  process.env.E2E_AUTH_TOKEN_SECRET ?? 'dev-auth-secret-32-characters-minimum!!';
-
-function base64url(input: string | Buffer): string {
-  return (typeof input === 'string' ? Buffer.from(input) : input).toString('base64url');
-}
-
+// The suite mints its own tokens (support.ts holds the signing material). Open registration only
+// ever mints role 'user' and there is no promote endpoint, so this forges the admin role onto a
+// REAL registered user row purely to prove the server guard ignores the claim: the last-admin 409
+// stays unit-tested, while the forged token must be rejected with 403 before the delete guard runs.
+// Test seeding only, never prod.
 function forgedAdminHeaders(userId: string, email: string): Record<string, string> {
   const now = Math.floor(Date.now() / 1000);
   const encoded =
@@ -42,7 +39,7 @@ function forgedAdminHeaders(userId: string, email: string): Record<string, strin
   return { Authorization: `Bearer ${encoded}.${signature}` };
 }
 
-/** Per-scenario deletion state, keyed by the scenario ctx (support.ts Ctx untouched). */
+/** Per-scenario deletion state (support.ts Ctx untouched). */
 interface UserDeleteState {
   admin?: AuthResponse;
   listed?: AuthResponse;
@@ -66,45 +63,28 @@ interface UserDeleteState {
   lastAdminMessage?: string;
 }
 
-const states = new WeakMap<Ctx, UserDeleteState>();
-
-function deleteState(ctx: Ctx): UserDeleteState {
-  let state = states.get(ctx);
-  if (!state) {
-    state = {};
-    states.set(ctx, state);
-  }
-  return state;
-}
-
 function requireStateAdmin(ctx: Ctx): AuthResponse {
-  const admin = deleteState(ctx).admin;
+  const admin = scenarioState<UserDeleteState>(ctx).admin;
   if (!admin) throw new Error('sign in as the seeded administrator first');
   return admin;
 }
 
 function requireListed(ctx: Ctx): AuthResponse {
-  const listed = deleteState(ctx).listed;
+  const listed = scenarioState<UserDeleteState>(ctx).listed;
   if (!listed) throw new Error('register the listed user first');
   return listed;
 }
 
 function requireVictim(ctx: Ctx): AuthResponse {
-  const victim = deleteState(ctx).victim;
+  const victim = scenarioState<UserDeleteState>(ctx).victim;
   if (!victim) throw new Error('register the deletion victim first');
   return victim;
 }
 
 function requireSibling(ctx: Ctx): AuthResponse {
-  const sibling = deleteState(ctx).sibling;
+  const sibling = scenarioState<UserDeleteState>(ctx).sibling;
   if (!sibling) throw new Error('register the sibling user first');
   return sibling;
-}
-
-async function requireAdmin(request: APIRequestContext, ctx: Ctx): Promise<AuthResponse> {
-  const state = deleteState(ctx);
-  state.admin ??= await signInAdmin(request);
-  return state.admin;
 }
 
 interface FullLibrary {
@@ -201,14 +181,6 @@ async function seedFullLibrary(
   };
 }
 
-/** Narrows the users table to one row and waits for the search-scoped footer to settle. */
-async function searchUsersFor(page: Page, email: string): Promise<void> {
-  await page.getByLabel('Search users').fill(email);
-  await expect(page.getByText('Showing 1 registered user(s)', { exact: true })).toBeVisible({
-    timeout: 15_000,
-  });
-}
-
 function deleteDialog(page: Page) {
   return page.getByRole('dialog', { name: 'Delete user confirmation' });
 }
@@ -221,19 +193,19 @@ async function openDeleteDialog(page: Page, displayName: string) {
 }
 
 Given('I am signed in as the seeded administrator', async ({ request, page, baseURL, ctx }) => {
-  const admin = await requireAdmin(request, ctx);
+  const admin = await requireAdmin(ctx, request);
   ctx.auth = admin;
   await injectSession(page, admin, baseURL);
   await page.goto('/');
 });
 
 Given('a regular user is registered for the admin list', async ({ request, ctx }) => {
-  deleteState(ctx).listed = await registerUser(request);
+  scenarioState<UserDeleteState>(ctx).listed = await registerUser(request);
 });
 
 Given('a regular user with one photo is registered for deletion', async ({ request, ctx }) => {
   const victim = await registerUser(request);
-  deleteState(ctx).victim = victim;
+  scenarioState<UserDeleteState>(ctx).victim = victim;
   await uploadViaApi(request, victim, 'photo.jpg');
 });
 
@@ -242,9 +214,9 @@ Given(
   async ({ request, ctx, $testInfo }) => {
     // two full libraries + two inline S3 backups + two cluster runs — allow room past 120s
     $testInfo.setTimeout(360_000);
-    const admin = await requireAdmin(request, ctx);
+    const admin = await requireAdmin(ctx, request);
     const victim = await registerUser(request);
-    const state = deleteState(ctx);
+    const state = scenarioState<UserDeleteState>(ctx);
     state.victim = victim;
     const library = await seedFullLibrary(request, admin, victim, 'photo.jpg');
     state.victimAssetId = library.assetId;
@@ -258,9 +230,9 @@ Given(
 );
 
 Given('a sibling user with a full library and backup is registered', async ({ request, ctx }) => {
-  const admin = await requireAdmin(request, ctx);
+  const admin = await requireAdmin(ctx, request);
   const sibling = await registerUser(request);
-  const state = deleteState(ctx);
+  const state = scenarioState<UserDeleteState>(ctx);
   state.sibling = sibling;
   // a different fixture from the victim's so a shared checksum can never alias the two
   const library = await seedFullLibrary(request, admin, sibling, 'photo-text.jpg');
@@ -453,7 +425,7 @@ When(
     const response = await request.delete(`/api/v1/admin/users/${admin.user.id}`, {
       headers: forgedAdminHeaders(setup.user.id, setup.user.email),
     });
-    const state = deleteState(ctx);
+    const state = scenarioState<UserDeleteState>(ctx);
     state.lastAdminStatus = response.status();
     const body = (await response.json()) as { message?: unknown };
     state.lastAdminMessage = typeof body.message === 'string' ? body.message : JSON.stringify(body);
@@ -463,7 +435,7 @@ When(
 Then('the forged admin token is rejected with 403', ({ ctx }) => {
   // the account row says 'user', so the claim on the forged token buys nothing: 403 before any
   // delete logic runs (the last-admin 409 is covered at the service level)
-  const state = deleteState(ctx);
+  const state = scenarioState<UserDeleteState>(ctx);
   expect(state.lastAdminStatus).toBe(403);
   expect(state.lastAdminMessage ?? '').toContain('Admin only');
 });
@@ -513,7 +485,7 @@ Then("the victim's photo derivatives regenerate", async ({ request, ctx, $testIn
   // restore rebuilds rows plus original bytes only — the manifest carries no thumbnail rows,
   // so registered sizes can only come back when the per-run restore jobs actually run
   $testInfo.setTimeout(180_000);
-  const state = deleteState(ctx);
+  const state = scenarioState<UserDeleteState>(ctx);
   const victim = requireVictim(ctx);
   const assetId = state.victimAssetId;
   if (!assetId) throw new Error('seed the victim library first');
@@ -523,7 +495,7 @@ Then("the victim's photo derivatives regenerate", async ({ request, ctx, $testIn
 });
 
 Then('the victim library is gone but the victim backup is kept', async ({ request, ctx }) => {
-  const state = deleteState(ctx);
+  const state = scenarioState<UserDeleteState>(ctx);
   const admin = requireStateAdmin(ctx);
   const victim = requireVictim(ctx);
   // the admin users list no longer carries the id
@@ -566,7 +538,7 @@ Then('the victim library is gone but the victim backup is kept', async ({ reques
 });
 
 Then('the sibling library and backup are untouched', async ({ request, page, ctx }) => {
-  const state = deleteState(ctx);
+  const state = scenarioState<UserDeleteState>(ctx);
   const sibling = requireSibling(ctx);
   // still listed with a working Delete action
   const listResponse = await request.get(
@@ -695,13 +667,16 @@ When('the victim backup is restored through the API', async ({ request, ctx, $te
     { emailOrId: requireVictim(ctx).user.id },
   );
   if (!body.email) throw new Error('restore response is missing the restored email');
-  deleteState(ctx).restoredEmail = body.email;
+  scenarioState<UserDeleteState>(ctx).restoredEmail = body.email;
 });
 
 When('the victim email is re-registered by a new user', async ({ request, ctx }) => {
   // the victim row is gone, so the address is free — a new account takes it, forcing the
   // next restore of the victim backup onto the restored-<ms>-<orig> fallback
-  deleteState(ctx).reregistered = await registerUser(request, requireVictim(ctx).user.email);
+  scenarioState<UserDeleteState>(ctx).reregistered = await registerUser(
+    request,
+    requireVictim(ctx).user.email,
+  );
 });
 
 When(
@@ -730,7 +705,7 @@ When(
       { timeout: 120_000 },
     );
     await page.getByRole('button', { name: 'Restore', exact: true }).click();
-    deleteState(ctx).restoreStatus = (await pending).status();
+    scenarioState<UserDeleteState>(ctx).restoreStatus = (await pending).status();
   },
 );
 
@@ -739,7 +714,7 @@ Then(
   async ({ page, ctx }) => {
     const victim = requireVictim(ctx);
     // the row the dialog was opened from went stale when the API restored first
-    expect(deleteState(ctx).restoreStatus).toBe(409);
+    expect(scenarioState<UserDeleteState>(ctx).restoreStatus).toBe(409);
     // unlike the delete-user dialog (which stays open on failure) the restore confirm
     // closes before the run — the 409 surfaces as a toast plus a row error, then the
     // version bump refetches the overview
@@ -769,7 +744,7 @@ Then(
 );
 
 Then('the restore toast names the fallback address', async ({ page, request, ctx }) => {
-  const state = deleteState(ctx);
+  const state = scenarioState<UserDeleteState>(ctx);
   const victim = requireVictim(ctx);
   // the dialog's POST accepts the run (202); the toast appears once the page's poll finishes
   expect(state.restoreStatus).toBe(202);
@@ -802,7 +777,7 @@ Then('the restore toast names the fallback address', async ({ page, request, ctx
 Then(
   'the fallback account signs in with the old password while the re-registered account keeps the email',
   async ({ request, ctx }) => {
-    const state = deleteState(ctx);
+    const state = scenarioState<UserDeleteState>(ctx);
     const victim = requireVictim(ctx);
     const reregistered = state.reregistered;
     const fallback = state.restoredEmail;
@@ -895,7 +870,7 @@ When('I merge the matched backup into the live account', async ({ page, ctx, $te
 });
 
 Then('the live account owns the backup library', async ({ request, ctx }) => {
-  const state = deleteState(ctx);
+  const state = scenarioState<UserDeleteState>(ctx);
   const admin = requireStateAdmin(ctx);
   const reregistered = state.reregistered;
   if (!reregistered) throw new Error('re-register the victim email first');
@@ -921,7 +896,7 @@ Then('the live account owns the backup library', async ({ request, ctx }) => {
 });
 
 Then('the source backup is gone', async ({ request, ctx }) => {
-  const state = deleteState(ctx);
+  const state = scenarioState<UserDeleteState>(ctx);
   const victim = requireVictim(ctx);
   const admin = requireStateAdmin(ctx);
   const reregistered = state.reregistered;
@@ -943,7 +918,7 @@ Then('the source backup is gone', async ({ request, ctx }) => {
 });
 
 Then('a second merge is rejected', async ({ request, ctx }) => {
-  const state = deleteState(ctx);
+  const state = scenarioState<UserDeleteState>(ctx);
   const victim = requireVictim(ctx);
   const reregistered = state.reregistered;
   if (!reregistered) throw new Error('re-register the victim email first');
