@@ -514,6 +514,38 @@ describe('album shares', () => {
     expect(stream.headers.etag).toBe(`"${record.checksumSha256}"`);
   });
 
+  it('serves a ranged transcode on the shared video stream (206)', async () => {
+    const { id: userId, token } = await seedUserWithToken();
+    const original = await seedFile(t, userId, {
+      bytes: Buffer.from('hevc-original-bytes'),
+      mimeType: 'video/quicktime',
+    });
+    const transcode = await seedFile(t, userId, {
+      bytes: Buffer.from('av1-webm-transcoded'),
+      mimeType: 'video/webm',
+    });
+    const asset = await seedAsset(t, userId, original.id, {
+      kind: 'video',
+      transcodeFileId: transcode.id,
+      transcodeStatus: 'ready',
+    });
+    const created = await createShare(token, { assetId: asset.id });
+    const share = created.body as ShareBody;
+
+    const ranged = await request(apiServer(t))
+      .get(`/api/share/${share.token}/stream`)
+      .set('Range', 'bytes=0-99');
+    expect(ranged.status).toBe(206);
+    expect(ranged.headers['content-type']).toBe('video/webm');
+    const record = await t.fileRepo.findOneOrFail({ where: { id: transcode.id } });
+    // end clamps to the transcode's last byte, so a range past EOF still proves which file served
+    expect(ranged.headers['content-range']).toBe(
+      `bytes 0-${record.sizeBytes - 1}/${record.sizeBytes}`,
+    );
+    expect(ranged.headers.etag).toBe(`"${record.checksumSha256}"`);
+    expect((ranged.body as Buffer).toString('utf8')).toBe('av1-webm-transcoded');
+  });
+
   it('serves the transcode for a shared album video member and keeps ?size=sm on the thumb', async () => {
     const { id: userId, token } = await seedUserWithToken();
     const album = await createAlbum(userId);
