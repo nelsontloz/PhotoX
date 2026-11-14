@@ -89,6 +89,7 @@ export const GalleryItem = memo(function GalleryItem({
   return (
     <figure
       role="button"
+      data-testid="gallery-item"
       tabIndex={0}
       onClick={() => {
         if (lp.justLongPressedRef.current) return;

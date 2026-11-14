@@ -22,7 +22,7 @@ function lastFavoritesList(ctx: Ctx): FavoriteList {
 
 /** The favorite control lives in the desktop top bar AND the mobile action row (hidden `sm:hidden`). */
 const favoriteButton = (page: Page) =>
-  page.locator('div.fixed.inset-0.z-50 button[title="Favorite"]:visible');
+  page.getByTestId('asset-viewer').locator('button[title="Favorite"]:visible');
 
 // An ancient fixed instant keeps the day-group label in the calendar-format branch ("Jan 2, 2020"),
 // stable in any timezone — today/yesterday would flake when a test straddles midnight.
@@ -194,12 +194,12 @@ When('I click the favorite control in the viewer', async ({ page, ctx }) => {
 });
 
 Then('the viewer marks the asset as a favorite', async ({ page }) => {
-  await expect(favoriteButton(page).locator('svg.fill-red-500')).toHaveCount(1);
+  await expect(favoriteButton(page)).toHaveAttribute('aria-pressed', 'true');
 });
 
 Then('the viewer marks the asset as not a favorite', async ({ page }) => {
   await expect(favoriteButton(page)).toBeVisible();
-  await expect(favoriteButton(page).locator('svg.fill-red-500')).toHaveCount(0);
+  await expect(favoriteButton(page)).toHaveAttribute('aria-pressed', 'false');
 });
 
 Then('the favorites page shows the empty state', async ({ page }) => {
@@ -207,7 +207,7 @@ Then('the favorites page shows the empty state', async ({ page }) => {
 });
 
 Then('the favorites grid shows exactly one item', async ({ page }) => {
-  await expect(page.locator('figure[role="button"]')).toHaveCount(1, { timeout: 60_000 });
+  await expect(page.getByTestId('gallery-item')).toHaveCount(1, { timeout: 60_000 });
 });
 
 Then('the favorites thumbnail image finishes loading', async ({ page }) => {

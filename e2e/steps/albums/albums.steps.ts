@@ -30,9 +30,14 @@ interface AlbumAssetsPayload {
 }
 
 function currentAlbum(ctx: Ctx): AlbumRef {
-  const albums = ctx.albums;
-  const album = albums?.[albums.length - 1];
+  const albums = ctx.albums ?? [];
+  const [album] = albums;
   if (!album) throw new Error('create an album first');
+  // a bare "the album" step in a two-album scenario used to target whichever album was created
+  // last, so an ordering swap could pass against the wrong one: name the album instead
+  if (albums.length > 1) {
+    throw new Error('ambiguous album: pass the album name (e.g. `the album "X"`)');
+  }
   return album;
 }
 
@@ -115,6 +120,13 @@ When('I add my album photo to the album', async ({ request, ctx }) => {
   ]);
   ctx.lastStatus = status;
   expect(status).toBe(201);
+});
+
+When('I add my album photo to the album {string}', async ({ request, ctx }, name: string) => {
+  const auth = requireAuth(ctx);
+  const album = await findAlbumByName(request, auth, name);
+  ctx.lastStatus = await addAssetsViaApi(request, auth, album.id, [albumAssetAt(ctx, 0)]);
+  expect(ctx.lastStatus).toBe(201);
 });
 
 When('I add my second album photo to the album', async ({ request, ctx }) => {
@@ -277,9 +289,10 @@ async function fetchLayout(
 async function setAlbumHidden(
   request: APIRequestContext,
   ctx: Ctx,
+  albumId: string,
   hidden: boolean,
 ): Promise<void> {
-  const response = await request.patch(`/api/v1/albums/${currentAlbum(ctx).id}`, {
+  const response = await request.patch(`/api/v1/albums/${albumId}`, {
     headers: authHeaders(requireAuth(ctx)),
     data: { hiddenFromTimeline: hidden },
   });
@@ -288,11 +301,16 @@ async function setAlbumHidden(
 }
 
 When('I hide the album from the timeline', async ({ request, ctx }) => {
-  await setAlbumHidden(request, ctx, true);
+  await setAlbumHidden(request, ctx, currentAlbum(ctx).id, true);
+});
+
+When('I hide the album {string} from the timeline', async ({ request, ctx }, name: string) => {
+  const album = await findAlbumByName(request, requireAuth(ctx), name);
+  await setAlbumHidden(request, ctx, album.id, true);
 });
 
 When('I show the album on the timeline', async ({ request, ctx }) => {
-  await setAlbumHidden(request, ctx, false);
+  await setAlbumHidden(request, ctx, currentAlbum(ctx).id, false);
 });
 
 When('I delete the album via the API', async ({ request, ctx }) => {
@@ -348,7 +366,7 @@ Then('the timeline layout version changes after hiding', async ({ request, ctx }
     layout.months.map((month) => `${month.key}:${month.version}`).join('|');
   const before = versions(await fetchLayout(request, auth));
   // the version has to be captured before the flag flips, so this step performs the hide itself
-  await setAlbumHidden(request, ctx, true);
+  await setAlbumHidden(request, ctx, currentAlbum(ctx).id, true);
   const after = versions(await fetchLayout(request, auth));
   expect(after).not.toBe(before);
 });
@@ -535,11 +553,11 @@ When('I open the add photos dialog', async ({ page }) => {
 });
 
 Then('the add photos dialog lists {int} album photos', async ({ page }, count: number) => {
-  await expect(page.getByRole('dialog').locator('figure[role="button"]')).toHaveCount(count);
+  await expect(page.getByRole('dialog').getByTestId('gallery-item')).toHaveCount(count);
 });
 
 When('I select all album photos in the dialog', async ({ page }) => {
-  const figures = page.getByRole('dialog').locator('figure[role="button"]');
+  const figures = page.getByRole('dialog').getByTestId('gallery-item');
   const count = await figures.count();
   if (count === 0) throw new Error('the add photos dialog has no photos to select');
   for (let i = 0; i < count; i++) {
@@ -563,7 +581,7 @@ When('I add the selected album photos', async ({ page }) => {
 });
 
 Then('the album page shows {int} album photos', async ({ page }, count: number) => {
-  await expect(page.locator('figure[role="button"]')).toHaveCount(count);
+  await expect(page.getByTestId('gallery-item')).toHaveCount(count);
   await expect(
     page.getByText(`${count} ${count === 1 ? 'item' : 'items'}`, { exact: true }),
   ).toBeVisible();
@@ -590,17 +608,17 @@ Then('the first album photo thumbnail loads', async ({ page, request, ctx }) => 
 });
 
 When('I open the first album photo in the viewer', async ({ page, ctx }) => {
-  await page.locator('figure[role="button"]').first().click();
+  await page.getByTestId('gallery-item').first().click();
   await expect(page).toHaveURL(/[?&]asset=/);
   const assetId = new URL(page.url()).searchParams.get('asset');
   if (ctx.assetId && assetId !== ctx.assetId) throw new Error('opened the wrong album photo');
-  await expect(page.locator('div.fixed.inset-0.z-50')).toBeVisible();
+  await expect(page.getByTestId('asset-viewer')).toBeVisible();
 });
 
 When('I remove the open photo from the album', async ({ page }) => {
   await page.locator('button[aria-label="Remove from this album"]:visible').click();
   await page.getByRole('button', { name: 'Confirm' }).click();
-  await expect(page.locator('div.fixed.inset-0.z-50')).toHaveCount(0);
+  await expect(page.getByTestId('asset-viewer')).toHaveCount(0);
 });
 
 When('I open a missing album page', async ({ page }) => {
@@ -638,13 +656,13 @@ Then('the album page shows the hidden badge', async ({ page }) => {
 // --- timeline viewer picker -------------------------------------------------
 
 When('I select the first photo on the timeline', async ({ page }) => {
-  const checkbox = page.locator('figure[role="button"] button[role="checkbox"]').first();
+  const checkbox = page.getByTestId('gallery-item').locator('button[role="checkbox"]').first();
   await checkbox.click();
   await expect(checkbox).toHaveAttribute('aria-checked', 'true');
 });
 
 When('I select all {int} photos on the timeline', async ({ page }, count: number) => {
-  const checkboxes = page.locator('figure[role="button"] button[role="checkbox"]');
+  const checkboxes = page.getByTestId('gallery-item').locator('button[role="checkbox"]');
   await expect(checkboxes).toHaveCount(count, { timeout: 60_000 });
   for (let i = 0; i < count; i++) {
     const checkbox = checkboxes.nth(i);

@@ -27,13 +27,13 @@ When('I click the photo thumbnail', async ({ page, ctx }) => {
 });
 
 Then('the viewer is open on that photo', async ({ page }) => {
-  const overlay = page.locator('div.fixed.inset-0.z-50');
+  const overlay = page.getByTestId('asset-viewer');
   await expect(overlay).toBeVisible();
   await expect(overlay.getByRole('heading', { level: 3, name: 'photo.jpg' })).toBeVisible();
 });
 
 Then('the large preview is loaded', async ({ page }) => {
-  const img = page.locator('div.fixed.inset-0.z-50 img[alt="photo.jpg"]').first();
+  const img = page.getByTestId('asset-viewer').locator('img[alt="photo.jpg"]').first();
   await expect(img).toBeVisible();
   await expect
     .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
@@ -48,7 +48,7 @@ When('I press Escape', async ({ page }) => {
 });
 
 Then('the viewer is closed and the timeline is visible', async ({ page }) => {
-  await expect(page.locator('div.fixed.inset-0.z-50')).toHaveCount(0);
+  await expect(page.getByTestId('asset-viewer')).toHaveCount(0);
   await expect(page).not.toHaveURL(/[?&]asset=/);
-  await expect(page.locator('figure[role="button"]').first()).toBeVisible();
+  await expect(page.getByTestId('gallery-item').first()).toBeVisible();
 });

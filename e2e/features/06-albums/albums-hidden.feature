@@ -53,11 +53,12 @@ Feature: Albums hidden from the timeline
     Given I am signed in
     And I uploaded two album photos
     And I created an album via the API named "Visible album"
+    # the second photo is added while "Visible album" is the only album, so the bare step is
+    # unambiguous; the steps after the second album is created name their album instead
     When I add my second album photo to the album
-    # the second album is created last because the steps target the most recently created album
     And I created an album via the API named "Hidden album"
-    And I add my album photo to the album
-    And I hide the album from the timeline
+    And I add my album photo to the album "Hidden album"
+    And I hide the album "Hidden album" from the timeline
     Then my timeline does not contain the album photo
     And the timeline layout only omits the hidden photo
 
