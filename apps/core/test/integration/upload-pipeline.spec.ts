@@ -11,6 +11,7 @@ import {
   waitForJobWithAsset,
 } from './helpers';
 import type { ApiTestApp } from './helpers';
+import { UserFilesService } from '../../src/ingest/user-files.service';
 
 // ponytail red test for h2-storage-compute-quota: no per-user quota exists yet, and the key is not
 // in packages/shared-config/src/env.ts — STORAGE_QUOTA_BYTES is the proposed name (Gate1 cuts:
@@ -31,7 +32,7 @@ describe('upload pipeline', () => {
   let t: ApiTestApp;
 
   beforeAll(async () => {
-    t = await createApiTestApp({ mockUser: null });
+    t = await createApiTestApp();
   }, 120_000);
 
   afterAll(async () => {
@@ -96,10 +97,22 @@ describe('upload pipeline', () => {
     const filesBefore = await t.fileRepo.count();
     const assetsBefore = await t.assetRepo.count();
 
-    const second = await request(apiServer(t))
-      .post('/api/v1/files')
-      .set(t.authHeader(token))
-      .attach('file', bytes, 'dup.png');
+    // the duplicate re-queues the idempotent jobIds, so a first attempt that saved the rows
+    // and died before enqueuing is repaired. Asserted on the enqueue call, not on job
+    // presence: the job ids already existed from the first upload, so checking them passed
+    // even when the duplicate path enqueued nothing.
+    const enqueue = vi.spyOn(t.app.get(UserFilesService), 'enqueueAssetJobs');
+    let second: request.Response;
+    try {
+      second = await request(apiServer(t))
+        .post('/api/v1/files')
+        .set(t.authHeader(token))
+        .attach('file', bytes, 'dup.png');
+      // asserted before mockRestore, which clears the spy's call history
+      expect(enqueue).toHaveBeenCalledTimes(1);
+    } finally {
+      enqueue.mockRestore();
+    }
     // duplicate is success, not conflict: 200 (not 201) with THE SAME asset and no new rows
     expect(second.status).toBe(200);
     const dup = second.body as unknown as { id: string; fileId: string };
@@ -108,9 +121,6 @@ describe('upload pipeline', () => {
     expect(second.headers.location).toBe(`/api/v1/assets/${firstAsset.id}`);
     expect(await t.fileRepo.count()).toBe(filesBefore);
     expect(await t.assetRepo.count()).toBe(assetsBefore);
-    // the duplicate still re-queues the idempotent jobIds, so a first attempt that saved the
-    // rows and died before enqueuing is repaired by the retry
-    expect(await waitForJobId(t, 'process-thumbnail', `thumb-${firstAsset.id}-md`)).toBe(true);
   });
 
   it('rejects non-image/video mime with 400', async () => {
