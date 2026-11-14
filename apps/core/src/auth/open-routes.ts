@@ -41,7 +41,7 @@ const AUTH_ROUTE = /^\/api\/v1\/auth(?:\/|$)/i;
 const SHARE_ROUTE = /^\/api\/share(?:\/|$)/i;
 /** Swagger UI and its JSON asset. */
 const DOCS_ROUTE = /^\/docs/i;
-const HEALTH_ROUTE = /^\/health(?:\/(?:live|ready))?$/i;
+const HEALTH_ROUTE = /^\/health$/i;
 
 export function isOpenRoute(path: string): boolean {
   if (DOCS_ROUTE.test(path)) return true;
