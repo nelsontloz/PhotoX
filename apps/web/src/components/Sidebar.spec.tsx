@@ -11,6 +11,16 @@ afterEach(() => {
 });
 
 const adminUser = { id: 'u1', email: 'admin@test.local', role: 'admin' } as User;
+const regularUser = { id: 'u2', email: 'ada@test.local', role: 'user' } as User;
+
+function renderFor(user: User) {
+  useAuthStore.setState({ user });
+  return render(
+    <MemoryRouter>
+      <Sidebar />
+    </MemoryRouter>,
+  );
+}
 
 function renderAt(path: string) {
   useAuthStore.setState({ user: adminUser });
@@ -31,6 +41,22 @@ const highlighted = (container: HTMLElement): HTMLAnchorElement[] =>
   [...container.querySelectorAll<HTMLAnchorElement>('a[href]')].filter((a) =>
     a.className.includes('bg-primary/10'),
   );
+
+describe('Sidebar admin link', () => {
+  it('shows the Admin link to an admin', () => {
+    const { container } = renderFor(adminUser);
+
+    expect(link(container, '/admin').textContent).toContain('Admin');
+  });
+
+  it('hides the Admin link from a regular user, keeping the other links', () => {
+    const { container } = renderFor(regularUser);
+
+    expect(container.querySelector('a[href="/admin"]')).toBeNull();
+    expect(link(container, '/trash')).toBeTruthy();
+    expect(link(container, '/people')).toBeTruthy();
+  });
+});
 
 describe('Sidebar active highlight', () => {
   it('highlights Trash — and nothing else — on /trash', () => {
