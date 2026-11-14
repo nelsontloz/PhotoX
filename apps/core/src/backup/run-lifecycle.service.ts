@@ -80,6 +80,12 @@ export class RunLifecycleService {
     private readonly logger: Logger,
   ) {}
 
+  /**
+   * Creates a backup run: snapshot the account, write the manifest draft, then the run + one
+   * item per original that is not already in S3 (the incremental gate). The sweeper uploads
+   * each item and the run finalizes with the manifest LAST — a run that fails never leaves a
+   * live manifest over missing bytes.
+   */
   async startBackup(emailOrId: string): Promise<{ runId: string }> {
     const user = await this.statusService.findUser(emailOrId);
     if (!user) throw new NotFoundException(`No user for ${emailOrId}`);
@@ -252,6 +258,14 @@ export class RunLifecycleService {
     return { runId };
   }
 
+  /**
+   * Creates a restore run: validate the manifest, resolve the restored email, then commit the
+   * rows, the run and one item per original in one transaction. The sweeper downloads each item
+   * independently; finalize re-enqueues derivatives and re-homes the prefix if the email changed.
+   *
+   * An unfinished run for the SAME manifest can be resumed even though the user row is live
+   * (that is how a failed restore is retried instead of 409ing forever).
+   */
   async startRestore(emailOrId: string, restoreEmail?: string): Promise<{ runId: string }> {
     // checked before any S3 work: a batched delete owns the account until its last step
     const liveTarget = await this.statusService.findUser(emailOrId);
@@ -502,6 +516,12 @@ export class RunLifecycleService {
     return { runId };
   }
 
+  /**
+   * Allocates a unique fallback email for restore-after-email-reuse:
+   * `restored-<ms>-<orig>` (normalized), retrying with `-<n>` local suffixes
+   * until free. A suffix always finds a free address eventually, so the loop is
+   * unbounded (the old 100-try + random-UUID escape hatch was unreachable).
+   */
   private async allocateFallbackEmail(origEmail: string): Promise<string> {
     const nowMs = Date.now();
     for (let attempt = 0; ; attempt++) {

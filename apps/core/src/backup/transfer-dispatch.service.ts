@@ -50,6 +50,11 @@ export class TransferDispatchService {
     private readonly logger: Logger,
   ) {}
 
+  /**
+   * One sweeper pass without BullMQ: requeue crashed claims, drive one batch of each kind
+   * through the same consumer, then finish runs with nothing left. Test-only driver — the
+   * production executor is the queue pair (dispatcher + consumers).
+   */
   async runTransfersOnce(ignoreBackoff = false): Promise<number> {
     await this.requeueStuckFinalizing();
     await this.requeueStaleClaims();
@@ -81,7 +86,12 @@ export class TransferDispatchService {
     return consumed;
   }
 
-  async claimDispatchable(
+  /**
+   * Atomic claim of one kind's due items: pending/retrying rows become queued (the lease
+   * marker the dispatcher and the local driver both use) and their attempt count comes back
+   * so the consumer can decide permanent vs transient without another read.
+   */
+  private async claimDispatchable(
     kind: TransferKind,
     limit: number,
     ignoreBackoff = false,
@@ -108,6 +118,11 @@ export class TransferDispatchService {
     return rows;
   }
 
+  /**
+   * Hands a bounded batch of one kind's due items to its queue. This is the producer half of the
+   * BullMQ executor; the DB rows stay the source of truth. The kinds use separate queues and
+   * separate advisory locks, so a slow or paused backup never stalls restore dispatch.
+   */
   async dispatchPendingTransfers(
     kind: TransferKind,
     limit = TRANSFER_DISPATCH_BATCH_SIZE,
@@ -137,6 +152,10 @@ export class TransferDispatchService {
     return enqueued;
   }
 
+  /**
+   * A queued row with no job (crash between enqueue and consume, Redis eviction) becomes
+   * dispatchable again. Re-adding an item that still has a live job is a no-op (jobId dedupe).
+   */
   async requeueStaleQueued(): Promise<void> {
     await this.dataSource.query(
       `UPDATE "backup_run_items" SET "state" = 'pending', "claimedAt" = NULL
@@ -179,7 +198,7 @@ export class TransferDispatchService {
   }
 
   /** Atomic claim for one queued item; a crash-retried job may re-claim its own running row. */
-  async claimQueuedItem(itemId: string, runId: string, attempt: number): Promise<boolean> {
+  private async claimQueuedItem(itemId: string, runId: string, attempt: number): Promise<boolean> {
     const rows = rowsOf<{ id: string }>(
       await this.dataSource.query(
         `UPDATE "backup_run_items"
@@ -194,7 +213,7 @@ export class TransferDispatchService {
     return rows.length > 0;
   }
 
-  async handleQueueTransferError(
+  private async handleQueueTransferError(
     run: BackupRun,
     item: { id: string },
     err: unknown,
@@ -271,7 +290,7 @@ export class TransferDispatchService {
   }
 
   /** The actual byte movement shared by the synchronous driver and the queue consumer. */
-  async performTransfer(run: BackupRun, item: ClaimedBackupItem): Promise<void> {
+  private async performTransfer(run: BackupRun, item: ClaimedBackupItem): Promise<void> {
     if (run.kind === 'backup') {
       await this.s3.putFile(
         item.s3Key,
@@ -284,7 +303,7 @@ export class TransferDispatchService {
   }
 
   /** A crashed core leaves items claimed; after the timeout they become claimable again. */
-  async requeueStaleClaims(): Promise<void> {
+  private async requeueStaleClaims(): Promise<void> {
     await this.dataSource.query(
       `UPDATE "backup_run_items" SET "state" = 'retrying', "nextAttemptAt" = now()
        WHERE "state" = 'running' AND "claimedAt" < now() - ($1::int * interval '1 millisecond')`,
@@ -293,14 +312,14 @@ export class TransferDispatchService {
   }
 
   /** A crash during finalize leaves a run 'finalizing'; re-drive it once it is clearly stale. */
-  async requeueStuckFinalizing(): Promise<void> {
+  private async requeueStuckFinalizing(): Promise<void> {
     await this.dataSource.query(
       `UPDATE "backup_runs" SET "state" = 'running', "updatedAt" = now()
        WHERE "state" = 'finalizing' AND "updatedAt" < now() - interval '10 minutes'`,
     );
   }
 
-  async restoreFile(run: BackupRun, item: ClaimedBackupItem): Promise<void> {
+  private async restoreFile(run: BackupRun, item: ClaimedBackupItem): Promise<void> {
     const dir = this.storage.pathFor(join('backup-runs', run.id, 'tmp'));
     await mkdir(dir, { recursive: true });
     const tmp = join(dir, `${item.fileId}.${randomUUID()}.part`);
@@ -319,7 +338,7 @@ export class TransferDispatchService {
     }
   }
 
-  async bumpRun(runId: string, outcome: 'uploaded' | 'failed'): Promise<void> {
+  private async bumpRun(runId: string, outcome: 'uploaded' | 'failed'): Promise<void> {
     const column = outcome === 'uploaded' ? '"uploaded"' : '"failedItems"';
     await this.dataSource.query(
       `UPDATE "backup_runs"
