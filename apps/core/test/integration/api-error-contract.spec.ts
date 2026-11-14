@@ -40,6 +40,36 @@ describe('API error contract', () => {
     expectEnvelope(res.body, 401, 'UNAUTHENTICATED');
   });
 
+  it('rejects anonymous access to every guarded resource family', async () => {
+    const routes: { method: 'get' | 'post' | 'delete'; path: string }[] = [
+      { method: 'get', path: '/api/v1/albums' },
+      { method: 'post', path: '/api/v1/albums' },
+      { method: 'get', path: '/api/v1/shares' },
+      { method: 'delete', path: '/api/v1/shares/00000000-0000-0000-0000-000000000000' },
+      { method: 'get', path: '/api/v1/persons' },
+      { method: 'get', path: '/api/v1/admin/users' },
+      { method: 'get', path: '/api/v1/files/00000000-0000-0000-0000-000000000000/stream' },
+    ];
+
+    // every route is probed before asserting, so one run reports every failing family
+    const results = await Promise.all(
+      routes.map(async ({ method, path }) => {
+        const res = await request(apiServer(t))[method](path);
+        return {
+          route: `${method.toUpperCase()} ${path}`,
+          status: res.status,
+          body: res.body as unknown,
+        };
+      }),
+    );
+
+    const notUnauthenticated = results
+      .filter((r) => r.status !== 401)
+      .map((r) => `${r.route} -> ${r.status}`);
+    expect(notUnauthenticated).toEqual([]);
+    for (const result of results) expectEnvelope(result.body, 401, 'UNAUTHENTICATED');
+  });
+
   it('answers an admin route reached by a user with FORBIDDEN', async () => {
     const user = await seedUser(t);
     const res = await request(apiServer(t))
@@ -54,6 +84,12 @@ describe('API error contract', () => {
     const res = await request(apiServer(t))
       .get('/api/v1/assets/not-a-uuid')
       .set(t.authHeader(t.signToken({ id: user.id, email: user.email, role: user.role })));
+    expect(res.status).toBe(404);
+    expectEnvelope(res.body, 404, 'NOT_FOUND');
+  });
+
+  it('404s a share token that never existed', async () => {
+    const res = await request(apiServer(t)).get('/api/share/never-existed-6f1c2a4e');
     expect(res.status).toBe(404);
     expectEnvelope(res.body, 404, 'NOT_FOUND');
   });
