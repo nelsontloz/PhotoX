@@ -2,7 +2,6 @@ import type { Repository } from 'typeorm';
 import { AlbumsService } from './albums.service';
 import type { Album } from '../database/entities/album.entity';
 import type { AlbumAsset } from '../database/entities/album-asset.entity';
-import type { Asset } from '../database/entities';
 import type { AssetsService } from '../assets/assets.service';
 
 function makeService(overrides: Partial<Album> = {}) {
@@ -33,24 +32,14 @@ function makeService(overrides: Partial<Album> = {}) {
     delete: deleteMock,
     findOne: vi.fn(() => Promise.resolve({ ...row })),
   } as unknown as Repository<Album>;
-  const countQb = {
-    innerJoin: vi.fn().mockReturnThis(),
-    where: vi.fn().mockReturnThis(),
-    andWhere: vi.fn().mockReturnThis(),
-    getCount: vi.fn(() => Promise.resolve(0)),
-  };
-  const assetRepo = {
-    createQueryBuilder: vi.fn(() => countQb),
-  } as unknown as Repository<Asset>;
   const albumAssetRepo = {
     delete: albumAssetDeleteMock,
   } as unknown as Repository<AlbumAsset>;
-  const service = new AlbumsService(
-    repo,
-    albumAssetRepo,
-    assetRepo,
-    {} as unknown as AssetsService,
-  );
+  const assets = {
+    countActiveInAlbum: vi.fn(() => Promise.resolve(0)),
+    ownedActiveIds: vi.fn(() => Promise.resolve(new Set<string>())),
+  } as unknown as AssetsService;
+  const service = new AlbumsService(repo, albumAssetRepo, assets);
   return { service, saveMock, updateMock, deleteMock, albumAssetDeleteMock };
 }
 

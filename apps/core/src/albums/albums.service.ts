@@ -1,10 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { isUUID } from 'class-validator';
 import { Album } from '../database/entities/album.entity';
 import { AlbumAsset } from '../database/entities/album-asset.entity';
-import { Asset } from '../database/entities';
 import { findOwnedOr404 } from '../common/asset-ownership';
 import { apiError } from '../common/api-error';
 import { decodeCursor, encodeCursor, invalidCursor } from '../common/cursor';
@@ -40,8 +39,6 @@ export class AlbumsService {
     private readonly repo: Repository<Album>,
     @InjectRepository(AlbumAsset)
     private readonly albumAssetRepo: Repository<AlbumAsset>,
-    @InjectRepository(Asset)
-    private readonly assetRepo: Repository<Asset>,
     private readonly assets: AssetsService,
   ) {}
 
@@ -95,7 +92,7 @@ export class AlbumsService {
   async getOne(userId: string, id: string): Promise<AlbumDto> {
     const album = await findOwnedOr404(this.repo, id, userId, 'Album');
 
-    const count = await this.countAssets(id);
+    const count = await this.assets.countActiveInAlbum(id);
     return this.toDto(album, count);
   }
 
@@ -108,13 +105,13 @@ export class AlbumsService {
     if (dto.hiddenFromTimeline !== undefined) patch.hiddenFromTimeline = dto.hiddenFromTimeline;
 
     if (Object.keys(patch).length === 0) {
-      const count = await this.countAssets(id);
+      const count = await this.assets.countActiveInAlbum(id);
       return this.toDto(album, count);
     }
 
     await this.repo.update(id, patch);
     const updated = await this.repo.findOne({ where: { id } });
-    const count = await this.countAssets(id);
+    const count = await this.assets.countActiveInAlbum(id);
     return this.toDto(updated!, count);
   }
 
@@ -131,12 +128,8 @@ export class AlbumsService {
     await findOwnedOr404(this.repo, albumId, userId, 'Album');
 
     const uniqueIds = [...new Set(assetIds)];
-    const found = await this.assetRepo.find({
-      where: { id: In(uniqueIds), userId, isTrashed: false },
-      select: { id: true },
-    });
-    if (found.length !== uniqueIds.length) {
-      const foundIds = new Set(found.map((a) => a.id));
+    const foundIds = await this.assets.ownedActiveIds(userId, uniqueIds);
+    if (foundIds.size !== uniqueIds.length) {
       const missing = uniqueIds.find((id) => !foundIds.has(id));
       throw new NotFoundException(`Asset ${missing} not found`);
     }
@@ -199,7 +192,7 @@ export class AlbumsService {
 
     // `total` is the whole album count, not the remaining window: a cursor page reports the same
     // total the first page did
-    const total = await this.countAssets(albumId);
+    const total = await this.assets.countActiveInAlbum(albumId);
 
     const rows = await qb.getRawMany<{ assetId: string; addedAt: Date | string }>();
     const page = rows.slice(0, limit);
@@ -214,16 +207,6 @@ export class AlbumsService {
       total,
       nextCursor: rows.length > limit && last ? encodeAlbumAssetCursor(last) : null,
     };
-  }
-
-  private async countAssets(albumId: string): Promise<number> {
-    const result = await this.assetRepo
-      .createQueryBuilder('a')
-      .innerJoin('album_assets', 'aa', 'aa."assetId" = a.id')
-      .where('aa."albumId" = :albumId', { albumId })
-      .andWhere('a.isTrashed = false')
-      .getCount();
-    return result;
   }
 
   private toDto(a: Album, assetCount: number): AlbumDto {

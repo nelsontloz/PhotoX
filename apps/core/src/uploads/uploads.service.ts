@@ -33,7 +33,7 @@ import type {
   UploadSessionStatus,
   UploadSessionStatusResponse,
 } from '@photox/shared-types';
-import { Asset, UploadSession, UploadSessionPart } from '../database/entities';
+import { UploadSession, UploadSessionPart } from '../database/entities';
 import { AssetsService } from '../assets/assets.service';
 import { isPostgresUniqueViolation } from '../common/sql-errors';
 import { ingestErrorBody } from '../common/ingest-errors';
@@ -103,8 +103,6 @@ export class UploadsService {
     private readonly sessionRepo: Repository<UploadSession>,
     @InjectRepository(UploadSessionPart)
     private readonly partRepo: Repository<UploadSessionPart>,
-    @InjectRepository(Asset)
-    private readonly assetRepo: Repository<Asset>,
     private readonly dataSource: DataSource,
     private readonly storage: LocalStorageService,
     private readonly userFiles: UserFilesService,
@@ -540,7 +538,7 @@ export class UploadsService {
         // is `assembled`, not `completed`: the caller still owes the jobs after this commits.
         // A retry that lands here may be repairing an earlier attempt that saved the rows and
         // died before enqueuing, so it must not answer success with nothing queued.
-        const existing = await this.assetRepo.findOne({ where: { fileId: record.id, userId } });
+        const existing = await this.assets.findByFileId(userId, record.id);
         if (existing) {
           await runner.manager.update(
             UploadSession,

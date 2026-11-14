@@ -8,18 +8,13 @@ function makeService(queryResult: { id: string }[] = []) {
       return Promise.resolve(queryResult);
     }),
   };
-  const assetRepo = { findOne: vi.fn(() => Promise.resolve({ id: 'asset-1', userId: 'u1' })) };
   const assets = {
+    assertOwned: vi.fn(() => Promise.resolve()),
     listByIdsRanked: vi.fn((_userId: string, ids: string[]) =>
       Promise.resolve(ids.map((id) => ({ id }))),
     ),
   };
-  const service = new GroupsService(
-    dataSource as never,
-    assets as never,
-    assetRepo as never,
-    {} as never,
-  );
+  const service = new GroupsService(dataSource as never, assets as never, {} as never);
   return { service, dataSource, assets, captured: () => capturedSql };
 }
 
@@ -38,18 +33,17 @@ function makeSimilarService(annRows: { id: string }[], fallbackRows: { id: strin
       return Promise.resolve(fallbackRows);
     }),
   };
-  const assetRepo = { findOne: vi.fn(() => Promise.resolve({ id: 'asset-1', userId: 'u1' })) };
   const embeddingRepo = {
     findOne: vi.fn(() => Promise.resolve({ assetId: 'asset-1', embedding: [1, 0] })),
   };
   const service = new GroupsService(
     dataSource as never,
     {
+      assertOwned: vi.fn(() => Promise.resolve()),
       listByIdsRanked: vi.fn((_userId: string, ids: string[]) =>
         Promise.resolve(ids.map((id) => ({ id }))),
       ),
     } as never,
-    assetRepo as never,
     embeddingRepo as never,
   );
   return { service, statements, dataSource };

@@ -90,7 +90,6 @@ function makeUploadService(scenario: { naturals: (FileRecord | null)[]; byId: Fi
   };
   const service = new UserFilesService(
     fileRepo,
-    { findOne: vi.fn() } as unknown as Repository<Asset>,
     storage,
     { create: assetCreate, getOne: assetGetOne } as unknown as AssetsService,
     bullMq as unknown as BullMqService,
@@ -172,12 +171,13 @@ function makeExistsService(scenario: {
   const allAssets = Object.values(scenario.assets).filter((a): a is Asset => a !== null);
   // C6: batched to 2 queries — mocks return the full sets, the service filters via maps
   const fileFind = vi.fn((): Promise<FileRecord[]> => Promise.resolve(allFiles));
-  const assetFind = vi.fn((): Promise<Asset[]> => Promise.resolve(allAssets));
+  // the batched asset lookup lives in AssetsService now; the mock returns the same full set and
+  // the service filters it by the fileIds it asked about
+  const assetFind = vi.fn(() => Promise.resolve(allAssets));
   const service = new UserFilesService(
     { find: fileFind } as unknown as Repository<FileRecord>,
-    { find: assetFind } as unknown as Repository<Asset>,
     {} as unknown as LocalStorageService,
-    {} as unknown as AssetsService,
+    { findByFileIds: assetFind } as unknown as AssetsService,
     {} as unknown as BullMqService,
   );
   return { service, fileFind, assetFind };
@@ -294,7 +294,6 @@ function makeQuotaService(used: string | null) {
   };
   const service = new UserFilesService(
     { createQueryBuilder: vi.fn(() => qb) } as unknown as Repository<FileRecord>,
-    {} as unknown as Repository<Asset>,
     {} as unknown as LocalStorageService,
     {} as unknown as AssetsService,
     {} as unknown as BullMqService,

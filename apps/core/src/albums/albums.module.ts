@@ -2,13 +2,12 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Album } from '../database/entities/album.entity';
 import { AlbumAsset } from '../database/entities/album-asset.entity';
-import { Asset } from '../database/entities';
 import { AlbumsService } from './albums.service';
 import { AlbumsController } from './albums.controller';
 import { AssetsModule } from '../assets/assets.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Album, AlbumAsset, Asset]), AssetsModule],
+  imports: [TypeOrmModule.forFeature([Album, AlbumAsset]), AssetsModule],
   controllers: [AlbumsController],
   providers: [AlbumsService],
 })

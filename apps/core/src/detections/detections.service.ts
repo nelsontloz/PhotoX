@@ -2,8 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, type Repository } from 'typeorm';
 import type { AssetDetectionsResponse } from '@photox/shared-types';
-import { Asset } from '../database/entities';
-import { findOwnedOr404 } from '../common/asset-ownership';
+import { AssetsService } from '../assets/assets.service';
 import { AssetDetection } from '../database/entities/asset-detection.entity';
 import type { RegisterDetectionsDto } from './dto/register-detections.dto';
 
@@ -12,9 +11,8 @@ export class DetectionsService {
   constructor(
     @InjectRepository(AssetDetection)
     private readonly repo: Repository<AssetDetection>,
-    @InjectRepository(Asset)
-    private readonly assetRepo: Repository<Asset>,
     private readonly dataSource: DataSource,
+    private readonly assets: AssetsService,
   ) {}
 
   async register(
@@ -22,7 +20,7 @@ export class DetectionsService {
     userId: string,
     dto: RegisterDetectionsDto,
   ): Promise<{ ok: true }> {
-    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset');
+    await this.assets.assertOwned(userId, assetId);
     const rows = dto.detections.map((d) => ({
       assetId,
       label: d.label.trim(),
@@ -39,7 +37,7 @@ export class DetectionsService {
   }
 
   async list(userId: string, assetId: string): Promise<AssetDetectionsResponse> {
-    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset');
+    await this.assets.assertOwned(userId, assetId);
     const rows = await this.repo.find({ where: { assetId }, order: { confidence: 'DESC' } });
     return {
       detections: rows.map((r) => ({ label: r.label, confidence: r.confidence, box: r.box })),

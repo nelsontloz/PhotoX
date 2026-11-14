@@ -208,7 +208,9 @@ function makeService(scenario: Scenario = {}) {
     ),
     find: vi.fn(() => Promise.resolve(parts)),
   };
-  const assetRepo = { findOne: vi.fn(() => Promise.resolve(scenario.existingAsset ?? null)) };
+  const assetFindByFileId = vi.fn(() =>
+    Promise.resolve(scenario.existingAsset ? { id: scenario.existingAsset.id } : null),
+  );
   const pathFor = vi.fn((key: string) => join(storageRoot, key));
   const storage = { pathFor } as unknown as LocalStorageService;
 
@@ -231,12 +233,14 @@ function makeService(scenario: Scenario = {}) {
   const assetsGetOne = vi.fn(() =>
     Promise.resolve(scenario.asset ?? ({ id: 'asset-existing' } as AssetResponse)),
   );
-  const assets = { getOne: assetsGetOne } as unknown as AssetsService;
+  const assets = {
+    getOne: assetsGetOne,
+    findByFileId: assetFindByFileId,
+  } as unknown as AssetsService;
 
   const service = new UploadsService(
     sessionRepo as unknown as Repository<UploadSession>,
     partRepo as unknown as Repository<UploadSessionPart>,
-    assetRepo as unknown as Repository<Asset>,
     { createQueryRunner: () => runner } as unknown as DataSource,
     storage,
     userFiles,
@@ -247,7 +251,7 @@ function makeService(scenario: Scenario = {}) {
     sessionRepo,
     sessionFinds,
     partRepo,
-    assetRepo,
+    assetFindByFileId,
     manager,
     runner,
     runnerCommits: runner.commitTransaction,
@@ -567,7 +571,7 @@ describe('UploadsService.complete', () => {
   it('replays onto a pre-existing asset and still enqueues its jobs', async () => {
     const session = sessionRow({ id: randomUUID() });
     const parts = [partRow({ sessionId: session.id, partIndex: 0 })];
-    const { service, assetRepo, assetsGetOne, createAsset, enqueueAssetJobs, sessionRepo } =
+    const { service, assetFindByFileId, assetsGetOne, createAsset, enqueueAssetJobs, sessionRepo } =
       makeService({
         sessions: [session],
         parts,
@@ -577,7 +581,7 @@ describe('UploadsService.complete', () => {
       });
     await writePartFiles(session, [JPEG]);
     const res = await service.complete(USER, session.id);
-    expect(assetRepo.findOne).toHaveBeenCalledOnce();
+    expect(assetFindByFileId).toHaveBeenCalledOnce();
     expect(assetsGetOne).toHaveBeenCalledWith(USER, 'asset-dup');
     expect(createAsset).not.toHaveBeenCalled();
     // the replay stamps `assembled` so the enqueue half still runs, then `completed`

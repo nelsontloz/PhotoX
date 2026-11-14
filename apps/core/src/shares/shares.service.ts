@@ -12,6 +12,7 @@ import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { findOwnedOr404 } from '../common/asset-ownership';
 import { decodeCursor, encodeCursor, invalidCursor } from '../common/cursor';
 import { playableFileId } from '../assets/content-target';
+import { AssetsService } from '../assets/assets.service';
 import { CreateShareDto } from './dto/create-share.dto';
 import type {
   ListPublicAlbumAssetsQueryDto,
@@ -50,6 +51,7 @@ export class SharesService {
     private readonly albumRepo: Repository<Album>,
     @InjectRepository(AlbumAsset)
     private readonly albumAssetRepo: Repository<AlbumAsset>,
+    private readonly assets: AssetsService,
   ) {}
 
   /** sha256 of a presented capability for lookups — writes store hashes, see create(). */
@@ -100,10 +102,7 @@ export class SharesService {
 
     let album: Album | null = null;
     if (target.kind === 'asset') {
-      const asset = await this.assetRepo.findOne({
-        where: { id: target.assetId, userId, isTrashed: false },
-      });
-      if (!asset) throw new NotFoundException('Asset not found');
+      await this.assets.assertOwnedActive(userId, target.assetId);
     } else {
       album = await findOwnedOr404(this.albumRepo, target.albumId, userId, 'Album');
     }

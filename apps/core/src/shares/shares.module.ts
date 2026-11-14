@@ -6,6 +6,7 @@ import { FileRecord } from '../database/entities';
 import { Album } from '../database/entities/album.entity';
 import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { UserFilesModule } from '../ingest/user-files.module';
+import { AssetsModule } from '../assets/assets.module';
 import { SharesService } from './shares.service';
 import { SharesController } from './shares.controller';
 import { PublicSharesController } from './public-shares.controller';
@@ -14,6 +15,7 @@ import { PublicSharesController } from './public-shares.controller';
   imports: [
     TypeOrmModule.forFeature([Share, Asset, FileRecord, Album, AlbumAsset]),
     UserFilesModule,
+    AssetsModule,
   ],
   controllers: [SharesController, PublicSharesController],
   providers: [SharesService],

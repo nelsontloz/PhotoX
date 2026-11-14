@@ -98,6 +98,63 @@ export class AssetsService {
     private readonly places: PlacesResolveService,
   ) {}
 
+  // --- cross-feature asset access -------------------------------------------------------------
+  // Other features read assets through these, never through `Repository<Asset>`. Each returns a
+  // narrow shape, so a caller can learn about an asset but cannot mutate one; the allowlist (and
+  // why each entry is there) lives in `src/structure.spec.ts`.
+
+  /** 404 unless the asset exists and belongs to the user. */
+  async assertOwned(userId: string, assetId: string): Promise<void> {
+    await findOwnedOr404(this.repo, assetId, userId, 'Asset');
+  }
+
+  /** 404 unless the asset exists, belongs to the user and is not trashed. */
+  async assertOwnedActive(userId: string, assetId: string): Promise<void> {
+    const asset = await this.repo.findOne({
+      where: { id: assetId, userId, isTrashed: false },
+      select: { id: true },
+    });
+    if (!asset) throw new NotFoundException('Asset not found');
+  }
+
+  /** The user's assets for these file rows — the duplicate fast path in both upload doors. */
+  findByFileIds(userId: string, fileIds: string[]): Promise<{ id: string; fileId: string }[]> {
+    if (fileIds.length === 0) return Promise.resolve([]);
+    return this.repo.find({
+      where: { userId, fileId: In(fileIds) },
+      select: { id: true, fileId: true },
+    });
+  }
+
+  findByFileId(userId: string, fileId: string): Promise<{ id: string } | null> {
+    return this.repo.findOne({ where: { userId, fileId }, select: { id: true } });
+  }
+
+  /** Non-trashed assets in an album — the album list's `assetCount`. */
+  countActiveInAlbum(albumId: string): Promise<number> {
+    return this.repo
+      .createQueryBuilder('a')
+      .innerJoin('album_assets', 'aa', 'aa."assetId" = a.id')
+      .where('aa."albumId" = :albumId', { albumId })
+      .andWhere('a.isTrashed = false')
+      .getCount();
+  }
+
+  /** The subset of `ids` this user owns and has not trashed. */
+  async ownedActiveIds(userId: string, ids: string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await this.repo.find({
+      where: { id: In(ids), userId, isTrashed: false },
+      select: { id: true },
+    });
+    return new Set(rows.map((row) => row.id));
+  }
+
+  /** The embedding worker's status patch; the caller's job is already scoped to this asset. */
+  async markEmbeddingStatus(assetId: string, status: 'ready' | 'failed'): Promise<void> {
+    await this.repo.update({ id: assetId }, { embeddingStatus: status });
+  }
+
   async create(userId: string, dto: CreateAssetDto): Promise<AssetResponse> {
     const asset = new Asset();
     asset.userId = userId;
