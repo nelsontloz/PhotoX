@@ -62,6 +62,22 @@ through `backup.types.ts` and `swagger/response-models.ts`.
 `STORAGE_DIR/backup-runs/<runId>/` holds the manifest draft, restore downloads and work files.
 Owned by the ledger, **not** by the orphan sweep.
 
+## Run lifecycle (one file per phase)
+
+`UserBackupService` composes the run by hand; the phases form a DAG and only point one way:
+
+- `run-lifecycle.service.ts` — start backup/restore (snapshot, ledger insert), wipe/active-run
+  guards, resume.
+- `transfer-dispatch.service.ts` — claim due items, dispatch to the queues, consume one job per
+  file, retries, and the promote-when-drained check.
+- `run-finalize.service.ts` — publish the manifest (backup) or trash-broken-and-fan-out (restore),
+  terminal row, manifest drafts, status shape.
+- `bulk-io.ts` — the chunked insert helpers (`BULK_CHUNK`, `chunked`, `bulkSave`, `bulkInsert`,
+  `rowsOf`), imported by merge too.
+
+`lifecycle → finalize` and `dispatch → finalize`; finalize imports neither. Keep it that way — a
+two-way call makes the split worse than the original class.
+
 ## Transaction boundaries
 
 ```

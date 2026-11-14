@@ -19,8 +19,10 @@ import { UserDelete } from '../database/entities/user-delete.entity';
 import { BackupStorageIo } from './backup-storage-io';
 import { BackupStatusService } from './backup-status.service';
 import { BackupPrefixService } from './backup-prefix.service';
-import { BackupRunService } from './backup-run.service';
 import { BackupMergeService } from './backup-merge.service';
+import { RunFinalizeService } from './run-finalize.service';
+import { RunLifecycleService } from './run-lifecycle.service';
+import { TransferDispatchService } from './transfer-dispatch.service';
 import type {
   BackupOverviewRow,
   BackupProgress,
@@ -46,7 +48,6 @@ export {
   buildFallbackEmail,
   snapshotFromStatus,
 } from './backup-overview.builder';
-export { BULK_CHUNK, bulkInsert, bulkSave, chunked } from './backup-run.service';
 
 /**
  * Per-user backup/restore: user-scoped rows + original bytes to S3 (Floci,
@@ -104,7 +105,9 @@ export class UserBackupService {
   private readonly storageIo: BackupStorageIo;
   private readonly statusService: BackupStatusService;
   private readonly prefixService: BackupPrefixService;
-  private readonly runService: BackupRunService;
+  private readonly finalizeService: RunFinalizeService;
+  private readonly dispatchService: TransferDispatchService;
+  private readonly lifecycleService: RunLifecycleService;
   private readonly mergeService: BackupMergeService;
 
   // ponytail: the facade is the composition root so the controller, dispatcher, consumers and 11 colocated specs keep their single-token wiring. Upgrade to Nest providers if a sub-service ever needs its own lifecycle or telemetry.
@@ -142,17 +145,39 @@ export class UserBackupService {
       this.s3,
       this.logger,
     );
-    this.runService = new BackupRunService(
-      this.storageIo,
-      this.statusService,
-      this.prefixService,
+    this.finalizeService = new RunFinalizeService(
       this.s3,
       this.dataSource,
       this.bullMq,
       this.places,
       this.storage,
-      this.users,
       this.files,
+      this.assets,
+      this.runs,
+      this.runItems,
+      this.prefixService,
+      this.storageIo,
+      this.logger,
+    );
+    this.dispatchService = new TransferDispatchService(
+      this.finalizeService,
+      this.dataSource,
+      this.bullMq,
+      this.s3,
+      this.storage,
+      this.runs,
+      this.runItems,
+      this.logger,
+    );
+    this.lifecycleService = new RunLifecycleService(
+      this.finalizeService,
+      this.statusService,
+      this.prefixService,
+      this.s3,
+      this.dataSource,
+      this.storage,
+      this.storageIo,
+      this.users,
       this.assets,
       this.albums,
       this.albumAssets,
@@ -164,7 +189,8 @@ export class UserBackupService {
       this.logger,
     );
     this.mergeService = new BackupMergeService(
-      this.runService,
+      this.lifecycleService,
+      this.finalizeService,
       this.statusService,
       this.storageIo,
       this.s3,
@@ -183,11 +209,11 @@ export class UserBackupService {
   }
 
   startBackup(emailOrId: string): Promise<{ runId: string }> {
-    return this.runService.startBackup(emailOrId);
+    return this.lifecycleService.startBackup(emailOrId);
   }
 
   startRestore(emailOrId: string, restoreEmail?: string): Promise<{ runId: string }> {
-    return this.runService.startRestore(emailOrId, restoreEmail);
+    return this.lifecycleService.startRestore(emailOrId, restoreEmail);
   }
 
   mergeUserBackup(input: MergeUserBackupInput): Promise<MergeBackupResult> {
@@ -215,45 +241,45 @@ export class UserBackupService {
   }
 
   toRunStatus(run: BackupRun): BackupRunStatus {
-    return this.runService.toRunStatus(run);
+    return this.finalizeService.toRunStatus(run);
   }
 
   getRunStatus(runId: string): Promise<BackupRunStatus> {
-    return this.runService.getRunStatus(runId);
+    return this.finalizeService.getRunStatus(runId);
   }
 
   runTransfersOnce(ignoreBackoff = false): Promise<number> {
-    return this.runService.runTransfersOnce(ignoreBackoff);
+    return this.dispatchService.runTransfersOnce(ignoreBackoff);
   }
 
   dispatchPendingTransfers(
     kind: TransferKind,
     limit = TRANSFER_DISPATCH_BATCH_SIZE,
   ): Promise<number> {
-    return this.runService.dispatchPendingTransfers(kind, limit);
+    return this.dispatchService.dispatchPendingTransfers(kind, limit);
   }
 
   requeueStaleQueued(): Promise<void> {
-    return this.runService.requeueStaleQueued();
+    return this.dispatchService.requeueStaleQueued();
   }
 
   reconcileTransfers(): Promise<void> {
-    return this.runService.reconcileTransfers();
+    return this.dispatchService.reconcileTransfers();
   }
 
   consumeTransferJob(kind: TransferKind, job: TransferJobLike): Promise<void> {
-    return this.runService.consumeTransferJob(kind, job);
+    return this.dispatchService.consumeTransferJob(kind, job);
   }
 
   finalizeRunIfDone(runId: string): Promise<void> {
-    return this.runService.finalizeRunIfDone(runId);
+    return this.dispatchService.finalizeRunIfDone(runId);
   }
 
   finalizeBackupRun(run: BackupRun, manifest: UserBackupManifest): Promise<void> {
-    return this.runService.finalizeBackupRun(run, manifest);
+    return this.finalizeService.finalizeBackupRun(run, manifest);
   }
 
   assertNoLiveWipe(userId: string): Promise<void> {
-    return this.runService.assertNoLiveWipe(userId);
+    return this.lifecycleService.assertNoLiveWipe(userId);
   }
 }

@@ -33,10 +33,11 @@ import {
   userToManifest,
 } from './backup-manifest';
 import { pickNewest, type BackupDirLocation } from './backup-overview.builder';
-import { bulkSave, chunked } from './backup-run.service';
-import type { BackupRunService } from './backup-run.service';
+import { bulkSave, chunked } from './bulk-io';
 import type { BackupStatusService } from './backup-status.service';
 import type { BackupStorageIo } from './backup-storage-io';
+import type { RunFinalizeService } from './run-finalize.service';
+import type { RunLifecycleService } from './run-lifecycle.service';
 import type {
   BackupStatus,
   MergeBackupResult,
@@ -59,7 +60,8 @@ export class BackupMergeService {
   private readonly mergesInFlight = new Set<string>();
 
   constructor(
-    private readonly runService: BackupRunService,
+    private readonly lifecycle: RunLifecycleService,
+    private readonly finalize: RunFinalizeService,
     private readonly statusService: BackupStatusService,
     private readonly storageIo: BackupStorageIo,
     private readonly s3: S3BackupService,
@@ -119,8 +121,8 @@ export class BackupMergeService {
     // neither side may be mid-wipe: the target would lose the merged rows, the source prefix
     // would be deleted by a sweep that is still running. Checked before the live-source rule
     // so a wiping account gets the specific "deletion is in progress" answer.
-    await this.runService.assertNoLiveWipe(backupUserId);
-    await this.runService.assertNoLiveWipe(target.id);
+    await this.lifecycle.assertNoLiveWipe(backupUserId);
+    await this.lifecycle.assertNoLiveWipe(target.id);
     // A merge consumes a *deleted* account's snapshot. Handing a live account's
     // backup to the target and then deleting the source would strip that account
     // of its only copy, so refuse: the admin can delete the account first.
@@ -620,7 +622,7 @@ export class BackupMergeService {
       const enqueued =
         derivativeAssetIds.size === 0
           ? { metadata: 0, thumbnails: 0, videos: 0, faces: 0, ai: 0 }
-          : await this.runService.reenqueueDerivatives(target.id, derivativeAssetIds, 'merge');
+          : await this.finalize.reenqueueDerivatives(target.id, derivativeAssetIds, 'merge');
 
       // Adopt the merged snapshot into the live account BEFORE the ledger: copy
       // originals into the live prefix, union manifests and write the union last.
