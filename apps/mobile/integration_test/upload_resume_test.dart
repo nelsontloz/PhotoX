@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:photox_mobile/media/hasher.dart';
+import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/upload/models.dart';
-import 'package:photox_mobile/upload/transports.dart';
 import 'package:photox_mobile/upload/uploader.dart';
 
 import 'support/harness.dart';
@@ -27,14 +27,14 @@ void main() {
 
     final large = await seededAsset(services, largePhotoName);
     await signInPipeline(services, user);
-    await services.queue.enqueue(large);
+    await services.queue.enqueueAll(<AssetCandidate>[large]);
 
     // One part per attempt: the session is created, part 0 lands, then the
     // uploader stops the way an expiring background window does.
     final throttled = Uploader(
       queue: services.queue,
-      uploadTransport: ApiUploadTransport(services.api),
-      sessionTransport: SessionApiTransport(services.sessions),
+      uploadTransport: services.api,
+      sessionTransport: services.sessions,
       hasher: const Hasher(),
       observer: services.observer,
       maxPartsPerPass: 1,

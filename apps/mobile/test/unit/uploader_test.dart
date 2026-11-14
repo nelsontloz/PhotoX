@@ -65,7 +65,9 @@ void main() {
     final source = File('${temp.path}/$localId.source');
     await source.writeAsBytes(bytes);
     observer.files[localId] = source;
-    await queue.enqueue(_candidate(localId, bytes.length, fileName));
+    await queue.enqueueAll(<AssetCandidate>[
+      _candidate(localId, bytes.length, fileName),
+    ]);
     return (await queue.byLocalId(localId))!;
   }
 

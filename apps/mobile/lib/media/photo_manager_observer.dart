@@ -468,9 +468,6 @@ class PhotoManagerObserver implements PhotoObserver {
       modifiedAt: asset.modifiedDateSecond == null
           ? null
           : asset.modifiedDateTime,
-      width: asset.width,
-      height: asset.height,
-      durationSeconds: asset.duration,
       folderId: folderId,
     );
   }

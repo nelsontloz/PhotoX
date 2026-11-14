@@ -395,9 +395,6 @@ void main() {
     expect(first.localId, 'asset-1');
     expect(first.fileName, 'asset-1.jpg');
     expect(first.mimeType, 'image/jpeg');
-    expect(first.width, 4000);
-    expect(first.height, 3000);
-    expect(first.durationSeconds, 10);
     expect(first.takenAt, isNotNull);
     // Pages never export bytes, so the grid sees no size and no export call.
     expect(first.sizeBytes, 0);

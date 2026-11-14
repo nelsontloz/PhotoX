@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../server/album_client.dart';
 import 'count_format.dart';
+import 'pill.dart';
 
 /// Opens the sheet that points one device folder at a server album.
 ///
@@ -408,29 +409,17 @@ class _HiddenChip extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Container(
+    return Pill(
+      label: 'Hidden from timeline',
+      foreground: scheme.tertiary,
+      background: scheme.tertiary.withValues(alpha: 0.14),
+      icon: Icons.visibility_off_rounded,
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: scheme.tertiary.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(100),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(Icons.visibility_off_rounded, size: 11, color: scheme.tertiary),
-          const SizedBox(width: 3),
-          Flexible(
-            child: Text(
-              'Hidden from timeline',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: scheme.tertiary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
+      iconSize: 11,
+      gap: 3,
+      textStyle: theme.textTheme.labelSmall?.copyWith(
+        color: scheme.tertiary,
+        fontWeight: FontWeight.w600,
       ),
     );
   }

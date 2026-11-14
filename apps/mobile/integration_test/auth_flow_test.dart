@@ -5,9 +5,9 @@ import 'package:photox_mobile/main.dart' as app;
 
 import 'support/harness.dart';
 
-/// First-launch flow against the real stack: connect, fail once, sign in,
-/// sign out, sign back in. Runs from a cleared app (`pm clear` in the runner),
-/// so the setup screen is guaranteed.
+/// First-launch flow against the real stack: point at the server, fail once,
+/// sign in, sign out, sign back in. Runs from a cleared app (`pm clear` in the
+/// runner), so the login screen with an empty address is guaranteed.
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -16,15 +16,14 @@ void main() {
   ) async {
     app.main();
 
-    await pumpUntil(tester, find.text('Connect your server'));
-    expect(find.byType(TextFormField), findsOneWidget);
-    await setField(tester, find.byType(TextFormField), apiBaseUrl);
-    await tester.tap(find.widgetWithText(FilledButton, 'Connect'));
+    // The login screen is the first screen on a fresh install; its first field
+    // is the server address, persisted by the sign-in itself.
     await pumpUntil(tester, find.text('Welcome back'));
+    expect(find.byType(TextFormField), findsNWidgets(3));
 
     // Field order comes from LoginScreen.build: server, email, password.
-    expect(find.byType(TextFormField), findsNWidgets(3));
     final fields = find.byType(TextFormField);
+    await setField(tester, fields.at(0), apiBaseUrl);
     await setField(tester, fields.at(1), e2eEmail);
     await setField(tester, fields.at(2), 'definitely-not-the-password');
     expect(fieldText(tester, 1), e2eEmail, reason: 'email field');
@@ -42,7 +41,7 @@ void main() {
     await signOutThroughUi(tester);
     expect(find.byType(NavigationBar), findsNothing);
     // The server address stays configured; only the session is gone.
-    expect(find.text('Connect your server'), findsNothing);
+    expect(fieldText(tester, 0), apiBaseUrl, reason: 'server field');
 
     // Leave the app signed in: `session_persistence_test.dart` runs next, in a
     // fresh process, and asserts this pair survived the restart. The login
@@ -61,6 +60,5 @@ void main() {
     app.main();
     await pumpUntil(tester, find.byType(NavigationBar));
     expect(find.text('Welcome back'), findsNothing);
-    expect(find.text('Connect your server'), findsNothing);
   }, timeout: const Timeout(Duration(minutes: 5)));
 }

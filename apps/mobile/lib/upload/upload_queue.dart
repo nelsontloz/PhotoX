@@ -110,9 +110,6 @@ class UploadQueue {
     'skippedQuota',
   ];
 
-  /// Adds one discovered asset; existing rows only refresh scan metadata.
-  Future<void> enqueue(AssetCandidate candidate) => enqueueAll([candidate]);
-
   /// Adds every candidate atomically, refreshing mutable scan metadata.
   ///
   /// Existing rows always receive [AssetCandidate.sizeBytes], [takenAt],

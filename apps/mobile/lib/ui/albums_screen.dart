@@ -12,6 +12,7 @@ import 'widgets/app_background.dart';
 import 'widgets/count_format.dart';
 import 'widgets/folder_album_sheet.dart';
 import 'widgets/panel.dart';
+import 'widgets/pill.dart';
 import 'widgets/section_label.dart';
 import 'widgets/status_banner.dart';
 
@@ -1140,36 +1141,19 @@ class _ScopeChip extends StatelessWidget {
             Icons.circle_outlined,
           );
 
-    return Semantics(
-      container: true,
+    return Pill(
       label: inScope ? 'Backing up' : 'Not backed up',
-      child: ExcludeSemantics(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(100),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(icon, size: 12, color: foreground),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  inScope ? 'Backing up' : 'Not backed up',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: foreground,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+      foreground: foreground,
+      background: background,
+      icon: icon,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      iconSize: 12,
+      gap: 4,
+      textStyle: theme.textTheme.labelSmall?.copyWith(
+        color: foreground,
+        fontWeight: FontWeight.w600,
       ),
+      semanticsLabel: inScope ? 'Backing up' : 'Not backed up',
     );
   }
 }

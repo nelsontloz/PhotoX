@@ -10,8 +10,8 @@ import 'widgets/app_background.dart';
 import 'widgets/backup_progress.dart';
 import 'widgets/last_sync_panel.dart';
 import 'widgets/panel.dart';
+import 'widgets/pill.dart';
 import 'widgets/queue_summary.dart';
-import 'widgets/scope_pill.dart';
 import 'widgets/sign_out_dialog.dart';
 import 'widgets/status_banner.dart';
 import 'widgets/uploading_file_row.dart';
@@ -260,11 +260,8 @@ class HomeScreen extends StatelessWidget {
                       // rebuilt five times a second while a pass runs.
                       ListenableBuilder(
                         listenable: progress,
-                        builder: (context, _) => BackupProgressPanel(
-                          stats: stats,
-                          paused: paused,
-                          animate: progress.active && !paused,
-                        ),
+                        builder: (context, _) =>
+                            BackupProgressPanel(stats: stats, paused: paused),
                       ),
                       const SizedBox(height: 12),
                       ListenableBuilder(
@@ -300,6 +297,7 @@ class HomeScreen extends StatelessWidget {
   /// Screen title, the two state pills, and the settings shortcut.
   Widget _buildSubBar(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -330,9 +328,15 @@ class HomeScreen extends StatelessWidget {
                 error: error?.trim(),
               ),
             ),
-            ScopePill(
+            Pill(
               label: scopeLabel,
-              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+              foreground: scheme.onSurfaceVariant,
+              background: scheme.surfaceContainer,
+              dotColor: scheme.primary,
+              border: Border.all(
+                color: scheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+              semanticsLabel: 'Backup scope: $scopeLabel',
             ),
           ],
         ),
@@ -552,8 +556,7 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = Theme.of(context).colorScheme;
     final (Color foreground, Color background) = switch (status.tone) {
       _StatusTone.active => (
         scheme.onPrimaryContainer,
@@ -570,36 +573,12 @@ class _StatusPill extends StatelessWidget {
       ),
     };
 
-    return Semantics(
-      container: true,
-      label: 'Backup status: ${status.label}',
-      child: ExcludeSemantics(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(100),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(status.icon, size: 15, color: foreground),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  status.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: foreground,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return Pill(
+      label: status.label,
+      foreground: foreground,
+      background: background,
+      icon: status.icon,
+      semanticsLabel: 'Backup status: ${status.label}',
     );
   }
 }

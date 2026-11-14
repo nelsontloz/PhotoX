@@ -81,6 +81,11 @@ class PhotoXApp extends StatefulWidget {
 class _PhotoXAppState extends State<PhotoXApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
+  /// The shell's tab controller is local there; settings reaches it through
+  /// this key when its folders row asks for the Albums tab.
+  final GlobalKey<_SignedInShellState> _shellKey =
+      GlobalKey<_SignedInShellState>();
+
   /// Signed-in state alone, so a stats or progress notification never rebuilds
   /// the whole app: each tab listens for what it actually draws.
   late final ValueNotifier<bool> _signedIn = ValueNotifier<bool>(
@@ -119,6 +124,7 @@ class _PhotoXAppState extends State<PhotoXApp> {
         darkTheme: photoXTheme(),
         home: signedIn
             ? _SignedInShell(
+                key: _shellKey,
                 controller: controller,
                 onOpenSettings: _openSettings,
               )
@@ -143,13 +149,20 @@ class _PhotoXAppState extends State<PhotoXApp> {
           builder: (context, _) => SettingsScreen(
             settings: widget.controller.settings,
             onSave: widget.controller.updateSettings,
-            onLoadFolders: widget.controller.folders,
+            onOpenAlbums: _openAlbumsFromSettings,
             onSignOut: _signOutFromSettings,
             busy: widget.controller.busy,
           ),
         ),
       ),
     );
+  }
+
+  /// Leaves the pushed settings route, then shows the Albums tab where the
+  /// backup scope is actually chosen.
+  void _openAlbumsFromSettings() {
+    _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+    _shellKey.currentState?.openAlbums();
   }
 
   /// Pops back to the shell first so a fresh sign-out never flashes the
@@ -167,6 +180,7 @@ class _PhotoXAppState extends State<PhotoXApp> {
 /// reachable from each.
 class _SignedInShell extends StatefulWidget {
   const _SignedInShell({
+    super.key,
     required this.controller,
     required this.onOpenSettings,
   });
@@ -208,7 +222,7 @@ class _SignedInShellState extends State<_SignedInShell> {
   }
 
   /// Opens the Albums tab, reading its platform data on the first visit only.
-  void _openAlbums() {
+  void openAlbums() {
     if (_albumsOpened) {
       if (_index != _albumsTab) setState(() => _index = _albumsTab);
       return;
@@ -306,7 +320,7 @@ class _SignedInShellState extends State<_SignedInShell> {
             // are behind this route, so it closes first.
             onOpenAlbums: () {
               Navigator.of(routeContext).pop();
-              _openAlbums();
+              openAlbums();
             },
           ),
         ),
@@ -386,7 +400,7 @@ class _SignedInShellState extends State<_SignedInShell> {
           ListenableBuilder(
             listenable: controller,
             builder: (context, _) =>
-                _library(controller, onOpenAlbums: _openAlbums),
+                _library(controller, onOpenAlbums: openAlbums),
           ),
           ListenableBuilder(
             listenable: controller,
@@ -402,7 +416,7 @@ class _SignedInShellState extends State<_SignedInShell> {
         selectedIndex: _index,
         onDestinationSelected: (index) {
           if (index == _albumsTab) {
-            _openAlbums();
+            openAlbums();
             return;
           }
           setState(() => _index = index);

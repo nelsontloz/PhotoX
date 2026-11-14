@@ -23,7 +23,7 @@ import 'widgets/month_names.dart';
 import 'widgets/month_rail.dart';
 import 'widgets/rows_sliver.dart';
 import 'widgets/panel.dart';
-import 'widgets/scope_pill.dart';
+import 'widgets/pill.dart';
 import 'widgets/status_banner.dart';
 
 /// The library, newest first, one column-page at a time.
@@ -1408,7 +1408,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final children = <Widget>[];
     if (widget.serverPage == null) {
       // Device-only (album) grid: exactly the line it always had.
-      children.add(ScopePill(label: albumScopeLabel(widget.settings)));
+      children.add(
+        Pill(
+          label: albumScopeLabel(widget.settings),
+          foreground: scheme.onSurfaceVariant,
+          background: scheme.surfaceContainer,
+          dotColor: scheme.primary,
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          semanticsLabel: 'Backup scope: ${albumScopeLabel(widget.settings)}',
+        ),
+      );
       if (loaded > 0) {
         children.add(
           Text(

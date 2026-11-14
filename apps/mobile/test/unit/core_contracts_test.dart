@@ -12,6 +12,9 @@ import 'package:photox_mobile/core/auth_manager.dart';
 import 'package:photox_mobile/core/auth_models.dart';
 import 'package:photox_mobile/core/refresh_lock.dart';
 import 'package:photox_mobile/core/token_store.dart';
+
+import '../support/memory_token_store.dart';
+
 import 'package:photox_mobile/upload/models.dart';
 import 'package:photox_mobile/upload/session_client.dart';
 
