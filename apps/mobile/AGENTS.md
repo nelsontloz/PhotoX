@@ -139,7 +139,7 @@ Verified in `../../apps/core/src`. Controllers declare `api/v1/...` with no glob
 
 - `POST /api/v1/files` — multipart field `file` (multer cap 4 GiB). Body may carry `title`, `description`, `takenAt`; `kind` is accepted-but-ignored. `ValidationPipe` is `forbidNonWhitelisted`, so extra body fields 400.
 - `POST /api/v1/files/exists` — `{items:[{checksumSha256, sizeBytes?}]}`, max 100 items, checksum must match `^[0-9a-f]{64}$`.
-- `GET /api/v1/files/:id` (+ `/stream`, `/download`).
+- `GET /api/v1/files/:id/stream` — bytes for one stored file (the only read route; there is no `download` alias).
 - `GET /api/v1/assets?limit=&offset=&dateFrom=&dateTo=` — the merged grid's read path: `limit` caps at 100, ordered by `COALESCE(takenAt, uploadedAt) DESC`, trashed excluded, `{items,total,limit,offset}`. `GET /api/v1/timeline/window` returns `{t,w,h}` with **no asset id**, so it cannot drive a grid that needs identity.
 - `POST /api/v1/auth/{register,login,refresh,logout}` — token pair is returned in the JSON body; logout is 204 and idempotent. Refresh rotates the token with reuse detection.
 
