@@ -11,6 +11,14 @@ import { toNchw } from './nchw';
 export const FACE_MODEL_FILE = 'w600k_r50.onnx';
 export const FACE_ALIGN_SIZE = 112;
 
+/** An empty `FACE_MODEL_PATH=` (a common way to leave an optional var unset) falls back too. */
+export function resolveFaceModelPath(): string {
+  // present-but-empty is the same as unset: `.env` keys left blank parse to ''
+  const configured = process.env.FACE_MODEL_PATH?.trim();
+  if (configured) return configured;
+  return join(loadEnv().STORAGE_DIR, 'models', FACE_MODEL_FILE);
+}
+
 // ponytail: standard ArcFace 112x112 reference template (leftEye, rightEye, nose, mouthL, mouthR)
 export const ARCFACE_TEMPLATE: [number, number][] = [
   [38.2946, 51.6963],
@@ -128,8 +136,7 @@ export function preprocessArcFace(rgb112: Buffer): Float32Array {
 export class FaceEmbedderService {
   private readonly logger = new Logger(FaceEmbedderService.name);
   private readonly load = lazyOnce(async () => {
-    const modelPath =
-      process.env.FACE_MODEL_PATH ?? join(loadEnv().STORAGE_DIR, 'models', FACE_MODEL_FILE);
+    const modelPath = resolveFaceModelPath();
     const named = await loadNamedSession(
       modelPath,
       `Face embedding model not found at ${modelPath} — run ` +

@@ -137,8 +137,8 @@ export const FACE_DETECTOR_MODEL_FILE = 'det_10g.onnx';
 // ponytail: FACE_DETECTOR_MODEL_PATH stays a direct env read outside the zod schema
 // (WORKER_SERVICE_PORT precedent) — shared so core and worker resolve the same default model path
 export function resolveFaceDetectorModelPath(): string {
-  return (
-    process.env.FACE_DETECTOR_MODEL_PATH ??
-    join(loadEnv().STORAGE_DIR, 'models', FACE_DETECTOR_MODEL_FILE)
-  );
+  // present-but-empty is the same as unset: `.env` keys left blank parse to ''
+  const configured = process.env.FACE_DETECTOR_MODEL_PATH?.trim();
+  if (configured) return configured;
+  return join(loadEnv().STORAGE_DIR, 'models', FACE_DETECTOR_MODEL_FILE);
 }

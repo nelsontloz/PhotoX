@@ -1,10 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
+import { join } from 'path';
+import { loadEnv } from '@photox/shared-config';
 import { l2Normalize } from '@photox/shared-types';
 import {
   ARCFACE_TEMPLATE,
   FACE_ALIGN_SIZE,
+  FACE_MODEL_FILE,
   alignFaceCrop,
   preprocessArcFace,
+  resolveFaceModelPath,
   similarityFromPoints,
   type RawImage,
 } from './face.embedder';
@@ -129,5 +133,24 @@ describe('l2Normalize', () => {
 
   it('passes zero vectors through without NaN', () => {
     expect(l2Normalize([0, 0])).toEqual([0, 0]);
+  });
+});
+
+describe('resolveFaceModelPath', () => {
+  const original = process.env.FACE_MODEL_PATH;
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.FACE_MODEL_PATH;
+    else process.env.FACE_MODEL_PATH = original;
+  });
+
+  it('prefers FACE_MODEL_PATH', () => {
+    process.env.FACE_MODEL_PATH = '/custom/w600k_r50.onnx';
+    expect(resolveFaceModelPath()).toBe('/custom/w600k_r50.onnx');
+  });
+
+  it('falls back to the provisioned model when the variable is empty', () => {
+    process.env.FACE_MODEL_PATH = '';
+    expect(resolveFaceModelPath()).toBe(join(loadEnv().STORAGE_DIR, 'models', FACE_MODEL_FILE));
   });
 });
