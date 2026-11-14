@@ -12,7 +12,7 @@ import { JwtModule, JwtService } from '@nestjs/jwt';
 import type { Express } from 'express';
 import type { Repository } from 'typeorm';
 import { Asset, AssetThumbnail, Face, FileRecord } from '../../src/database/entities';
-import { LocalStorageService, loadEnv } from '@photox/shared-config';
+import { LocalStorageService, S3BackupService, loadEnv } from '@photox/shared-config';
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types';
 import { User } from '../../src/database/entities/user.entity';
 import { AssetsModule } from '../../src/assets/assets.module';
@@ -261,6 +261,8 @@ describe('upload e2e pipeline', () => {
           EmbeddingService,
           DetectService,
           FaceClusterService,
+          // transfer processors are registered but never fed jobs in this pipeline proof
+          { provide: S3BackupService, useValue: { putFile: vi.fn(), downloadToFile: vi.fn() } },
           ProcessorsService,
         ],
       }).compile();

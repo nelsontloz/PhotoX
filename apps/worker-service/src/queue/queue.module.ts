@@ -1,6 +1,6 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-import { loadAuthEnv, LocalStorageService } from '@photox/shared-config';
+import { loadAuthEnv, LocalStorageService, S3BackupService } from '@photox/shared-config';
 import { BullMqService } from './bullmq.service';
 import { ProcessorsService } from './processors.service';
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor';
@@ -26,6 +26,11 @@ import { CoreClient } from '../core/core-client.service';
     // awaits BullMqService.ready() — no reliance on provider insertion order for readiness
     BullMqService,
     LocalStorageService,
+    // framework-free class, so a plain factory provider (the Nest Logger fits its log sink)
+    {
+      provide: S3BackupService,
+      useFactory: () => new S3BackupService(new Logger('S3Backup')),
+    },
     CoreClient,
     ProcessorsService,
     MetadataExtractor,

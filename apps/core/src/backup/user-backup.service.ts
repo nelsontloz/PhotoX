@@ -31,6 +31,7 @@ import type {
   DeleteBackupResult,
   MergeBackupResult,
   MergeUserBackupInput,
+  TransferFailure,
   TransferJobLike,
   UserBackupManifest,
 } from './backup.types';
@@ -269,6 +270,33 @@ export class UserBackupService {
 
   consumeTransferJob(kind: TransferKind, job: TransferJobLike): Promise<void> {
     return this.dispatchService.consumeTransferJob(kind, job);
+  }
+
+  /** Claims one ledger item for a worker job; null means "nothing to do" (stale/duplicate). */
+  claimTransfer(
+    kind: TransferKind,
+    runId: string,
+    itemId: string,
+    attempt: number,
+    userId?: string,
+  ): Promise<{ run: BackupRun; item: BackupRunItem } | null> {
+    return this.dispatchService.claimTransfer(kind, runId, itemId, attempt, userId);
+  }
+
+  /** Records a finished item; a re-delivered call after a lost response is a no-op. */
+  completeTransfer(runId: string, itemId: string, userId?: string): Promise<void> {
+    return this.dispatchService.completeTransfer(runId, itemId, userId);
+  }
+
+  /** Records a failed attempt and returns whether the worker must throw for a BullMQ retry. */
+  failTransfer(
+    kind: TransferKind,
+    runId: string,
+    itemId: string,
+    failure: TransferFailure,
+    userId?: string,
+  ): Promise<boolean> {
+    return this.dispatchService.failTransfer(kind, runId, itemId, failure, userId);
   }
 
   finalizeBackupRun(run: BackupRun, manifest: UserBackupManifest): Promise<void> {

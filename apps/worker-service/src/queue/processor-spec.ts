@@ -1,5 +1,5 @@
 import type { Job, WorkerOptions } from 'bullmq';
-import type { LocalStorageService } from '@photox/shared-config';
+import type { LocalStorageService, S3BackupService } from '@photox/shared-config';
 import type { BullMqService } from './bullmq.service';
 import type { CoreClient } from '../core/core-client.service';
 import type { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor';
@@ -12,6 +12,7 @@ export interface ProcessorDeps {
   bullMq: BullMqService;
   core: CoreClient;
   storage: LocalStorageService;
+  s3: S3BackupService;
   metadataExtractor: MetadataExtractor;
   videoMetadataExtractor: VideoMetadataExtractor;
   faceDetector: FaceDetectorService;

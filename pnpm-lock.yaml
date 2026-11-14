@@ -304,6 +304,12 @@ importers:
 
   packages/shared-config:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1156.0
+        version: 3.1156.0
+      '@aws-sdk/lib-storage':
+        specifier: ^3.1156.0
+        version: 3.1156.0(@aws-sdk/client-s3@3.1156.0)
       zod:
         specifier: ^4.6.7
         version: 4.6.7

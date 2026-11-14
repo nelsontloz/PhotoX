@@ -14,7 +14,7 @@ import { BackupRunItem } from '../database/entities/backup-run-item.entity';
 import { S3BackupService } from './s3-backup.service';
 import { UserBackupService } from './user-backup.service';
 import { BackupTransfersDispatcher } from './backup-transfers.dispatcher';
-import { BackupTransferConsumers } from './backup-transfer.consumers';
+import { TransferWorkerController } from './transfer-worker.controller';
 
 // ponytail: BullMqService is @Global, so no QueueModule import — like AdminModule,
 // this module only declares the TypeORM scope its own queries touch
@@ -36,16 +36,11 @@ import { BackupTransferConsumers } from './backup-transfer.consumers';
     StorageModule,
     PlacesModule,
   ],
-  controllers: [BackupController],
+  controllers: [BackupController, TransferWorkerController],
   // RunLifecycleService / TransferDispatchService / RunFinalizeService / BackupMergeService are
   // composed by hand inside UserBackupService (its constructor is the composition root), not
   // registered here — the short provider list is correct, not incomplete.
-  providers: [
-    S3BackupService,
-    UserBackupService,
-    BackupTransfersDispatcher,
-    BackupTransferConsumers,
-  ],
+  providers: [S3BackupService, UserBackupService, BackupTransfersDispatcher],
   exports: [UserBackupService],
 })
 export class BackupModule {}

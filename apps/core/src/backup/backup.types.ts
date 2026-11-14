@@ -233,6 +233,18 @@ export interface TransferJobLike {
   opts: { attempts?: number };
 }
 
+/**
+ * Failure facts a worker can report over HTTP (no Error object crosses the wire): the message,
+ * the Node errno / S3 error name that decide pause/missing, and the attempt budget.
+ */
+export interface TransferFailure {
+  message: string;
+  code?: string | undefined;
+  errorName?: string | undefined;
+  attempt: number;
+  maxAttempts: number;
+}
+
 /** One backup account snapshot surfaced in the admin overview/merge picker. */
 export interface BackupSnapshot {
   userId: string;

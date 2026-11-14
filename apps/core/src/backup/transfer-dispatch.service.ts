@@ -1,4 +1,4 @@
-import { type Logger } from '@nestjs/common';
+import { ForbiddenException, type Logger } from '@nestjs/common';
 import { isUUID } from 'class-validator';
 import { randomUUID } from 'crypto';
 import { mkdir, rm } from 'fs/promises';
@@ -19,7 +19,7 @@ import {
   type TransferJobData,
   type TransferKind,
 } from './backup-transfer.constants';
-import type { ClaimedBackupItem, TransferJobLike } from './backup.types';
+import type { ClaimedBackupItem, TransferFailure, TransferJobLike } from './backup.types';
 import { rowsOf } from './bulk-io';
 import type { RunFinalizeService } from './run-finalize.service';
 import { isNotFound, type S3BackupService } from './s3-backup.service';
@@ -35,8 +35,9 @@ const TRANSFER_MAX_BACKOFF_MS = 5 * 60_000;
 const TRANSFER_CLAIM_TIMEOUT_MS = 30 * 60_000;
 
 /**
- * Middle phase: claim due ledger items, hand them to the per-kind BullMQ queues, execute one item
- * per job, and promote a drained run by delegating to the finalize phase.
+ * Middle phase: claim due ledger items and hand them to the per-kind BullMQ queues (the worker
+ * executes one item per job and reports back over /worker/backups/transfers/*), then promote a
+ * drained run by delegating to the finalize phase.
  */
 export class TransferDispatchService {
   constructor(
@@ -52,8 +53,8 @@ export class TransferDispatchService {
 
   /**
    * One sweeper pass without BullMQ: requeue crashed claims, drive one batch of each kind
-   * through the same consumer, then finish runs with nothing left. Test-only driver — the
-   * production executor is the queue pair (dispatcher + consumers).
+   * through the same claim/complete/fail path, then finish runs with nothing left. Test-only
+   * driver — production is the queue pair (core dispatcher + worker consumers).
    */
   async runTransfersOnce(ignoreBackoff = false): Promise<number> {
     await this.requeueStuckFinalizing();
@@ -95,13 +96,15 @@ export class TransferDispatchService {
     kind: TransferKind,
     limit: number,
     ignoreBackoff = false,
-  ): Promise<{ id: string; runId: string; attempts: number }[]> {
+  ): Promise<{ id: string; runId: string; userId: string; attempts: number }[]> {
     const due = ignoreBackoff ? '' : 'AND i2."nextAttemptAt" <= now()';
-    const rows = rowsOf<{ id: string; runId: string; attempts: number }>(
+    const rows = rowsOf<{ id: string; runId: string; userId: string; attempts: number }>(
       await this.dataSource.query(
         `UPDATE "backup_run_items" i
          SET "state" = 'queued', "claimedAt" = now()
-         WHERE i."id" IN (
+         FROM "backup_runs" run
+         WHERE run."id" = i."runId"
+           AND i."id" IN (
            SELECT i2."id" FROM "backup_run_items" i2
            JOIN "backup_runs" r ON r."id" = i2."runId"
            WHERE r."state" = 'running' AND r."kind" = $2
@@ -111,7 +114,8 @@ export class TransferDispatchService {
            FOR UPDATE OF i2 SKIP LOCKED
            LIMIT $1
          )
-         RETURNING i."id" AS "id", i."runId" AS "runId", i."attempts" AS "attempts"`,
+         RETURNING i."id" AS "id", i."runId" AS "runId", i."attempts" AS "attempts",
+                   run."userId" AS "userId"`,
         [limit, kind],
       ),
     );
@@ -133,7 +137,7 @@ export class TransferDispatchService {
       const ok = await this.bullMq.enqueue(
         TRANSFER_QUEUES[kind],
         'transfer',
-        { runId: row.runId, itemId: row.id } satisfies TransferJobData,
+        { runId: row.runId, itemId: row.id, userId: row.userId } satisfies TransferJobData,
         {
           jobId: `${kind}-${row.id}`,
           attempts: TRANSFER_JOB_ATTEMPTS,
@@ -173,28 +177,97 @@ export class TransferDispatchService {
     await this.finalize.finalizeDueRuns(null);
   }
 
-  /** Consumer half: one BullMQ job = one file, re-read from the DB before any I/O. */
+  /**
+   * Claim phase shared by the HTTP claim route and the in-process driver: validates the job
+   * against the ledger and atomically turns one item `running`. A returned item is the only
+   * licence to move bytes.
+   */
+  async claimTransfer(
+    kind: TransferKind,
+    runId: string,
+    itemId: string,
+    attempt: number,
+    userId?: string,
+  ): Promise<{ run: BackupRun; item: BackupRunItem } | null> {
+    const run = await this.runs.findOne({ where: { id: runId } });
+    if (!run) return null;
+    this.assertJobUser(run, userId);
+    // a job in the wrong queue, or for a terminal run, must never write bytes
+    if (run.kind !== kind) return null;
+    if (run.state !== 'running' && run.state !== 'paused') return null;
+    const item = await this.runItems.findOne({ where: { id: itemId, runId: run.id } });
+    if (!item || item.state === 'failed' || item.state === 'missing') return null;
+    if (!(await this.claimQueuedItem(item.id, run.id, attempt))) return null;
+
+    await this.runs.update(run.id, { currentFile: item.storageKey, updatedAt: new Date() });
+    return { run, item };
+  }
+
+  /**
+   * Success half: delete the ledger row and bump the run exactly once, then let finalize decide.
+   * A re-delivered complete (lost HTTP response) is a no-op.
+   */
+  async completeTransfer(runId: string, itemId: string, userId?: string): Promise<void> {
+    const run = await this.runs.findOne({ where: { id: runId } });
+    if (!run) return;
+    this.assertJobUser(run, userId);
+    const deleted = await this.runItems.delete({ id: itemId, runId });
+    if (!deleted.affected) return;
+    await this.bumpRun(runId, 'uploaded');
+    await this.finalize.finalizeDueRuns(runId);
+  }
+
+  /**
+   * Failure half: decides pause (local FS full/unwritable), permanent failure (missing source
+   * or last attempt) or a BullMQ retry, and returns whether the worker must throw.
+   */
+  async failTransfer(
+    kind: TransferKind,
+    runId: string,
+    itemId: string,
+    failure: TransferFailure,
+    userId?: string,
+  ): Promise<boolean> {
+    const run = await this.runs.findOne({ where: { id: runId } });
+    if (!run) return false;
+    this.assertJobUser(run, userId);
+    if (run.kind !== kind) return false;
+    const item = await this.runItems.findOne({ where: { id: itemId, runId } });
+    if (!item) return false;
+    return this.handleTransferError(run, item, failure);
+  }
+
+  /** Queue-bound worker routes name the run's owner; core's in-process driver does not. */
+  private assertJobUser(run: BackupRun, userId?: string): void {
+    if (userId !== undefined && run.userId !== userId) {
+      throw new ForbiddenException('Transfer target must be the job user');
+    }
+  }
+
+  /** Consumer half of the in-process driver: one item, claim → bytes → ledger. */
   async consumeTransferJob(kind: TransferKind, job: TransferJobLike): Promise<void> {
     const data = job.data as Partial<TransferJobData> | undefined;
     if (typeof data?.runId !== 'string' || typeof data?.itemId !== 'string') return;
     if (!isUUID(data.runId) || !isUUID(data.itemId)) return;
-    const run = await this.runs.findOne({ where: { id: data.runId } });
-    // a job in the wrong queue, or for a terminal run, must never write bytes
-    if (run?.kind !== kind) return;
-    if (run.state !== 'running' && run.state !== 'paused') return;
-    const item = await this.runItems.findOne({ where: { id: data.itemId, runId: run.id } });
-    if (!item || item.state === 'failed' || item.state === 'missing') return;
-    if (!(await this.claimQueuedItem(item.id, run.id, job.attemptsMade + 1))) return;
+    const claimed = await this.claimTransfer(kind, data.runId, data.itemId, job.attemptsMade + 1);
+    if (!claimed) return;
 
-    await this.runs.update(run.id, { currentFile: item.storageKey, updatedAt: new Date() });
     try {
-      await this.performTransfer(run, item);
-      await this.runItems.delete(item.id);
-      await this.bumpRun(run.id, 'uploaded');
-      await this.finalize.finalizeDueRuns(run.id);
+      await this.performTransfer(kind, data.runId, claimed.item);
     } catch (err) {
-      await this.handleQueueTransferError(run, item, err, job);
+      // ledger bookkeeping below is outside this try: a DB hiccup after the bytes landed must
+      // never mark the item failed
+      const retry = await this.handleTransferError(claimed.run, claimed.item, {
+        message: errorMessage(err),
+        code: (err as NodeJS.ErrnoException).code,
+        errorName: (err as { name?: string }).name,
+        attempt: job.attemptsMade + 1,
+        maxAttempts: job.opts.attempts ?? TRANSFER_JOB_ATTEMPTS,
+      });
+      if (retry) throw err;
+      return;
     }
+    await this.completeTransfer(data.runId, claimed.item.id);
   }
 
   /** Atomic claim for one queued item; a crash-retried job may re-claim its own running row. */
@@ -213,17 +286,15 @@ export class TransferDispatchService {
     return rows.length > 0;
   }
 
-  private async handleQueueTransferError(
+  private async handleTransferError(
     run: BackupRun,
     item: { id: string },
-    err: unknown,
-    job: TransferJobLike,
-  ): Promise<void> {
-    const message = errorMessage(err);
-    const code = (err as NodeJS.ErrnoException).code;
+    failure: TransferFailure,
+  ): Promise<boolean> {
+    const message = failure.message;
 
     // local storage is full/unwritable: retrying this or other files is pointless — pause the run
-    if (code === 'ENOSPC' || code === 'EDQUOT' || code === 'EACCES') {
+    if (failure.code === 'ENOSPC' || failure.code === 'EDQUOT' || failure.code === 'EACCES') {
       await this.runItems.update(item.id, { state: 'queued', claimedAt: null, error: message });
       await this.runs.update(run.id, {
         state: 'paused',
@@ -232,16 +303,11 @@ export class TransferDispatchService {
         updatedAt: new Date(),
       });
       this.logger.error(`Transfer paused for run ${run.id}: ${message}`);
-      return;
+      return false;
     }
 
-    const missing = run.kind === 'restore' && isNotFound(err);
-    const maxAttempts =
-      job.opts.attempts !== undefined && job.opts.attempts > 0
-        ? job.opts.attempts
-        : TRANSFER_JOB_ATTEMPTS;
-    const attempts = job.attemptsMade + 1;
-    if (missing || code === 'ENOENT' || attempts >= maxAttempts) {
+    const missing = run.kind === 'restore' && isNotFound({ name: failure.errorName });
+    if (missing || failure.code === 'ENOENT' || failure.attempt >= failure.maxAttempts) {
       await this.runItems.update(item.id, {
         state: missing ? 'missing' : 'failed',
         error: message,
@@ -253,27 +319,31 @@ export class TransferDispatchService {
         `Transfer ${missing ? 'missing' : 'failed'} (${run.kind}) item=${item.id} ` +
           `run=${run.id}: ${message}`,
       );
-      return;
+      return false;
     }
 
     // transient: hand the item back as dispatchable and let BullMQ's backoff own the retry
     await this.runItems.update(item.id, { state: 'queued', claimedAt: null, error: message });
     this.logger.warn(
-      `Transfer retry (${run.kind}) item=${item.id} attempt=${attempts}: ${message}`,
+      `Transfer retry (${run.kind}) item=${item.id} attempt=${failure.attempt}: ${message}`,
     );
-    throw err;
+    return true;
   }
 
-  /** The actual byte movement shared by the synchronous driver and the queue consumer. */
-  private async performTransfer(run: BackupRun, item: ClaimedBackupItem): Promise<void> {
-    if (run.kind === 'backup') {
+  /** The actual byte movement shared by the synchronous driver and the worker's transfer job. */
+  private async performTransfer(
+    kind: TransferKind,
+    runId: string,
+    item: ClaimedBackupItem,
+  ): Promise<void> {
+    if (kind === 'backup') {
       await this.s3.putFile(
         item.s3Key,
         this.storage.pathFor(item.storageKey),
         item.mimeType ?? undefined,
       );
     } else {
-      await this.restoreFile(run, item);
+      await this.restoreFile(runId, item);
     }
   }
 
@@ -294,8 +364,8 @@ export class TransferDispatchService {
     );
   }
 
-  private async restoreFile(run: BackupRun, item: ClaimedBackupItem): Promise<void> {
-    const dir = this.storage.pathFor(join('backup-runs', run.id, 'tmp'));
+  private async restoreFile(runId: string, item: ClaimedBackupItem): Promise<void> {
+    const dir = this.storage.pathFor(join('backup-runs', runId, 'tmp'));
     await mkdir(dir, { recursive: true });
     const tmp = join(dir, `${item.fileId}.${randomUUID()}.part`);
     try {

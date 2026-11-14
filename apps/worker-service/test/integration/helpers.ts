@@ -9,7 +9,7 @@ import { vi } from 'vitest';
 import type { INestApplicationContext } from '@nestjs/common';
 import type { Queue } from 'bullmq';
 import type { Asset, FileRecord } from '@photox/shared-types';
-import { LocalStorageService } from '@photox/shared-config';
+import { LocalStorageService, S3BackupService } from '@photox/shared-config';
 import { BullMqService } from '../../src/queue/bullmq.service';
 import { CoreClient } from '../../src/core/core-client.service';
 import { FFMPEG_PATH } from '../../src/queue/ffmpeg';
@@ -54,6 +54,11 @@ export async function createTestApp(opts: CreateTestAppOptions = {}): Promise<Te
       BullMqService,
       { provide: LocalStorageService, useValue: storage },
       { provide: CoreClient, useValue: fake },
+      // transfer processors are registered but never fed jobs here; no S3 calls in this harness
+      {
+        provide: S3BackupService,
+        useValue: { putFile: vi.fn(), downloadToFile: vi.fn() },
+      },
       {
         provide: FaceDetectorService,
         useValue: { detect: opts.detect ?? vi.fn().mockResolvedValue([]) },

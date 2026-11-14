@@ -631,3 +631,55 @@ export interface AdminUserDeleteStatus {
 // The user-delete queue + job-id contract lives here because core produces and the worker consumes.
 export const USER_DELETE_QUEUE = 'user-delete';
 export const userDeleteJobId = (userId: string): string => `user-delete-${userId}`;
+
+// The backup/restore transfer queues are consumed by the worker (it owns STORAGE_DIR and the
+// backup S3 store); core still owns the ledger and claims each item over the /worker surface.
+export const BACKUP_TRANSFER_QUEUE = 'backup-transfer';
+export const RESTORE_TRANSFER_QUEUE = 'restore-transfer';
+
+export type TransferKind = 'backup' | 'restore';
+
+/** One BullMQ transfer job — ids only; core re-reads and claims the ledger row on claim. */
+export interface TransferJobData {
+  userId: string;
+  runId: string;
+  itemId: string;
+  sig?: string;
+}
+
+export interface TransferClaimRequest {
+  runId: string;
+  itemId: string;
+  kind: TransferKind;
+  /** 1-based BullMQ attempt, so core can re-claim its own crashed `running` row. */
+  attempt: number;
+}
+
+export type TransferClaimResponse =
+  | { claimed: false }
+  | {
+      claimed: true;
+      fileId: string;
+      storageKey: string;
+      s3Key: string;
+      mimeType: string | null;
+      checksumSha256: string | null;
+    };
+
+export interface TransferFailRequest {
+  runId: string;
+  itemId: string;
+  kind: TransferKind;
+  message: string;
+  /** Node errno of a local FS failure (ENOSPC/EACCES pause the whole run). */
+  code?: string;
+  /** S3 error name (NotFound on a restore marks the item permanently missing). */
+  errorName?: string;
+  attempt: number;
+  maxAttempts: number;
+}
+
+export interface TransferFailResponse {
+  /** true => the worker must throw so BullMQ's backoff retries the job. */
+  retry: boolean;
+}

@@ -10,6 +10,8 @@ const QUEUES = [
   'process-embeddings',
   'process-detect',
   'user-delete',
+  'backup-transfer',
+  'restore-transfer',
 ];
 
 describe('ProcessorsService', () => {
@@ -17,6 +19,7 @@ describe('ProcessorsService', () => {
     const bullMq = { ready: vi.fn().mockResolvedValue(undefined), createWorker };
     const service = new ProcessorsService(
       bullMq as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,

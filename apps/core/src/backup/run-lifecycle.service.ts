@@ -192,7 +192,9 @@ export class RunLifecycleService {
       mimeType: string;
       state: 'pending';
       attempts: number;
-      nextAttemptAt: Date;
+      // scheduled on the DB clock: the dispatcher claims with now(), so a skewed host clock
+      // must not push a fresh item into the future (or past its backoff)
+      nextAttemptAt: () => string;
     }[] = [];
     let skipped = 0;
     for (const file of manifest.files) {
@@ -211,7 +213,7 @@ export class RunLifecycleService {
         mimeType: file.mimeType,
         state: 'pending',
         attempts: 0,
-        nextAttemptAt: new Date(),
+        nextAttemptAt: () => 'now()',
       });
     }
 
@@ -378,7 +380,7 @@ export class RunLifecycleService {
         mimeType: file.mimeType,
         state: 'pending' as const,
         attempts: 0,
-        nextAttemptAt: new Date(),
+        nextAttemptAt: () => 'now()',
       };
     });
 
@@ -572,7 +574,7 @@ export class RunLifecycleService {
         runId,
         state: In(['pending', 'retrying', 'queued', 'running', 'failed', 'missing']),
       },
-      { state: 'pending', attempts: 0, nextAttemptAt: new Date(), claimedAt: null, error: null },
+      { state: 'pending', attempts: 0, nextAttemptAt: () => 'now()', claimedAt: null, error: null },
     );
     // a retry can race a newer run for the same user (failed A, started B, then retry A): the
     // unique index turns that into a 409 instead of a raw 23505

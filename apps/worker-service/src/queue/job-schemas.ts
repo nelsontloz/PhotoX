@@ -42,10 +42,19 @@ export const userDeleteJobSchema = z.object({
   sig: z.string().optional(),
 });
 
+// backup/restore transfer: ids only — core claims the ledger row and returns the byte keys
+export const transferJobSchema = z.object({
+  userId: uuid,
+  runId: uuid,
+  itemId: uuid,
+  sig: z.string().optional(),
+});
+
 export type ThumbnailJob = z.infer<typeof thumbnailJobSchema>;
 export type AssetRefsJob = z.infer<typeof assetRefsJobSchema>;
 export type ClusterJob = z.infer<typeof clusterJobSchema>;
 export type UserDeleteJob = z.infer<typeof userDeleteJobSchema>;
+export type TransferJob = z.infer<typeof transferJobSchema>;
 
 export function parseJobData<T>(schema: z.ZodType<T>, data: unknown, queue: string): T {
   const parsed = schema.safeParse(data);

@@ -109,8 +109,8 @@ describe('admin backup HTTP surface', () => {
 
     const run = await request(apiServer(t)).get(`${BACKUPS}/runs/${runId}`).set(auth);
     expect(run.status).toBe(200);
-    // The dispatcher and transfer consumers no-op under NODE_ENV=test, so the run keeps its
-    // item queued instead of racing this read.
+    // The dispatcher no-ops under NODE_ENV=test and core no longer consumes the transfer
+    // queues, so the run keeps its item queued instead of racing this read.
     expect(run.body).toMatchObject({
       id: runId,
       kind: 'backup',

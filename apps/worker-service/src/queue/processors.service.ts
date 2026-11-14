@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { LocalStorageService } from '@photox/shared-config';
+import { LocalStorageService, S3BackupService } from '@photox/shared-config';
 import { BullMqService } from './bullmq.service';
 import { CoreClient } from '../core/core-client.service';
 import { MetadataExtractor, VideoMetadataExtractor } from './metadata.extractor';
@@ -14,6 +14,7 @@ import { faceProcessor } from './face.processor';
 import { embeddingProcessor } from './embed.processor';
 import { detectProcessor } from './detect.processor';
 import { userDeleteProcessor } from './user-delete.processor';
+import { transferProcessor } from './transfer.processor';
 import type { ProcessorDeps, ProcessorSpec } from './processor-spec';
 
 // every queue consumer, in the order the old per-processor OnModuleInit hooks ran
@@ -26,6 +27,8 @@ export const PROCESSORS: readonly ((deps: ProcessorDeps) => ProcessorSpec)[] = [
   embeddingProcessor,
   detectProcessor,
   userDeleteProcessor,
+  (deps) => transferProcessor(deps, 'backup'),
+  (deps) => transferProcessor(deps, 'restore'),
 ];
 
 /**
@@ -47,6 +50,7 @@ export class ProcessorsService implements OnModuleInit {
     embedder: EmbeddingService,
     detect: DetectService,
     faceCluster: FaceClusterService,
+    s3: S3BackupService,
   ) {
     this.deps = {
       bullMq,
@@ -58,6 +62,7 @@ export class ProcessorsService implements OnModuleInit {
       embedder,
       detect,
       faceCluster,
+      s3,
     };
   }
 

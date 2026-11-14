@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { vi } from 'vitest';
 import { In } from 'typeorm';
 import { originalKey } from '@photox/shared-config';
@@ -71,6 +71,78 @@ describe('user backup round-trip', () => {
       expect(await queuedItemCount(runId)).toBe(0);
       const key = originalKey(email, user.id, photo.id, 'bin');
       expect(t.fake.objects.has(key)).toBe(true);
+    });
+
+    it('stamps the run owner and the HMAC binding into the dispatched payload', async () => {
+      const user = await t.userRepo.save(
+        t.userRepo.create({
+          email: `queue-binding-${randomUUID()}@example.com`,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Queue Binding',
+        }),
+      );
+      await seedOriginal(user.id, Buffer.from('queue-binding-bytes'));
+      await t.svc.startBackup(user.id);
+      await t.svc.dispatchPendingTransfers('backup', 10);
+
+      const data = await takeJob(BACKUP_TRANSFER_QUEUE);
+
+      // the worker's job schema requires userId + a valid signature (scope = userId), and the
+      // claim route pins every ledger write to the token's own sub
+      expect(data.userId).toBe(user.id);
+      expect(data.sig).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('serves the worker claim/complete half and finishes the run', async () => {
+      const email = `queue-claim-${randomUUID()}@example.com`;
+      const user = await t.userRepo.save(
+        t.userRepo.create({
+          email,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Queue Claim',
+        }),
+      );
+      const photo = await seedOriginal(user.id, Buffer.from('queue-claim-bytes'));
+      const { runId } = await t.svc.startBackup(user.id);
+      await t.svc.dispatchPendingTransfers('backup', 10);
+      const data = await takeJob(BACKUP_TRANSFER_QUEUE);
+
+      const claimed = await t.svc.claimTransfer('backup', data.runId, data.itemId, 1, user.id);
+      expect(claimed?.item).toMatchObject({
+        fileId: photo.record.id,
+        storageKey: photo.record.storageKey,
+        s3Key: originalKey(email, user.id, photo.record.id, 'bin'),
+      });
+
+      // a re-delivered complete after a lost response is a no-op, not a double bump
+      await t.svc.completeTransfer(data.runId, data.itemId, user.id);
+      await t.svc.completeTransfer(data.runId, data.itemId, user.id);
+
+      const status = await t.svc.getRunStatus(runId);
+      expect(status.state).toBe('completed');
+      expect(status).toMatchObject({ completed: 1, uploaded: 1 });
+      expect(await queuedItemCount(runId)).toBe(0);
+    });
+
+    it('refuses a claim for a run owned by another account', async () => {
+      const user = await t.userRepo.save(
+        t.userRepo.create({
+          email: `queue-foreign-${randomUUID()}@example.com`,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Queue Foreign',
+        }),
+      );
+      await seedOriginal(user.id, Buffer.from('queue-foreign-bytes'));
+      await t.svc.startBackup(user.id);
+      await t.svc.dispatchPendingTransfers('backup', 10);
+      const data = await takeJob(BACKUP_TRANSFER_QUEUE);
+
+      await expect(
+        t.svc.claimTransfer('backup', data.runId, data.itemId, 1, randomUUID()),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('dispatches a restore to the restore queue only and restores the bytes', async () => {

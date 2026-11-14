@@ -13,6 +13,10 @@ import type {
   MetadataStatus,
   RegisterDetectionsRequestDto,
   RegisterEmbeddingRequestDto,
+  TransferClaimResponse,
+  TransferFailRequest,
+  TransferFailResponse,
+  TransferKind,
   UserDeleteFinishRequest,
   UserDeleteStepResult,
 } from '@photox/shared-types';
@@ -391,6 +395,54 @@ export class CoreClient {
       { sub: userId, body: report, ...binding },
       PURGE_TIMEOUT_MS,
     );
+  }
+
+  /**
+   * Claim one backup/restore ledger item. `{claimed:false}` means the item is done/terminal or
+   * another attempt owns it — the worker must not touch bytes.
+   */
+  async claimTransfer(
+    userId: string,
+    kind: TransferKind,
+    runId: string,
+    itemId: string,
+    attempt: number,
+    binding?: JobBinding,
+  ): Promise<TransferClaimResponse> {
+    return this.request('POST', '/worker/backups/transfers/claim', {
+      sub: userId,
+      body: { runId, itemId, kind, attempt },
+      ...binding,
+    });
+  }
+
+  async completeTransfer(
+    userId: string,
+    runId: string,
+    itemId: string,
+    binding?: JobBinding,
+  ): Promise<void> {
+    await this.request('POST', '/worker/backups/transfers/complete', {
+      sub: userId,
+      body: { runId, itemId },
+      ...binding,
+    });
+  }
+
+  /** Report a failed byte transfer; `retry` true means throw so BullMQ's backoff retries. */
+  async failTransfer(
+    userId: string,
+    kind: TransferKind,
+    runId: string,
+    itemId: string,
+    failure: Omit<TransferFailRequest, 'runId' | 'itemId' | 'kind'>,
+    binding?: JobBinding,
+  ): Promise<TransferFailResponse> {
+    return this.request('POST', '/worker/backups/transfers/fail', {
+      sub: userId,
+      body: { runId, itemId, kind, ...failure },
+      ...binding,
+    });
   }
 
   private async request<T>(

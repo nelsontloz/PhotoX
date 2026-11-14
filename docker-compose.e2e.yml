@@ -76,6 +76,12 @@ services:
       STORAGE_DIR: /data/storage
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      # backup/restore transfers move the bytes here, so the worker needs the same S3 target
+      S3_ENDPOINT: http://floci:4566
+      S3_BACKUP_BUCKET: photox-e2e-backups
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
     volumes:
       - storage-data:/data/storage
       - ./data/storage/models:/data/storage/models:ro
@@ -84,6 +90,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      floci:
+        condition: service_started
     healthcheck:
       <<: *healthcheck
       test: ['CMD-SHELL', 'wget -qO- http://localhost:3004/health || exit 1']
