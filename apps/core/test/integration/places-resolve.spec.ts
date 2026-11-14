@@ -25,7 +25,7 @@ describe('places resolution', () => {
   let placeRepo: Repository<Place>;
 
   beforeAll(async () => {
-    t = await createApiTestApp({ mockUser: null });
+    t = await createApiTestApp();
     placeRepo = t.dataSource.getRepository(Place);
   }, 120_000);
 

@@ -56,7 +56,6 @@ describe('admin user creation (POST /api/v1/admin/users)', () => {
   beforeAll(async () => {
     // S3BackupService's boot probe HEADs the bucket over the network — never constructed here
     t = await createApiTestApp({
-      mockUser: null,
       overrides: [{ token: S3BackupService, value: {} }],
     });
   }, 120_000);

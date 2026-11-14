@@ -26,7 +26,7 @@ describe('storage dir anchoring', () => {
     process.chdir(apiDir);
     let t: ApiTestApp | null = null;
     try {
-      t = await createApiTestApp({ mockUser: null, storageDir: name });
+      t = await createApiTestApp({ storageDir: name });
       const user = await seedUser(t);
       const token = t.signToken({ id: user.id, email: user.email, role: user.role });
       const bytes = await sharp({

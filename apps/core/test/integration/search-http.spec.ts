@@ -26,7 +26,7 @@ describe('hybrid search HTTP', () => {
   const encodeMock = vi.fn((): Promise<number[]> => Promise.resolve(E0));
 
   beforeAll(async () => {
-    t = await createApiTestApp({ mockUser: null, encodeQuery: encodeMock });
+    t = await createApiTestApp({ encodeQuery: encodeMock });
   }, 120_000);
 
   afterAll(async () => {

@@ -12,7 +12,7 @@ describe('API error contract', () => {
   let t: ApiTestApp;
 
   beforeAll(async () => {
-    t = await createApiTestApp({ mockUser: null, swagger: true });
+    t = await createApiTestApp({ swagger: true });
   }, 120_000);
 
   afterAll(async () => {

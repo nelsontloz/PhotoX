@@ -23,7 +23,7 @@ describe('asset embeddings HTTP', () => {
   let t: ApiTestApp;
 
   beforeAll(async () => {
-    t = await createApiTestApp({ mockUser: null });
+    t = await createApiTestApp();
   }, 120_000);
 
   afterAll(async () => {
