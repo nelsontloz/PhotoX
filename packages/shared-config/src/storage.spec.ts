@@ -4,6 +4,22 @@ import { join } from 'path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { LocalStorageService } from './storage';
 
+describe('LocalStorageService.buildKey', () => {
+  const storage = new LocalStorageService();
+
+  it('groups derivatives under their owner, with the kind as a subdirectory', () => {
+    expect(storage.buildKey('original', 'user-1', 'file-1', 'jpg')).toBe(
+      'originals/user-1/file-1.jpg',
+    );
+    expect(storage.buildKey('thumbnail', 'user-1', 'file-2', '.webp')).toBe(
+      'derivatives/user-1/thumbnails/file-2.webp',
+    );
+    expect(storage.buildKey('transcode', 'user-1', 'file-3', 'webm')).toBe(
+      'derivatives/user-1/transcodes/file-3.webm',
+    );
+  });
+});
+
 describe('LocalStorageService.pathFor', () => {
   const storage = new LocalStorageService();
   let root: string;

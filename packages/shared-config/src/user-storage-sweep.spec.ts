@@ -27,19 +27,20 @@ async function plant(dir: string, key: string): Promise<string> {
 }
 
 describe('sweepUserStorage', () => {
-  it('deletes every file under the four user prefixes and counts them', async () => {
+  it('deletes every file under the three user prefixes and counts them', async () => {
     await withStorageDir(async (dir) => {
       const storage = new LocalStorageService();
       await plant(dir, `originals/${USER_ID}/a.jpg`);
       await plant(dir, `originals/${USER_ID}/nested/b.jpg`);
-      await plant(dir, `derivatives/thumbnails/${USER_ID}/c.webp`);
-      await plant(dir, `derivatives/transcodes/${USER_ID}/d.webm`);
+      await plant(dir, `derivatives/${USER_ID}/thumbnails/c.webp`);
+      await plant(dir, `derivatives/${USER_ID}/transcodes/d.webm`);
       await plant(dir, `upload-sessions/${USER_ID}/session-1/part-0`);
 
       const result = await sweepUserStorage(storage, USER_ID);
 
       expect(result).toEqual({ deleted: 5, failed: 0 });
       await expect(storage.exists(`originals/${USER_ID}/a.jpg`)).resolves.toBe(false);
+      await expect(storage.exists(`derivatives/${USER_ID}/thumbnails/c.webp`)).resolves.toBe(false);
       await expect(storage.exists(`upload-sessions/${USER_ID}/session-1/part-0`)).resolves.toBe(
         false,
       );

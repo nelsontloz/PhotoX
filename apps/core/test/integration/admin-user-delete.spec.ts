@@ -196,8 +196,8 @@ describe('admin async user deletion', () => {
 
     // stray bytes with no FileRecord + a models sentinel that must survive
     const strayOriginal = await plantStray(t, `originals/${user.id}/stray.bin`);
-    const strayThumb = await plantStray(t, `derivatives/thumbnails/${user.id}/stray.webp`);
-    const strayTranscode = await plantStray(t, `derivatives/transcodes/${user.id}/stray.webm`);
+    const strayThumb = await plantStray(t, `derivatives/${user.id}/thumbnails/stray.webp`);
+    const strayTranscode = await plantStray(t, `derivatives/${user.id}/transcodes/stray.webm`);
     const modelSentinel = join(t.storageDir, 'models', 'keep.onnx');
     await mkdir(join(t.storageDir, 'models'), { recursive: true });
     await writeFile(modelSentinel, Buffer.from('model'));

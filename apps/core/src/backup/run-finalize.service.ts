@@ -79,8 +79,8 @@ export class RunFinalizeService {
 
   /**
    * The user's original files. `purpose='original'` alone also matches thumbnail rows (they share
-   * the enum value but live under `derivatives/thumbnails/...`), so the storageKey prefix is the
-   * second arbiter — keep both predicates, no register/storage layout change.
+   * the enum value but live under `derivatives/<userId>/thumbnails/...`), so the storageKey prefix
+   * is the second arbiter — keep both predicates, no register/storage layout change.
    */
   originalFiles(userId: string) {
     return this.files

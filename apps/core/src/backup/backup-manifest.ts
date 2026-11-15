@@ -8,7 +8,7 @@ export function extOf(storageKey: string): string {
 }
 
 // Thumbnails register with purpose='original' (FileRecord only has
-// 'original'|'transcode') but live under derivatives/thumbnails/..., so purpose
+// 'original'|'transcode') but live under derivatives/<userId>/thumbnails/..., so purpose
 // alone cannot isolate original bytes — storageKey prefix is the arbiter.
 export function isDerivativeStorageKey(storageKey: string): boolean {
   return storageKey.startsWith('derivatives/');

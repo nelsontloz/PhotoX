@@ -247,7 +247,7 @@ export class UserFilesService {
   }
 
   // quota inputs: original-purpose bytes under originals/ only — thumbnails share the purpose
-  // but live under derivatives/thumbnails/ (system output, not the user's uploads)
+  // but live under derivatives/<userId>/thumbnails/ (system output, not the user's uploads)
   private async sumOriginalBytes(userId: string): Promise<number> {
     const { used } = (await this.fileRepo
       .createQueryBuilder('f')

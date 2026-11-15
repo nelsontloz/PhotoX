@@ -193,7 +193,7 @@ describe('open audit findings (fails first)', () => {
         t.fileRepo.create({
           userId: user.id,
           // a thumbnail FileRecord (purpose='original' by design) — must not consume quota
-          storageKey: `derivatives/thumbnails/${user.id}/${randomUUID()}.webp`,
+          storageKey: `derivatives/${user.id}/thumbnails/${randomUUID()}.webp`,
           originalName: 'thumb.webp',
           mimeType: 'image/webp',
           sizeBytes: QUOTA_BYTES - 1024,
