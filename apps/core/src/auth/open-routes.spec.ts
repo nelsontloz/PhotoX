@@ -57,6 +57,22 @@ describe('open-routes', () => {
       expect(isOpenRoute('/api/share/abc123')).toBe(true);
     });
 
+    // `/healthz` is the unversioned probe alias of `/health`; the global guard must treat it
+    // exactly like `/health` or the alias answers 401 instead of the health payload.
+    it('matches the unversioned healthz alias', () => {
+      expect(isOpenRoute('/healthz')).toBe(true);
+      expect(isOpenRoute('/HEALTHZ')).toBe(true);
+      expect(isOpenRoute('/Healthz')).toBe(true);
+    });
+
+    it('opens neither versioned nor lookalike healthz paths', () => {
+      expect(isOpenRoute('/api/v1/healthz')).toBe(false);
+      expect(isOpenRoute('/API/V1/HEALTHZ')).toBe(false);
+      expect(isOpenRoute('/healthzx')).toBe(false);
+      expect(isOpenRoute('/health/z')).toBe(false);
+      expect(isOpenRoute('/healthzz')).toBe(false);
+    });
+
     it('ignores the case of the path', () => {
       expect(isOpenRoute('/HEALTH')).toBe(true);
       expect(isOpenRoute('/DOCS')).toBe(true);

@@ -94,6 +94,71 @@ describe('health endpoint', () => {
     expect(body.checks.redis?.status).toBe('up');
   });
 
+  // `/healthz` is a probe alias for `/health`: the same unversioned route, the same status and
+  // the same payload. `uptime`/`timestamp` are re-stamped per call, so body equivalence is
+  // checked on every field those two do not own, plus on the key sets of both bodies.
+  describe('healthz alias', () => {
+    const comparable = (body: HealthBody) => ({
+      status: body.status,
+      service: body.service,
+      checks: {
+        database: body.checks.database?.status,
+        redis: body.checks.redis?.status,
+      },
+    });
+
+    it('GET /healthz is open at the unversioned path and reports the health payload', async () => {
+      redisHolder.redis = redis;
+      const server = app.getHttpServer() as Express;
+      const res = await request(server).get('/healthz');
+      expect(res.status).toBe(200);
+      const body = res.body as HealthBody;
+      expect(body.status).toBe('ok');
+      expect(body.service).toBe('core');
+      expect(typeof body.uptime).toBe('number');
+      expect(new Date(body.timestamp).toString()).not.toBe('Invalid Date');
+      expect(body.checks.database?.status).toBe('up');
+      expect(body.checks.redis?.status).toBe('up');
+    });
+
+    it('returns the same status and body as /health for the same state', async () => {
+      redisHolder.redis = redis;
+      const server = app.getHttpServer() as Express;
+      const health = await request(server).get('/health');
+      const healthz = await request(server).get('/healthz');
+      expect(healthz.status).toBe(health.status);
+      expect(healthz.status).toBe(200);
+      expect(Object.keys(healthz.body as HealthBody).sort()).toEqual(
+        Object.keys(health.body as HealthBody).sort(),
+      );
+      expect(comparable(healthz.body as HealthBody)).toEqual(comparable(health.body as HealthBody));
+    });
+
+    it('mirrors the degraded status of /health while Redis is down', async () => {
+      redisHolder.redis = deadRedis;
+      const server = app.getHttpServer() as Express;
+      const health = await request(server).get('/health');
+      const healthz = await request(server).get('/healthz');
+      expect(health.status).toBe(200);
+      expect(healthz.status).toBe(200);
+      expect(comparable(healthz.body as HealthBody)).toEqual(comparable(health.body as HealthBody));
+      const body = healthz.body as HealthBody;
+      expect(body.status).toBe('degraded');
+      expect(body.service).toBe('core');
+      expect(body.checks.database?.status).toBe('up');
+      expect(body.checks.redis?.status).toBe('down');
+    }, 60_000);
+
+    // the alias is unversioned only: registering it under the API prefix would publish a
+    // second health surface the policy in open-routes.ts deliberately does not open
+    it('does not serve /api/v1/healthz', async () => {
+      redisHolder.redis = redis;
+      const server = app.getHttpServer() as Express;
+      const res = await request(server).get('/api/v1/healthz');
+      expect(res.status).toBe(404);
+    });
+  });
+
   it('reports degraded with Redis down while Postgres stays up', async () => {
     redisHolder.redis = deadRedis;
     const server = app.getHttpServer() as Express;
