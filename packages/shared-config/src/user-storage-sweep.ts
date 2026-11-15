@@ -8,16 +8,13 @@ export interface SweepableStorage {
 }
 
 /**
- * Every byte a user owns lives under one of these prefixes (AGENTS.md: originals, derivative
- * thumbnails, derivative transcodes, upload-session chunks). The account wipe sweeps them by
- * id, so it never needs the DB to find a file.
+ * Every byte a user owns lives under one of these prefixes (AGENTS.md: originals, derivatives,
+ * upload-session chunks). The account wipe sweeps them by id, so it never needs the DB to find
+ * a file. The walk root is `<prefix>/<userId>`, so a pre-flattening
+ * `derivatives/thumbnails/<userId>` tree is NOT covered — relocate it once (runbook in the PR)
+ * or let the admin orphan sweep claim it after the rows are gone.
  */
-export const USER_STORAGE_PREFIXES = [
-  'originals',
-  'derivatives/thumbnails',
-  'derivatives/transcodes',
-  'upload-sessions',
-] as const;
+export const USER_STORAGE_PREFIXES = ['originals', 'derivatives', 'upload-sessions'] as const;
 
 export interface UserStorageSweepResult {
   deleted: number;

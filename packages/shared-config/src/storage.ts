@@ -12,8 +12,8 @@ export class LocalStorageService {
   ): string {
     const cleanExt = ext.replace(/^\.+/, '');
     if (kind === 'original') return `originals/${userId}/${fileId}.${cleanExt}`;
-    if (kind === 'thumbnail') return `derivatives/thumbnails/${userId}/${fileId}.${cleanExt}`;
-    return `derivatives/transcodes/${userId}/${fileId}.${cleanExt}`;
+    if (kind === 'thumbnail') return `derivatives/${userId}/thumbnails/${fileId}.${cleanExt}`;
+    return `derivatives/${userId}/transcodes/${fileId}.${cleanExt}`;
   }
 
   pathFor(storageKey: string): string {

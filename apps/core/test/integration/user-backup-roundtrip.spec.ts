@@ -711,7 +711,7 @@ describe('user backup round-trip', () => {
     );
     const original = await seedOriginal(user.id, Buffer.from('derivative-test-original'));
     const thumbBytes = Buffer.from('derivative-test-thumb');
-    await seedFile(user.id, `derivatives/thumbnails/${user.id}/${randomUUID()}.webp`, thumbBytes, {
+    await seedFile(user.id, `derivatives/${user.id}/thumbnails/${randomUUID()}.webp`, thumbBytes, {
       mimeType: 'image/webp',
       originalName: 'thumb-sm.webp',
       purpose: 'original',
@@ -719,10 +719,11 @@ describe('user backup round-trip', () => {
     const transcodeBytes = Buffer.from('derivative-test-transcode');
     await seedFile(
       user.id,
-      `derivatives/transcodes/${user.id}/${randomUUID()}.mp4`,
+      `derivatives/${user.id}/transcodes/${randomUUID()}.mp4`,
       transcodeBytes,
       { mimeType: 'video/mp4', originalName: 'clip-transcode.mp4', purpose: 'transcode' },
     );
+    // pre-flattening key, still a derivative by prefix
     const legacyBytes = Buffer.from('derivative-test-legacy-transcode');
     await seedFile(user.id, `derivatives/transcodes/${user.id}/${randomUUID()}.mp4`, legacyBytes, {
       mimeType: 'video/mp4',
