@@ -16,7 +16,6 @@ import type {
   AdminLibraryStatsResponse,
   AdminLibraryStorageMonth,
   AdminLibraryUploadsWeek,
-  AdminReprocessThumbnailsResponse,
   AdminUserBackupSync,
   AdminUserDeleteResponse,
   AdminUserDeleteState,
@@ -1428,86 +1427,9 @@ export class CleanupOrphansResponseModel {
   deletedStrays!: number;
 }
 
-export class AdminReprocessThumbnailsResponseModel implements AdminReprocessThumbnailsResponse {
-  @ApiProperty({ type: Number })
-  enqueued!: number;
-
-  @ApiProperty({ type: Number })
-  totalAssets!: number;
-}
-
-/** Shared body of the per-kind reprocess POSTs. */
-export class EnqueuedTotalResponseModel {
-  @ApiProperty({ type: Number })
-  enqueued!: number;
-
-  @ApiProperty({ type: Number })
-  total!: number;
-}
-
-export class ReprocessEmbeddingsResponseModel {
-  @ApiProperty({ type: Number })
-  enqueued!: number;
-
-  @ApiProperty({ type: Number })
-  total!: number;
-
-  @ApiProperty({ type: String })
-  model!: string;
-}
-
 export class ReclusterResponseModel {
   @ApiProperty({ type: Number, description: 'One cluster job per distinct user with faces' })
   enqueued!: number;
-}
-
-export class PlacesBackfillResponseModel {
-  @ApiProperty({ type: Number })
-  updated!: number;
-
-  @ApiProperty({ type: Number })
-  total!: number;
-}
-
-/** Last-run record written by the enqueue POSTs (`settings.LastRun<K>`). */
-export class EnqueuedRunModel {
-  @ApiProperty({ type: String, format: 'date-time' })
-  startedAt!: string;
-
-  @ApiProperty({ type: Number })
-  total!: number;
-
-  @ApiProperty({ type: Number })
-  enqueued!: number;
-}
-
-export class EmbeddingRunModel extends EnqueuedRunModel {
-  @ApiProperty({ type: String })
-  model!: string;
-}
-
-export class PlacesRunModel {
-  @ApiProperty({ type: String, format: 'date-time' })
-  startedAt!: string;
-
-  @ApiProperty({ type: Number })
-  total!: number;
-
-  @ApiProperty({ type: Number })
-  updated!: number;
-}
-
-/** GET faces|detections|metadata/reprocess — identical shape for the three kinds. */
-export class ReprocessStatusModel {
-  @ApiProperty({ type: () => EnqueuedRunModel, nullable: true })
-  lastRun!: EnqueuedRunModel | null;
-
-  @ApiProperty({
-    type: 'object',
-    additionalProperties: { type: 'number' },
-    example: { waiting: 0, active: 0 },
-  })
-  queue!: Record<string, number>;
 }
 
 /** POST /api/v1/admin/reprocess-runs — one address for every bulk pipeline. */
@@ -1544,21 +1466,4 @@ export class ReprocessRunStatusResponseModel {
     description: 'Live queue depth; absent for pipelines that run inline (places, thumbnails)',
   })
   queue?: Record<string, number>;
-}
-
-export class EmbeddingReprocessStatusModel {
-  @ApiProperty({ type: () => EmbeddingRunModel, nullable: true })
-  lastRun!: EmbeddingRunModel | null;
-
-  @ApiProperty({
-    type: 'object',
-    additionalProperties: { type: 'number' },
-    example: { waiting: 0, active: 0 },
-  })
-  queue!: Record<string, number>;
-}
-
-export class PlacesBackfillStatusModel {
-  @ApiProperty({ type: () => PlacesRunModel, nullable: true })
-  lastRun!: PlacesRunModel | null;
 }

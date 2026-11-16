@@ -11,6 +11,8 @@ import {
 import type { ApiTestApp } from './helpers';
 import { adminAuthHarness, reprocessMatrix } from './helpers/reprocess-matrix';
 
+const RUNS = '/api/v1/admin/reprocess-runs';
+
 describe('admin face reprocess and recluster', () => {
   let t: ApiTestApp;
   let auth: Record<string, string>;
@@ -46,13 +48,13 @@ describe('admin face reprocess and recluster', () => {
 
   it('rejects unauthenticated and non-admin requests', async () => {
     await adminAuthHarness(t, {
-      post: ['/api/v1/admin/faces/reprocess', '/api/v1/admin/faces/recluster'],
-      get: ['/api/v1/admin/faces/reprocess'],
+      post: [RUNS, '/api/v1/admin/faces/recluster'],
+      get: [`${RUNS}/faces`],
     });
   });
 
   it('reports lastRun null and queue counts before any run', async () => {
-    const res = await request(apiServer(t)).get('/api/v1/admin/faces/reprocess').set(auth);
+    const res = await request(apiServer(t)).get(`${RUNS}/faces`).set(auth);
     expect(res.status).toBe(200);
     const body = res.body as { lastRun: unknown; queue: Record<string, number> };
     expect(body.lastRun).toBeNull();
@@ -68,12 +70,14 @@ describe('admin face reprocess and recluster', () => {
     const trashed = await seedPhotoAsset(owner.id, { isTrashed: true });
 
     await reprocessMatrix(t, auth, owner.id, [a, b], {
-      route: '/api/v1/admin/faces/reprocess',
+      route: RUNS,
+      statusRoute: `${RUNS}/faces`,
       queue: 'process-faces',
       jobIdFn: (id) => `face-reembed-${id}`,
       jobName: 're-embed',
       jobDataExtra: { reason: 're-embed' },
-      respKeys: { enqueued: 2, total: 2 },
+      respKeys: { kind: 'faces', enqueued: 2, total: 2 },
+      reqBody: { kind: 'faces' },
       filter: [trashed.asset.id],
     });
   });
@@ -83,9 +87,9 @@ describe('admin face reprocess and recluster', () => {
     const { asset } = await seedPhotoAsset(owner.id);
     const jobId = `face-reembed-${asset.id}`;
 
-    const first = await request(apiServer(t)).post('/api/v1/admin/faces/reprocess').set(auth);
-    expect(first.status).toBe(200);
-    expect(first.body).toEqual({ enqueued: 1, total: 1 });
+    const first = await request(apiServer(t)).post(RUNS).set(auth).send({ kind: 'faces' });
+    expect(first.status).toBe(202);
+    expect(first.body).toEqual({ kind: 'faces', enqueued: 1, total: 1 });
 
     const queue = t.getQueue('process-faces');
     const job = await queue.getJob(jobId);
@@ -93,9 +97,9 @@ describe('admin face reprocess and recluster', () => {
     await job?.remove();
     expect(await queue.getJob(jobId)).toBeFalsy();
 
-    const second = await request(apiServer(t)).post('/api/v1/admin/faces/reprocess').set(auth);
-    expect(second.status).toBe(200);
-    expect(second.body).toEqual({ enqueued: 1, total: 1 });
+    const second = await request(apiServer(t)).post(RUNS).set(auth).send({ kind: 'faces' });
+    expect(second.status).toBe(202);
+    expect(second.body).toEqual({ kind: 'faces', enqueued: 1, total: 1 });
     expect(await queue.getJob(jobId)).toBeTruthy();
   });
 

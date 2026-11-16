@@ -104,7 +104,7 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
 
   it('vuln1 orphan run: worker admin token cannot run orphan cleanup', async () => {
     const res = await request(apiServer(t))
-      .post('/api/v1/admin/cleanup-orphans/run')
+      .post('/api/v1/admin/cleanup-orphans')
       .set(t.authHeader(workerAdmin()));
     expect(res.status).toBe(403);
   });
@@ -274,7 +274,7 @@ describe('issue-156 vulns (expect secure, currently insecure)', () => {
       .set(t.authHeader(userTok(attacker)))
       .send({ transcodeFileId: victimFile.id });
     const token = await shareToken(attacker, asset.id);
-    const res = await request(apiServer(t)).get(`/api/share/${token}/stream`);
+    const res = await request(apiServer(t)).get(`/api/share/${token}/content`);
     expect(res.status).toBe(200);
     // distinct lengths tell whose bytes are served without binary-body parsing
     expect(Number(res.headers['content-length'])).toBe(attackerBytes.length);

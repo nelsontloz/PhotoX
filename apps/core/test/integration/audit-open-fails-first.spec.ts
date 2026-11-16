@@ -225,7 +225,7 @@ describe('open audit findings (fails first)', () => {
       await writeFile(join(geoDir, 'geonames.zip'), 'cached-download');
 
       const res = await request(apiServer(t))
-        .post('/api/v1/admin/cleanup-orphans/run')
+        .post('/api/v1/admin/cleanup-orphans')
         .set(authFor(admin));
       expect(res.status).toBe(200);
       expect(existsSync(join(geoDir, 'geonames.zip'))).toBe(true);

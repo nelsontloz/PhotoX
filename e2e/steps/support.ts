@@ -610,7 +610,7 @@ export async function getAsset(
 export async function startAndWaitForRun<T = Record<string, unknown>>(
   request: APIRequestContext,
   admin: AuthResponse,
-  path: '/api/v1/admin/backups' | '/api/v1/admin/restores',
+  path: '/api/v1/admin/backups' | `/api/v1/admin/backups/${string}/restores`,
   data: Record<string, unknown>,
   timeoutMs = 300_000,
 ): Promise<T> {

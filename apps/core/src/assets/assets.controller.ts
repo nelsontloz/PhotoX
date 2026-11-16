@@ -105,16 +105,6 @@ export class AssetsController {
     await this.assets.bulkTrash(userId, dto.assetIds);
   }
 
-  @Post('bulk-trash')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({
-    summary: 'Bulk soft-delete (trash) assets. Idempotent. Deprecated: use POST /assets/trash',
-  })
-  @ApiResponse({ status: 204, description: 'Assets trashed' })
-  async bulkTrash(@Body() dto: TrashAssetsDto, @CurrentUserId() userId: string) {
-    await this.assets.bulkTrash(userId, dto.assetIds);
-  }
-
   @Post(':id/reprocess-thumbnails')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Re-process thumbnails for an asset' })

@@ -1,23 +1,38 @@
 import request from 'supertest';
-import { DEPRECATED_ON, DEPRECATIONS, toDocPath } from '../../src/common/deprecations';
-import {
-  apiServer,
-  closeTestApp,
-  createApiTestApp,
-  resetDb,
-  seedAsset,
-  seedFile,
-  seedUser,
-} from './helpers';
+import { DEPRECATIONS } from '../../src/common/deprecations';
+import { apiServer, closeTestApp, createApiTestApp } from './helpers';
 import type { ApiTestApp } from './helpers';
-import type { User } from '../../src/database/entities/user.entity';
 
 /**
- * The deprecation contract: every path in the registry exists on the document and is flagged there,
- * every deprecated route answers with `Deprecation`/`Sunset`/`Link`, and its replacement answers
- * without them. Driven from the registry, so a typo'd path fails here instead of silently
- * deprecating nothing.
+ * Release 3 retired every operation the 2026-11 wave deprecated. The registry is empty now, so
+ * nothing may still be announced as deprecated and the retired operations must be gone from the
+ * contract. A leftover handler reappears in `/docs-json`, so the document — not the router — is
+ * the thing worth asserting against.
  */
+const RETIRED: Readonly<{ method: string; path: string }>[] = [
+  { method: 'post', path: '/api/v1/assets/bulk-trash' },
+  { method: 'get', path: '/api/v1/assets/{id}/content/download' },
+  { method: 'patch', path: '/api/v1/faces/{id}/person' },
+  { method: 'post', path: '/api/v1/admin/cleanup-orphans/run' },
+  { method: 'post', path: '/api/v1/admin/thumbnails/reprocess' },
+  { method: 'post', path: '/api/v1/admin/faces/reprocess' },
+  { method: 'get', path: '/api/v1/admin/faces/reprocess' },
+  { method: 'post', path: '/api/v1/admin/embeddings/reprocess' },
+  { method: 'get', path: '/api/v1/admin/embeddings/reprocess' },
+  { method: 'post', path: '/api/v1/admin/detections/reprocess' },
+  { method: 'get', path: '/api/v1/admin/detections/reprocess' },
+  { method: 'post', path: '/api/v1/admin/metadata/reprocess' },
+  { method: 'get', path: '/api/v1/admin/metadata/reprocess' },
+  { method: 'post', path: '/api/v1/admin/places/backfill' },
+  { method: 'get', path: '/api/v1/admin/places/backfill' },
+  { method: 'get', path: '/api/v1/admin/backups/status' },
+  { method: 'get', path: '/api/v1/admin/backups/progress' },
+  { method: 'delete', path: '/api/v1/admin/backups' },
+  { method: 'post', path: '/api/v1/admin/restores' },
+  { method: 'get', path: '/api/share/{token}/stream' },
+  { method: 'get', path: '/api/share/{token}/assets/{assetId}/stream' },
+];
+
 describe('API deprecations', () => {
   let t: ApiTestApp;
 
@@ -29,83 +44,35 @@ describe('API deprecations', () => {
     await closeTestApp(t);
   });
 
-  beforeEach(async () => {
-    await resetDb(t);
-  });
-
-  async function seedCaller(): Promise<{ user: User; auth: Record<string, string> }> {
-    const user = await seedUser(t);
-    return {
-      user,
-      auth: t.authHeader(t.signToken({ id: user.id, email: user.email, role: user.role })),
-    };
+  interface Document {
+    paths: Record<string, Record<string, { deprecated?: boolean }>>;
   }
 
-  it('marks every registry entry deprecated on /docs-json', async () => {
-    const doc = (await request(apiServer(t)).get('/docs-json')).body as {
-      paths: Record<
-        string,
-        Record<string, { deprecated?: boolean; 'x-sunset'?: string; 'x-replacement'?: string }>
-      >;
-    };
+  async function document(): Promise<Document> {
+    return (await request(apiServer(t)).get('/docs-json')).body as Document;
+  }
 
-    for (const deprecation of DEPRECATIONS) {
-      const operation = doc.paths[toDocPath(deprecation.path)]?.[deprecation.method.toLowerCase()];
-      const label = `${deprecation.method} ${deprecation.path}`;
-      expect(operation, `${label} is missing from the document`).toBeDefined();
-      expect(operation!.deprecated, label).toBe(true);
-      expect(operation!['x-sunset'], label).toBe(deprecation.sunset);
-      expect(operation!['x-replacement'], label).toBe(
-        `${deprecation.replacement!.method} ${deprecation.replacement!.path}`,
-      );
+  it('no longer publishes any retired operation', async () => {
+    const doc = await document();
+    for (const { method, path } of RETIRED) {
+      expect(doc.paths[path]?.[method], `${method.toUpperCase()} ${path} is back`).toBeUndefined();
     }
   });
 
-  it('serves the replacement and the deprecated alias with the same status, announcing only the alias', async () => {
-    const { user, auth } = await seedCaller();
-    const file = await seedFile(t, user.id);
-    const asset = await seedAsset(t, user.id, file.id);
-    const sunset = DEPRECATIONS.find((d) => d.path === '/api/v1/assets/bulk-trash')!.sunset;
-
-    const server = apiServer(t);
-    const replacement = await request(server)
-      .post('/api/v1/assets/trash')
-      .set(auth)
-      .send({ assetIds: [asset.id] });
-    expect(replacement.status).toBe(204);
-    expect(replacement.headers.sunset).toBeUndefined();
-    expect(replacement.headers.deprecation).toBeUndefined();
-
-    const deprecated = await request(server)
-      .post('/api/v1/assets/bulk-trash')
-      .set(auth)
-      .send({ assetIds: [asset.id] });
-    expect(deprecated.status).toBe(204);
-    expect(deprecated.headers.deprecation).toBe(
-      `@${Math.floor(new Date(DEPRECATED_ON).getTime() / 1000)}`,
+  it('announces no deprecation while the registry is empty', async () => {
+    expect(DEPRECATIONS).toEqual([]);
+    const doc = await document();
+    const flagged = Object.entries(doc.paths).flatMap(([path, item]) =>
+      Object.entries(item)
+        .filter(([, operation]) => operation?.deprecated === true)
+        .map(([method]) => `${method.toUpperCase()} ${path}`),
     );
-    expect(deprecated.headers.sunset).toBe(new Date(sunset).toUTCString());
-    expect(deprecated.headers.link).toBe('</api/v1/assets/trash>; rel="successor-version"');
+    expect(flagged).toEqual([]);
   });
 
-  it('keeps deprecated byte aliases working while announcing the successor', async () => {
-    const { user, auth } = await seedCaller();
-    const file = await seedFile(t, user.id, { bytes: Buffer.from('bytes') });
-    const asset = await seedAsset(t, user.id, file.id);
-
+  it('answers 404 on the wire for a retired alias', async () => {
     const server = apiServer(t);
-    const fresh = await request(server)
-      .get(`/api/v1/assets/${asset.id}/content?download=true`)
-      .set(auth);
-    expect(fresh.status).toBe(200);
-    expect(fresh.headers['content-disposition']).toMatch(/^attachment; filename="photo\.png"/);
-    expect(fresh.headers.sunset).toBeUndefined();
-
-    const deprecated = await request(server)
-      .get(`/api/v1/assets/${asset.id}/content/download`)
-      .set(auth);
-    expect(deprecated.status).toBe(200);
-    expect(deprecated.headers.sunset).toBeDefined();
-    expect(Buffer.compare(deprecated.body as Buffer, fresh.body as Buffer)).toBe(0);
+    expect((await request(server).post('/api/v1/assets/bulk-trash')).status).toBe(404);
+    expect((await request(server).get('/api/share/any-token/stream')).status).toBe(404);
   });
 });

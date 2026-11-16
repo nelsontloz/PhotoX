@@ -89,9 +89,7 @@ describe('audit fixes (fails first)', () => {
     const user = await seedUser(t);
     const chunkKey = await seedInFlightSession(t, user.id);
 
-    const res = await request(apiServer(t))
-      .post('/api/v1/admin/cleanup-orphans/run')
-      .set(authHeader);
+    const res = await request(apiServer(t)).post('/api/v1/admin/cleanup-orphans').set(authHeader);
     expect(res.status).toBe(200);
 
     // deletion of an in-flight chunk breaks the next complete() with ENOENT
@@ -189,9 +187,7 @@ describe('audit fixes (fails first)', () => {
     const counts = await request(apiServer(t)).get('/api/v1/admin/orphan-counts').set(authHeader);
     expect(counts.body).toEqual({ orphanFiles: 1, orphanThumbnails: 0 });
 
-    const res = await request(apiServer(t))
-      .post('/api/v1/admin/cleanup-orphans/run')
-      .set(authHeader);
+    const res = await request(apiServer(t)).post('/api/v1/admin/cleanup-orphans').set(authHeader);
     expect(res.status).toBe(200);
 
     expect(await t.thumbRepo.findOne({ where: { id: thumb.id } })).not.toBeNull();

@@ -29,7 +29,7 @@ export class AssetContentController {
     summary: 'Stream an asset’s displayable bytes (transcode when available, else the original)',
     description:
       'The one asset byte route: `variant` picks display vs original, `download` flips it to an ' +
-      'attachment. Replaces `GET :id/content/download` (deprecated).',
+      'attachment.',
   })
   @ApiResponse({ status: 200, description: 'File stream' })
   @ApiResponse({ status: 206, description: 'Partial content' })
@@ -42,25 +42,11 @@ export class AssetContentController {
     @Res() res: Response,
     @CurrentUserId() userId: string,
   ): Promise<void> {
-    const fileId = await this.assets.contentTarget(userId, id, q.variant ?? 'display');
+    // `download` means "the uploaded bytes" unless a variant says otherwise: the retired
+    // `/content/download` alias always served the original, and a bare download of a video must
+    // not hand back the webm transcode under an attachment disposition.
+    const variant = q.variant ?? (q.download ? 'original' : 'display');
+    const fileId = await this.assets.contentTarget(userId, id, variant);
     await serveFileBytes(req, res, this.files, userId, fileId, { attachment: q.download });
-  }
-
-  @Get(':id/content/download')
-  @ApiOperation({ summary: 'Download an asset’s original bytes (deprecated: use ?download=true)' })
-  @ApiResponse({
-    status: 200,
-    description: 'Original file stream (Content-Disposition attachment)',
-  })
-  @ApiResponse({ status: 404, description: 'Asset not found, trashed, or has no bytes' })
-  @ApiResponse({ status: 416, description: 'Range not satisfiable' })
-  async download(
-    @Param('id') id: string,
-    @Req() req: Request,
-    @Res() res: Response,
-    @CurrentUserId() userId: string,
-  ): Promise<void> {
-    const fileId = await this.assets.contentTarget(userId, id, 'original');
-    await serveFileBytes(req, res, this.files, userId, fileId, { attachment: true });
   }
 }

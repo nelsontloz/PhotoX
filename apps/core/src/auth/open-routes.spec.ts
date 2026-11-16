@@ -12,7 +12,7 @@ describe('open-routes', () => {
       expect(isAdminRoute('/api/v1/admin')).toBe(true);
       expect(isAdminRoute('/api/v1/admin/users')).toBe(true);
       expect(isAdminRoute('/api/v1/admin/users/123')).toBe(true);
-      expect(isAdminRoute('/api/v1/admin/cleanup-orphans/run')).toBe(true);
+      expect(isAdminRoute('/api/v1/admin/cleanup-orphans')).toBe(true);
     });
 
     it('does not match lookalike paths', () => {

@@ -135,7 +135,7 @@ describe('HTTP range streaming', () => {
       }),
     );
     const res = await request(apiServer(t))
-      .get(`/api/share/${share.token}/stream`)
+      .get(`/api/share/${share.token}/content`)
       .set('Range', 'bytes=2-4');
     expect(res.status).toBe(206);
     expect(res.headers['content-range']).toBe('bytes 2-4/10');
@@ -156,7 +156,7 @@ describe('HTTP range streaming', () => {
       }),
     );
     const res = await request(apiServer(t))
-      .get(`/api/share/${share.token}/stream`)
+      .get(`/api/share/${share.token}/content`)
       .set('Range', 'bytes=99999999-');
     expect(res.status).toBe(416);
     expect(res.headers['content-range']).toBe('bytes */10');
@@ -173,14 +173,14 @@ describe('HTTP range streaming', () => {
         token: 'share-token-full',
       }),
     );
-    const first = await request(apiServer(t)).get(`/api/share/${share.token}/stream`);
+    const first = await request(apiServer(t)).get(`/api/share/${share.token}/content`);
     expect(first.status).toBe(200);
     expect(first.headers.etag).toBe(FILE_ETAG);
     expect(first.headers['cache-control']).toBe(BYTES_CACHE_CONTROL);
     expectBytes(first.body, '0123456789');
 
     const second = await request(apiServer(t))
-      .get(`/api/share/${share.token}/stream`)
+      .get(`/api/share/${share.token}/content`)
       .set('If-None-Match', FILE_ETAG);
     expect(second.status).toBe(304);
     expect(second.headers.etag).toBe(FILE_ETAG);

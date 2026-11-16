@@ -15,6 +15,7 @@ import { seedSidecarAsset, sidecarHarness } from './helpers/sidecar';
 import { adminAuthHarness, reprocessMatrix } from './helpers/reprocess-matrix';
 
 const EMBEDDING_768 = Array.from({ length: SEARCH_EMBEDDING_DIM }, (_, i) => (i === 0 ? 1 : 0));
+const RUNS = '/api/v1/admin/reprocess-runs';
 const EMBEDDING_768_B = Array.from({ length: SEARCH_EMBEDDING_DIM }, (_, i) => (i === 1 ? 1 : 0));
 const BODY = { kind: 'image', model: SEARCH_EMBEDDING_MODEL, embedding: EMBEDDING_768 };
 const JOB_ID = (assetId: string) => `embed-reprocess-${assetId}-${SEARCH_EMBEDDING_MODEL}`;
@@ -145,8 +146,8 @@ describe('asset embeddings HTTP', () => {
 
     it('rejects unauthenticated and non-admin requests', async () => {
       await adminAuthHarness(t, {
-        post: ['/api/v1/admin/embeddings/reprocess'],
-        get: ['/api/v1/admin/embeddings/reprocess'],
+        post: [RUNS],
+        get: [`${RUNS}/embeddings`],
       });
     });
 
@@ -165,12 +166,19 @@ describe('asset embeddings HTTP', () => {
       await seedAsset(t, owner.id, videoFile.id, { kind: 'video' });
 
       await reprocessMatrix(t, auth, owner.id, [a, b], {
-        route: '/api/v1/admin/embeddings/reprocess',
+        route: RUNS,
+        statusRoute: `${RUNS}/embeddings`,
         queue: 'process-embeddings',
         jobIdFn: JOB_ID,
         jobName: 'embed',
         jobDataExtra: { reason: 'reprocess' },
-        respKeys: { enqueued: 2, total: 2, model: SEARCH_EMBEDDING_MODEL },
+        respKeys: {
+          kind: 'embeddings',
+          enqueued: 2,
+          total: 2,
+          model: SEARCH_EMBEDDING_MODEL,
+        },
+        reqBody: { kind: 'embeddings' },
         lastRunExtra: { model: SEARCH_EMBEDDING_MODEL },
         filter: [trashed.asset.id],
       });

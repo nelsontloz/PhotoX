@@ -144,8 +144,8 @@ describe('user backup admin API', () => {
         result: restored,
       },
     });
-    await expect(restoreUser('u-3')).resolves.toEqual(restored);
-    expect(postMock).toHaveBeenCalledWith('/v1/admin/restores', { emailOrId: 'u-3' });
+    await expect(restoreUser('gone@example.com')).resolves.toEqual(restored);
+    expect(postMock).toHaveBeenCalledWith('/v1/admin/backups/gone%40example.com/restores', {});
     expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/runs/run-3', { timeout: 30_000 });
   });
 
@@ -224,7 +224,7 @@ describe('user backup admin API', () => {
     expect(getMock).toHaveBeenCalledTimes(701);
   });
 
-  it('deleteBackup issues DELETE with emailOrId as a query param', async () => {
+  it('deleteBackup issues DELETE with the encoded key in the path', async () => {
     const deleted = {
       userId: 'u-1',
       email: 'ada@example.com',
@@ -232,10 +232,8 @@ describe('user backup admin API', () => {
       deletedObjects: 125,
     };
     deleteMock.mockResolvedValue({ data: deleted });
-    await expect(deleteBackup('u-1')).resolves.toEqual(deleted);
-    expect(deleteMock).toHaveBeenCalledWith('/v1/admin/backups', {
-      params: { emailOrId: 'u-1' },
-    });
+    await expect(deleteBackup('ada@example.com')).resolves.toEqual(deleted);
+    expect(deleteMock).toHaveBeenCalledWith('/v1/admin/backups/ada%40example.com');
   });
 
   it('getBackupOverview passes orphan rows through untouched', async () => {

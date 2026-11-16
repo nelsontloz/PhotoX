@@ -196,7 +196,7 @@ describe('API error contract', () => {
         if (operation.operationId) operationIds.push(operation.operationId);
       }
     }
-    expect(operationIds.length).toBeGreaterThan(100);
+    expect(operationIds.length).toBeGreaterThan(80);
     expect(new Set(operationIds).size).toBe(operationIds.length);
     for (const id of operationIds) expect(id).toMatch(/^[A-Za-z][A-Za-z0-9]*$/);
   });

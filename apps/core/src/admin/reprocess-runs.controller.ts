@@ -77,9 +77,9 @@ interface ReprocessRunStatusResponse {
 }
 
 /**
- * One resource for "re-run a pipeline over the library", replacing the six POST/GET pairs under
- * `/admin/{faces,embeddings,detections,metadata,places/backfill,thumbnails}` (deprecated, see
- * `common/deprecations.ts`). The work is still the per-pipeline service call; this only gives the
+ * One resource for "re-run a pipeline over the library", replacing the six POST/GET pairs that
+ * lived under `/admin/{faces,embeddings,detections,metadata,places/backfill,thumbnails}` and were
+ * removed in Release 3. The work is still the per-pipeline service call; this only gives the
  * six of them one address, one body shape and a status route a 202 can point at.
  */
 @ApiTags('admin')

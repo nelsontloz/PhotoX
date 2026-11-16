@@ -211,7 +211,7 @@ describe('assets JWT identity', () => {
       .set(t.authHeader(token));
     expect(trash.status).toBe(204);
     const bulk = await request(apiServer(t))
-      .post('/api/v1/assets/bulk-trash')
+      .post('/api/v1/assets/trash')
       .set(t.authHeader(token))
       .send({ assetIds: [assetTwo.id] });
     expect(bulk.status).toBe(204);
@@ -239,7 +239,7 @@ describe('assets JWT identity', () => {
     const asset = await seedAsset(t, a.id, file.id);
     // bulk-trash silently filters by owner (idempotent 204); the negative is "no mutation"
     const res = await request(apiServer(t))
-      .post('/api/v1/assets/bulk-trash')
+      .post('/api/v1/assets/trash')
       .set(t.authHeader(tokenB))
       .send({ assetIds: [asset.id] });
     expect(res.status).toBe(204);
@@ -378,7 +378,7 @@ describe('assets JWT identity', () => {
     ['post', `/api/v1/assets/${randomUUID()}/trash`],
     ['delete', `/api/v1/assets/${randomUUID()}/trash`],
     ['delete', `/api/v1/assets/${randomUUID()}`],
-    ['post', '/api/v1/assets/bulk-trash'],
+    ['post', '/api/v1/assets/trash'],
     ['post', `/api/v1/assets/${randomUUID()}/reprocess-thumbnails`],
     ['post', `/api/v1/assets/${randomUUID()}/reprocess-video`],
     ['get', '/api/v1/albums'],
