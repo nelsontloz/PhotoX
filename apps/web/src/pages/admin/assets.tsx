@@ -75,7 +75,7 @@ export function AssetHealthSection() {
     try {
       const res = await reprocessThumbnails('photo');
       setResult(
-        `Enqueued ${res.enqueued.toLocaleString()} jobs for ${res.totalAssets.toLocaleString()} pictures.`,
+        `Enqueued ${res.enqueued.toLocaleString()} jobs for ${res.total.toLocaleString()} pictures.`,
       );
     } catch (err) {
       setReprocessError(err instanceof Error ? err.message : 'Reprocess failed');

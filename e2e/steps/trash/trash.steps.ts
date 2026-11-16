@@ -28,7 +28,7 @@ When('I trash the uploaded asset through the API', async ({ request, ctx }) => {
 When('I trash both uploaded photos through the API', async ({ request, ctx }) => {
   const assetIds = ctx.trashAssetIds;
   if (!assetIds) throw new Error('upload the two photos first');
-  const response = await request.post('/api/v1/assets/bulk-trash', {
+  const response = await request.post('/api/v1/assets/trash', {
     headers: authHeaders(requireAuth(ctx)),
     data: { assetIds },
   });

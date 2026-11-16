@@ -18,15 +18,18 @@ export async function runQueuedDelete(
   const job = await t.getQueue('user-delete').getJob(`user-delete-${userId}`);
   expect(job).not.toBeNull();
   const data = job!.data as { backupPrefix: string; sig: string };
-  const workerAuth = t.authHeader(
-    t.signWorkerToken({ id: userId, email: 'worker@internal', role: 'user' }, { act: true }),
-  );
+  // mint per call, like CoreClient: the wipe bumps `users.tokensValidAfter` on its first step, so a
+  // token reused across steps falls under the floor once the millisecond boundary is crossed.
+  const workerAuth = (): Record<string, string> =>
+    t.authHeader(
+      t.signWorkerToken({ id: userId, email: 'worker@internal', role: 'user' }, { act: true }),
+    );
   const phases: string[] = [];
   let done = false;
   for (let i = 0; i < 200; i++) {
     const step = await request(apiServer(t))
       .post(`/worker/users/${userId}/purge/step`)
-      .set(workerAuth)
+      .set(workerAuth())
       .set('X-Job-Signature', data.sig)
       .send({ backupPrefix: data.backupPrefix });
     expect(step.status).toBe(200);
@@ -42,7 +45,7 @@ export async function runQueuedDelete(
   const sweep = await sweepUserStorage(t.storage, userId);
   const finish = await request(apiServer(t))
     .post(`/worker/users/${userId}/purge/finish`)
-    .set(workerAuth)
+    .set(workerAuth())
     .set('X-Job-Signature', data.sig)
     .send({
       backupPrefix: data.backupPrefix,

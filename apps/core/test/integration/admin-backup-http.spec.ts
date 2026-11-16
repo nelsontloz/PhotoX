@@ -95,6 +95,33 @@ describe('admin backup HTTP surface', () => {
     expect(res.status).toBe(404);
   });
 
+  it('addresses a backup by path key with the same body as the deprecated query selectors', async () => {
+    const auth = authHeader(t, await seedUser(t, { role: 'admin' }));
+    const target = await seedUser(t);
+    const server = apiServer(t);
+
+    const [legacyStatus, keyedStatus] = await Promise.all([
+      request(server).get(`${BACKUPS}/status?emailOrId=${target.id}`).set(auth),
+      request(server).get(`${BACKUPS}/${target.id}`).set(auth),
+    ]);
+    expect(keyedStatus.status).toBe(legacyStatus.status);
+    // same handler, same verdict — only the request id differs per request
+    const strip = (body: Record<string, unknown>) =>
+      Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'requestId'));
+    expect(strip(keyedStatus.body as Record<string, unknown>)).toEqual(
+      strip(legacyStatus.body as Record<string, unknown>),
+    );
+    expect(legacyStatus.headers.sunset).toBeDefined();
+    expect(keyedStatus.headers.sunset).toBeUndefined();
+
+    const [legacyProgress, keyedProgress] = await Promise.all([
+      request(server).get(`${BACKUPS}/progress?emailOrId=${randomUUID()}`).set(auth),
+      request(server).get(`${BACKUPS}/${randomUUID()}/progress`).set(auth),
+    ]);
+    expect(keyedProgress.status).toBe(legacyProgress.status);
+    expect(keyedProgress.status).toBe(404);
+  });
+
   it('starts a backup over HTTP and reports the queued run', async () => {
     const auth = authHeader(t, await seedUser(t, { role: 'admin' }));
     const target = await seedUser(t);

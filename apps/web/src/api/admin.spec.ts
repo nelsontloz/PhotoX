@@ -45,10 +45,10 @@ describe('face detection admin API', () => {
     expect(getMock).toHaveBeenCalledWith('/v1/admin/face-detection');
   });
 
-  it('reprocessPipeline posts without a body', async () => {
+  it('reprocessPipeline posts the pipeline kind to the runs collection', async () => {
     postMock.mockResolvedValue({ data: { enqueued: 5, total: 5 } });
     await reprocessPipeline<FaceReprocessResponse>('faces');
-    expect(postMock).toHaveBeenCalledWith('/v1/admin/faces/reprocess');
+    expect(postMock).toHaveBeenCalledWith('/v1/admin/reprocess-runs', { kind: 'faces' });
   });
 
   it('getPipelineStatus reads last run and queue counts', async () => {
@@ -58,7 +58,7 @@ describe('face detection admin API', () => {
     };
     getMock.mockResolvedValue({ data: status });
     await expect(getPipelineStatus<FacePipelineRun>('faces')).resolves.toEqual(status);
-    expect(getMock).toHaveBeenCalledWith('/v1/admin/faces/reprocess');
+    expect(getMock).toHaveBeenCalledWith('/v1/admin/reprocess-runs/faces');
   });
 
   it('reclusterFaces posts to the recluster endpoint', async () => {

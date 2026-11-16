@@ -8,6 +8,7 @@ import { AdminAssetsService } from './admin-assets.service';
 import { AdminJobsService } from './admin-jobs.service';
 import { AdminMaintenanceController } from './admin-maintenance.controller';
 import { AdminRegistrationController } from './admin-registration.controller';
+import { ReprocessRunsController } from './reprocess-runs.controller';
 import { PlacesModule } from '../places/places.module';
 
 @Module({
@@ -17,7 +18,12 @@ import { PlacesModule } from '../places/places.module';
     SettingsModule,
     PlacesModule,
   ],
-  controllers: [AdminAssetsController, AdminMaintenanceController, AdminRegistrationController],
+  controllers: [
+    AdminAssetsController,
+    AdminMaintenanceController,
+    AdminRegistrationController,
+    ReprocessRunsController,
+  ],
   providers: [AdminAssetsService, AdminJobsService],
 })
 export class AdminModule {}

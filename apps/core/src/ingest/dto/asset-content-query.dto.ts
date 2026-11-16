@@ -1,5 +1,7 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import { parseQueryBooleanParam } from '../../common/query-params';
 
 /** `GET /api/v1/assets/:id/content` — the variant decision is the server's, `v` is a cache-buster. */
 export class AssetContentQueryDto {
@@ -14,6 +16,16 @@ export class AssetContentQueryDto {
       'original: the uploaded bytes.',
   })
   variant?: 'display' | 'original';
+
+  @IsOptional()
+  @Transform(parseQueryBooleanParam)
+  @IsBoolean()
+  @ApiProperty({
+    required: false,
+    default: false,
+    description: 'Send Content-Disposition: attachment (the download action, not playback).',
+  })
+  download?: boolean;
 
   @IsOptional()
   @IsString()

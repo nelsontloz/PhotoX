@@ -50,6 +50,7 @@ import { AuthModule } from '../../src/auth/auth.module';
 import { BullMqModule } from '../../src/queue/bullmq.module';
 import { BullMqService } from '../../src/queue/bullmq.service';
 import { HttpExceptionFilter } from '../../src/common/filters/http-exception.filter';
+import { DeprecationInterceptor } from '../../src/common/deprecation.interceptor';
 import { createValidationPipe } from '../../src/common/validation';
 import { requestIdMiddleware } from '../../src/common/request-id';
 import { setupSwagger } from '../../src/swagger/setup';
@@ -176,6 +177,7 @@ export async function createApiTestApp(opts?: {
     app.use(requestIdMiddleware);
     app.useGlobalPipes(createValidationPipe());
     app.useGlobalFilters(new HttpExceptionFilter());
+    app.useGlobalInterceptors(new DeprecationInterceptor());
     // opt-in: building the document is not free, so only the contract spec pays for it
     if (opts?.swagger) setupSwagger(app);
     await app.init();

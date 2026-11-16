@@ -38,7 +38,9 @@ describe('ViewerActions download', () => {
 
     await vi.waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
     const anchor = clickSpy.mock.contexts[0] as HTMLAnchorElement;
-    expect(anchor.getAttribute('href')).toBe('/api/v1/assets/asset-1/content/download?v=file-1');
+    expect(anchor.getAttribute('href')).toBe(
+      '/api/v1/assets/asset-1/content?download=true&v=file-1',
+    );
     expect(anchor.download).toBe('Trip.jpg');
     expect(preflightAssetDownload).toHaveBeenCalledWith(expect.objectContaining({ id: 'asset-1' }));
   });
