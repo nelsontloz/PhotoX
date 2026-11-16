@@ -363,9 +363,8 @@ describe('admin async user deletion', () => {
     });
 
     const restore = await request(apiServer(t))
-      .post('/api/v1/admin/restores')
-      .set(adminAuth)
-      .send({ emailOrId: victim.email });
+      .post(`/api/v1/admin/backups/${victim.id}/restores`)
+      .set(adminAuth);
     expect(restore.status).toBe(409);
     expect(String((restore.body as { message?: unknown }).message)).toContain(
       'deletion is in progress',

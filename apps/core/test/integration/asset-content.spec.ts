@@ -152,7 +152,8 @@ describe('asset content routes', () => {
     const { asset, auth } = await seedOwnedAsset({ transcode: 'owned' });
 
     const res = await request(apiServer(t))
-      .get(`/api/v1/assets/${asset.id}/content/download`)
+      .get(`/api/v1/assets/${asset.id}/content`)
+      .query({ download: 'true' })
       .set(auth);
 
     expect(res.status).toBe(200);

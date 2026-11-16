@@ -19,6 +19,7 @@ const PARIS = { latitude: 48.8566, longitude: 2.3522 };
 const LYON = { latitude: 45.7485, longitude: 4.8467 };
 // South Atlantic: nearest seeded city is thousands of km away
 const OPEN_OCEAN = { latitude: -30, longitude: -30 };
+const RUNS = '/api/v1/admin/reprocess-runs';
 
 describe('places resolution', () => {
   let t: ApiTestApp;
@@ -174,28 +175,27 @@ describe('places resolution', () => {
 
     const token = t.signToken({ id: admin.id, email: admin.email, role: admin.role });
     const res = await request(apiServer(t))
-      .post('/api/v1/admin/places/backfill')
-      .set(t.authHeader(token));
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ updated: 1, total: 2 });
+      .post(RUNS)
+      .set(t.authHeader(token))
+      .send({ kind: 'places' });
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({ kind: 'places', enqueued: 1, total: 2 });
 
     expect((await t.assetRepo.findOneOrFail({ where: { id: near.id } })).placeCity).toBe('Paris');
     expect((await t.assetRepo.findOneOrFail({ where: { id: far.id } })).placeCity).toBeNull();
     expect((await t.assetRepo.findOneOrFail({ where: { id: done.id } })).placeCity).toBe('Lyon');
 
-    const status = await request(apiServer(t))
-      .get('/api/v1/admin/places/backfill')
-      .set(t.authHeader(token));
+    const status = await request(apiServer(t)).get(`${RUNS}/places`).set(t.authHeader(token));
     expect(status.status).toBe(200);
     const body = status.body as { lastRun: { total: number; updated: number } | null };
     expect(body.lastRun?.total).toBe(2);
     expect(body.lastRun?.updated).toBe(1);
   });
 
-  it('requires admin on the backfill endpoints', async () => {
+  it('requires admin on the places reprocess endpoints', async () => {
     await adminAuthHarness(t, {
-      post: ['/api/v1/admin/places/backfill'],
-      get: ['/api/v1/admin/places/backfill'],
+      post: [RUNS],
+      get: [`${RUNS}/places`],
     });
   });
 });

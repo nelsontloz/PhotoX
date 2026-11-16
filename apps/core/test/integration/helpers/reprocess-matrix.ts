@@ -4,6 +4,8 @@ import type { ApiTestApp } from '../helpers';
 
 export interface ReprocessMatrixOpts {
   route: string;
+  /** GET status route when it differs (`/reprocess-runs` vs `/reprocess-runs/:kind`). */
+  statusRoute?: string;
   queue: string;
   jobIdFn: (assetId: string, size?: string) => string;
   jobName?: string;
@@ -48,8 +50,9 @@ export async function reprocessMatrix(
   opts: ReprocessMatrixOpts,
 ): Promise<void> {
   const server = apiServer(t);
+  const statusRoute = opts.statusRoute ?? opts.route;
   if (!opts.noStatus) {
-    const before = await request(server).get(opts.route).set(auth);
+    const before = await request(server).get(statusRoute).set(auth);
     expect(before.status).toBe(200);
     expect((before.body as { lastRun: unknown }).lastRun).toBeNull();
   }
@@ -57,7 +60,7 @@ export async function reprocessMatrix(
   const post = opts.reqBody
     ? await request(server).post(opts.route).set(auth).send(opts.reqBody)
     : await request(server).post(opts.route).set(auth);
-  expect(post.status).toBe(200);
+  expect(post.status).toBe(202);
   expect(post.body).toEqual(opts.respKeys);
 
   const queue = t.getQueue(opts.queue);
@@ -84,7 +87,7 @@ export async function reprocessMatrix(
   }
 
   if (!opts.noStatus) {
-    const status = await request(server).get(opts.route).set(auth);
+    const status = await request(server).get(statusRoute).set(auth);
     expect(status.status).toBe(200);
     const body = status.body as {
       lastRun: Record<string, unknown> & { startedAt: string };

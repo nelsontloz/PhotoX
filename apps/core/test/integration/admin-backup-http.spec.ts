@@ -45,20 +45,20 @@ describe('admin backup HTTP surface', () => {
   it('rejects anonymous and non-admin callers on every backup route', async () => {
     const ghost = randomUUID();
     await adminAuthHarness(t, {
-      post: [BACKUPS, '/api/v1/admin/restores', '/api/v1/admin/restores/merge'],
+      post: [BACKUPS, `${BACKUPS}/${ghost}/restores`, '/api/v1/admin/restores/merge'],
       get: [
         `${BACKUPS}/overview`,
-        `${BACKUPS}/status?emailOrId=${ghost}`,
-        `${BACKUPS}/progress?emailOrId=${ghost}`,
+        `${BACKUPS}/${ghost}`,
+        `${BACKUPS}/${ghost}/progress`,
         `${BACKUPS}/runs/${ghost}`,
       ],
     });
 
     // adminAuthHarness only drives POST/GET — DELETE needs the same 401/403 pair inline.
-    const anon = await request(apiServer(t)).delete(`${BACKUPS}?emailOrId=${ghost}`);
+    const anon = await request(apiServer(t)).delete(`${BACKUPS}/${ghost}`);
     expect(anon.status).toBe(401);
     const denied = await request(apiServer(t))
-      .delete(`${BACKUPS}?emailOrId=${ghost}`)
+      .delete(`${BACKUPS}/${ghost}`)
       .set(authHeader(t, await seedUser(t)));
     expect(denied.status).toBe(403);
   });
@@ -71,55 +71,21 @@ describe('admin backup HTTP surface', () => {
     // A status read for a target with no manifest is a 200 {exists:false} by design
     // (backupStatus swallows locateBackup's 404); progress and delete resolve the
     // target first and 404 instead.
-    const status = await request(server).get(`${BACKUPS}/status?emailOrId=${ghost}`).set(auth);
+    const status = await request(server).get(`${BACKUPS}/${ghost}`).set(auth);
     expect(status.status).toBe(200);
     expect(status.body).toEqual({ exists: false });
 
-    const progress = await request(server).get(`${BACKUPS}/progress?emailOrId=${ghost}`).set(auth);
+    const progress = await request(server).get(`${BACKUPS}/${ghost}/progress`).set(auth);
     expect(progress.status).toBe(404);
 
-    const deleted = await request(server).delete(`${BACKUPS}?emailOrId=${ghost}`).set(auth);
+    const deleted = await request(server).delete(`${BACKUPS}/${ghost}`).set(auth);
     expect(deleted.status).toBe(404);
-  });
-
-  it('400s a delete without emailOrId', async () => {
-    const auth = authHeader(t, await seedUser(t, { role: 'admin' }));
-    const res = await request(apiServer(t)).delete(BACKUPS).set(auth);
-    expect(res.status).toBe(400);
-    expect((res.body as { code: string }).code).toBe('VALIDATION_FAILED');
   });
 
   it('404s an unknown run id', async () => {
     const auth = authHeader(t, await seedUser(t, { role: 'admin' }));
     const res = await request(apiServer(t)).get(`${BACKUPS}/runs/${randomUUID()}`).set(auth);
     expect(res.status).toBe(404);
-  });
-
-  it('addresses a backup by path key with the same body as the deprecated query selectors', async () => {
-    const auth = authHeader(t, await seedUser(t, { role: 'admin' }));
-    const target = await seedUser(t);
-    const server = apiServer(t);
-
-    const [legacyStatus, keyedStatus] = await Promise.all([
-      request(server).get(`${BACKUPS}/status?emailOrId=${target.id}`).set(auth),
-      request(server).get(`${BACKUPS}/${target.id}`).set(auth),
-    ]);
-    expect(keyedStatus.status).toBe(legacyStatus.status);
-    // same handler, same verdict — only the request id differs per request
-    const strip = (body: Record<string, unknown>) =>
-      Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'requestId'));
-    expect(strip(keyedStatus.body as Record<string, unknown>)).toEqual(
-      strip(legacyStatus.body as Record<string, unknown>),
-    );
-    expect(legacyStatus.headers.sunset).toBeDefined();
-    expect(keyedStatus.headers.sunset).toBeUndefined();
-
-    const [legacyProgress, keyedProgress] = await Promise.all([
-      request(server).get(`${BACKUPS}/progress?emailOrId=${randomUUID()}`).set(auth),
-      request(server).get(`${BACKUPS}/${randomUUID()}/progress`).set(auth),
-    ]);
-    expect(keyedProgress.status).toBe(legacyProgress.status);
-    expect(keyedProgress.status).toBe(404);
   });
 
   it('starts a backup over HTTP and reports the queued run', async () => {

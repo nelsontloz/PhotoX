@@ -167,7 +167,7 @@ export interface BackupResult {
 }
 
 /**
- * GET /v1/admin/backups/progress response: per-file progress of the running backup.
+ * GET /v1/admin/backups/:key/progress response: per-file progress of the running backup.
  * total/completed cover original files; uploaded/skipped split the completed ones.
  */
 export interface BackupProgress {
@@ -259,17 +259,20 @@ export async function backupUser(emailOrId: string): Promise<BackupResult> {
   return waitForRun<BackupResult>(data.runId);
 }
 
+// The backup key is a user id or an email, so the path segment must be encoded (an `@` is fine,
+// a `/` would otherwise escape it). Signature stays emailOrId so callers don't change.
 export async function getBackupProgress(emailOrId: string): Promise<BackupProgress> {
-  const { data } = await api.get<BackupProgress>('/v1/admin/backups/progress', {
-    params: { emailOrId },
-    timeout: BACKUP_STATUS_TIMEOUT_MS,
-  });
+  const { data } = await api.get<BackupProgress>(
+    `/v1/admin/backups/${encodeURIComponent(emailOrId)}/progress`,
+    { timeout: BACKUP_STATUS_TIMEOUT_MS },
+  );
   return data;
 }
 
 /**
- * POST /v1/admin/restores response: the account rebuilt from its S3 manifest (same userId),
- * row counts plus the derivative jobs re-queued. `email` is the ACTUAL restored address —
+ * POST /v1/admin/backups/:key/restores response: the account rebuilt from its S3 manifest
+ * (same userId), row counts plus the derivative jobs re-queued. `email` is the ACTUAL restored
+ * address —
  * when the backup-time address is taken the core falls back to a `restored-<ms>-<orig>`
  * address, so always show `email` (not the requested one). `prefix` is the FINAL S3 prefix
  * and `restoredFrom.prefix` the original one: a different restored email immediately
@@ -293,10 +296,10 @@ export async function restoreUser(
   emailOrId: string,
   restoreEmail?: string,
 ): Promise<RestoreResult> {
-  const { data } = await api.post<{ runId: string }>('/v1/admin/restores', {
-    emailOrId,
-    ...(restoreEmail ? { restoreEmail } : {}),
-  });
+  const { data } = await api.post<{ runId: string }>(
+    `/v1/admin/backups/${encodeURIComponent(emailOrId)}/restores`,
+    { ...(restoreEmail ? { restoreEmail } : {}) },
+  );
   return waitForRun<RestoreResult>(data.runId);
 }
 
@@ -362,7 +365,7 @@ export async function mergeBackup(input: MergeBackupInput): Promise<MergeResult>
 }
 
 /**
- * DELETE /v1/admin/backups response: the S3 prefix removed and how many objects went
+ * DELETE /v1/admin/backups/:key response: the S3 prefix removed and how many objects went
  * with it. Deletes are metadata-only, so the client's default 10s timeout is fine.
  * Mirrors DeleteBackupResult in core.
  */
@@ -374,9 +377,9 @@ export interface DeleteBackupResult {
 }
 
 export async function deleteBackup(emailOrId: string): Promise<DeleteBackupResult> {
-  const { data } = await api.delete<DeleteBackupResult>('/v1/admin/backups', {
-    params: { emailOrId },
-  });
+  const { data } = await api.delete<DeleteBackupResult>(
+    `/v1/admin/backups/${encodeURIComponent(emailOrId)}`,
+  );
   return data;
 }
 

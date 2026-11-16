@@ -67,9 +67,9 @@ const CASES: [string, string, boolean][] = [
   ['GET', '/api/share', true],
   ['POST', '/api/share/abc', true],
   ['GET', '/api/share/abc', true],
-  ['GET', '/api/share/abc/stream', true],
+  ['GET', '/api/share/abc/content', true],
   ['GET', '/api/share/abc/assets', true],
-  ['GET', '/api/share/abc/assets/a1/stream', true],
+  ['GET', '/api/share/abc/assets/a1/content', true],
   ['GET', '/api/v1/files/f1/stream', false],
   ['POST', '/api/v1/files/f1/stream', false],
   ['GET', '/api/v1/files/a/b/stream', false],
@@ -411,7 +411,7 @@ describe('JwtAuthGuard', () => {
       );
     await deny('GET', '/api/v1/admin/face-detection', adminAuth);
     await deny('DELETE', '/api/v1/admin/files/f1', adminAuth);
-    await deny('POST', '/api/v1/admin/cleanup-orphans/run', adminAuth);
+    await deny('POST', '/api/v1/admin/cleanup-orphans', adminAuth);
     await deny('GET', '/api/v1/assets/a1', userAuth);
     await deny('PATCH', '/api/v1/assets/a1', userAuth);
     await deny('GET', '/api/v1/files/f1/stream', userAuth);

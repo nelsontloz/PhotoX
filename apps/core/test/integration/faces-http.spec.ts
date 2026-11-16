@@ -263,7 +263,7 @@ describe('faces HTTP', () => {
     expect((await t.personRepo.findOneByOrFail({ id: person.id })).faceCount).toBe(1);
   });
 
-  it('unassigns a face via the deprecated PATCH alias and refreshes faceCount', async () => {
+  it('unassigns a face and refreshes faceCount', async () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const person = await t.personRepo.save(
@@ -271,7 +271,7 @@ describe('faces HTTP', () => {
     );
     const { face } = await seedFace(user.id, { personId: person.id });
     const res = await request(apiServer(t))
-      .patch(`/api/v1/faces/${face.id}/person`)
+      .put(`/api/v1/faces/${face.id}/person`)
       .set(t.authHeader(token))
       .send({ personId: null });
     expect(res.status).toBe(200);
@@ -288,7 +288,7 @@ describe('faces HTTP', () => {
       t.personRepo.create({ userId: b.id, name: null, clusterLabel: 'c-b', faceCount: 0 }),
     );
     const res = await request(apiServer(t))
-      .patch(`/api/v1/faces/${face.id}/person`)
+      .put(`/api/v1/faces/${face.id}/person`)
       .set(t.authHeader(tokenB))
       .send({ personId: personB.id });
     expect(res.status).toBe(404);

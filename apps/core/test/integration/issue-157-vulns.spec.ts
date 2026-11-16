@@ -245,7 +245,7 @@ describe('issue-157 vulns (expect secure, currently insecure)', () => {
     await t.shareRepo.update(id, { expiresAt: new Date(Date.now() - 1000) });
 
     expect((await request(apiServer(t)).get(`/api/share/${token}`)).status).toBe(404);
-    expect((await request(apiServer(t)).get(`/api/share/${token}/stream`)).status).toBe(404);
+    expect((await request(apiServer(t)).get(`/api/share/${token}/content`)).status).toBe(404);
 
     // control: expiry, not a broken token — a fresh share from the same user still resolves
     const freshFile = await seedFile(t, u.id);

@@ -129,10 +129,9 @@ async function fetchStatus(
   admin: AuthResponse,
   emailOrId: string,
 ): Promise<BackupStatus> {
-  const response = await request.get(
-    `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(emailOrId)}`,
-    { headers: authHeaders(admin) },
-  );
+  const response = await request.get(`/api/v1/admin/backups/${encodeURIComponent(emailOrId)}`, {
+    headers: authHeaders(admin),
+  });
   expect(response.status()).toBe(200);
   return (await response.json()) as BackupStatus;
 }
@@ -155,7 +154,7 @@ async function fetchProgress(
   emailOrId: string,
 ): Promise<BackupProgress> {
   const response = await request.get(
-    `/api/v1/admin/backups/progress?emailOrId=${encodeURIComponent(emailOrId)}`,
+    `/api/v1/admin/backups/${encodeURIComponent(emailOrId)}/progress`,
     { headers: authHeaders(admin) },
   );
   expect(response.status()).toBe(200);
@@ -423,7 +422,8 @@ async function confirmTypedDeleteBackup(page: Page, email: string): Promise<numb
   const answered = page.waitForResponse(
     (response) =>
       response.request().method() === 'DELETE' &&
-      new URL(response.url()).pathname === '/api/v1/admin/backups',
+      // the delete is keyed by the backup's id-or-email; overview/runs are GET-only siblings
+      new URL(response.url()).pathname.startsWith('/api/v1/admin/backups/'),
   );
   await dialog.getByRole('button', { name: 'Delete backup', exact: true }).click();
   const response = await answered;
@@ -540,7 +540,8 @@ When(
     const answered = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' &&
-        new URL(response.url()).pathname === '/api/v1/admin/restores',
+        // the keyed restore start; `/restores/merge` is the sibling POST this must not match
+        new URL(response.url()).pathname.endsWith('/restores'),
       { timeout: 240_000 },
     );
     await page.getByRole('button', { name: 'Restore', exact: true }).click();
@@ -634,7 +635,7 @@ Then(
     // the dialog starts open with DELETE typed (previous step) — both dismissals must be
     // network-silent, so count DELETEs instead of sleeping and asserting absence
     let deletes = 0;
-    await page.route('**/api/v1/admin/backups', async (route) => {
+    await page.route('**/api/v1/admin/backups/*', async (route) => {
       if (route.request().method() === 'DELETE') deletes += 1;
       await route.continue();
     });
@@ -646,7 +647,7 @@ Then(
       await page.keyboard.press('Escape');
       await expect(deleteBackupDialog(page)).toHaveCount(0);
     } finally {
-      await page.unroute('**/api/v1/admin/backups');
+      await page.unroute('**/api/v1/admin/backups/*');
     }
     expect(deletes).toBe(0);
   },
@@ -714,10 +715,9 @@ Then('the orphan backup row is gone and its status is missing', async ({ page, r
   await searchBackups(page, victim.user.email);
   // the delete bumps the overview version and refetches: the manifest-less orphan drops out
   await expect(page.getByText(/No users match/)).toBeVisible({ timeout: 30_000 });
-  const status = await request.get(
-    `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(victim.user.id)}`,
-    { headers: authHeaders(await requireAdmin(request, state)) },
-  );
+  const status = await request.get(`/api/v1/admin/backups/${encodeURIComponent(victim.user.id)}`, {
+    headers: authHeaders(await requireAdmin(request, state)),
+  });
   expect(status.status()).toBe(200);
   expect(((await status.json()) as { exists: boolean }).exists).toBe(false);
 });

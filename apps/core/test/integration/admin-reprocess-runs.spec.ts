@@ -8,8 +8,7 @@ const RUNS = '/api/v1/admin/reprocess-runs';
 
 /**
  * One resource for every bulk pipeline: `POST /reprocess-runs {kind}` starts a run and points at
- * `GET /reprocess-runs/:kind`, which reports the last recorded run and the live queue depth. The six
- * per-pipeline POST/GET pairs stay as deprecated aliases.
+ * `GET /reprocess-runs/:kind`, which reports the last recorded run and the live queue depth.
  */
 describe('admin reprocess runs', () => {
   let t: ApiTestApp;
@@ -84,22 +83,5 @@ describe('admin reprocess runs', () => {
       .send({ kind: 'thumbnails' });
     expect(missingAssetKind.status).toBe(400);
     expect((missingAssetKind.body as { message: string }).message).toContain('assetKind');
-  });
-
-  it('keeps the per-pipeline routes working as deprecated aliases', async () => {
-    const { auth } = await adminAuth();
-    const server = apiServer(t);
-
-    const started = await request(server).post('/api/v1/admin/faces/reprocess').set(auth);
-    expect(started.status).toBe(200);
-    expect(started.headers.sunset).toBeDefined();
-
-    const status = await request(server).get('/api/v1/admin/faces/reprocess').set(auth);
-    expect(status.status).toBe(200);
-    expect(status.headers.sunset).toBeDefined();
-
-    const fresh = await request(server).get(`${RUNS}/faces`).set(auth);
-    expect(fresh.status).toBe(200);
-    expect(fresh.headers.sunset).toBeUndefined();
   });
 });

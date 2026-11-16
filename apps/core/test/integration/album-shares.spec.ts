@@ -212,7 +212,7 @@ describe('album shares', () => {
       assetCount: 1,
     });
 
-    const stream = await request(apiServer(t)).get(`/api/share/${share.token}/stream`);
+    const stream = await request(apiServer(t)).get(`/api/share/${share.token}/content`);
     expect(stream.status).toBe(404);
   });
 
@@ -304,7 +304,7 @@ describe('album shares', () => {
     expect((list.body as { items: unknown[] }).items).toHaveLength(0);
 
     const stream = await request(apiServer(t)).get(
-      `/api/share/${share.token}/assets/${asset.id}/stream`,
+      `/api/share/${share.token}/assets/${asset.id}/content`,
     );
     expect(stream.status).toBe(404);
 
@@ -389,7 +389,7 @@ describe('album shares', () => {
     const share = created.body as ShareBody;
 
     const ranged = await request(apiServer(t))
-      .get(`/api/share/${share.token}/assets/${asset.id}/stream`)
+      .get(`/api/share/${share.token}/assets/${asset.id}/content`)
       .set('Range', 'bytes=2-4');
     expect(ranged.status).toBe(206);
     expect(ranged.headers['content-range']).toBe('bytes 2-4/10');
@@ -397,13 +397,13 @@ describe('album shares', () => {
     expect((ranged.body as Buffer).toString('utf8')).toBe('234');
 
     const full = await request(apiServer(t)).get(
-      `/api/share/${share.token}/assets/${asset.id}/stream`,
+      `/api/share/${share.token}/assets/${asset.id}/content`,
     );
     expect(full.status).toBe(200);
     expect(full.headers.etag).toBe(etag);
 
     const cached = await request(apiServer(t))
-      .get(`/api/share/${share.token}/assets/${asset.id}/stream`)
+      .get(`/api/share/${share.token}/assets/${asset.id}/content`)
       .set('If-None-Match', etag);
     expect(cached.status).toBe(304);
   });
@@ -420,11 +420,11 @@ describe('album shares', () => {
     const share = created.body as ShareBody;
 
     const res = await request(apiServer(t)).get(
-      `/api/share/${share.token}/assets/${outsider.id}/stream`,
+      `/api/share/${share.token}/assets/${outsider.id}/content`,
     );
     expect(res.status).toBe(404);
     const missing = await request(apiServer(t)).get(
-      `/api/share/${share.token}/assets/${randomUUID()}/stream`,
+      `/api/share/${share.token}/assets/${randomUUID()}/content`,
     );
     expect(missing.status).toBe(404);
   });
@@ -440,26 +440,26 @@ describe('album shares', () => {
 
     // no sm thumbnail yet: 404, never the original
     const missing = await request(apiServer(t)).get(
-      `/api/share/${share.token}/assets/${asset.id}/stream?size=sm`,
+      `/api/share/${share.token}/assets/${asset.id}/content?size=sm`,
     );
     expect(missing.status).toBe(404);
 
     const thumb = await seedThumbnail(t, asset.id, { size: 'sm' });
     const thumbFile = await t.fileRepo.findOneOrFail({ where: { id: thumb.fileId } });
     const thumbRes = await request(apiServer(t)).get(
-      `/api/share/${share.token}/assets/${asset.id}/stream?size=sm`,
+      `/api/share/${share.token}/assets/${asset.id}/content?size=sm`,
     );
     expect(thumbRes.status).toBe(200);
     expect(thumbRes.headers['content-type']).toBe('image/jpeg');
     expect(thumbRes.headers.etag).toBe(`"${thumbFile.checksumSha256}"`);
 
     const otherSize = await request(apiServer(t)).get(
-      `/api/share/${share.token}/assets/${asset.id}/stream?size=md`,
+      `/api/share/${share.token}/assets/${asset.id}/content?size=md`,
     );
     expect(otherSize.status).toBe(400);
 
     const original = await request(apiServer(t)).get(
-      `/api/share/${share.token}/assets/${asset.id}/stream`,
+      `/api/share/${share.token}/assets/${asset.id}/content`,
     );
     expect(original.headers['content-type']).toBe('image/png');
   });
@@ -479,7 +479,7 @@ describe('album shares', () => {
     expect(body.share.kind).toBe('asset');
     expect(body.asset.id).toBe(asset.id);
 
-    const stream = await request(apiServer(t)).get(`/api/share/${share.token}/stream`);
+    const stream = await request(apiServer(t)).get(`/api/share/${share.token}/content`);
     expect(stream.status).toBe(200);
 
     const assetsRoute = await request(apiServer(t)).get(`/api/share/${share.token}/assets`);
@@ -507,7 +507,7 @@ describe('album shares', () => {
     const pub = await request(apiServer(t)).get(`/api/share/${share.token}`);
     expect((pub.body as { asset: PublicAsset }).asset.hasTranscode).toBe(true);
 
-    const stream = await request(apiServer(t)).get(`/api/share/${share.token}/stream`);
+    const stream = await request(apiServer(t)).get(`/api/share/${share.token}/content`);
     expect(stream.status).toBe(200);
     expect(stream.headers['content-type']).toBe('video/webm');
     const record = await t.fileRepo.findOneOrFail({ where: { id: transcode.id } });
@@ -533,7 +533,7 @@ describe('album shares', () => {
     const share = created.body as ShareBody;
 
     const ranged = await request(apiServer(t))
-      .get(`/api/share/${share.token}/stream`)
+      .get(`/api/share/${share.token}/content`)
       .set('Range', 'bytes=0-99');
     expect(ranged.status).toBe(206);
     expect(ranged.headers['content-type']).toBe('video/webm');
@@ -572,7 +572,7 @@ describe('album shares', () => {
     expect(item.hasTranscode).toBe(true);
 
     const stream = await request(apiServer(t)).get(
-      `/api/share/${share.token}/assets/${asset.id}/stream`,
+      `/api/share/${share.token}/assets/${asset.id}/content`,
     );
     expect(stream.status).toBe(200);
     expect(stream.headers['content-type']).toBe('video/webm');
@@ -580,7 +580,7 @@ describe('album shares', () => {
     expect(stream.headers.etag).toBe(`"${record.checksumSha256}"`);
 
     const sm = await request(apiServer(t)).get(
-      `/api/share/${share.token}/assets/${asset.id}/stream?size=sm`,
+      `/api/share/${share.token}/assets/${asset.id}/content?size=sm`,
     );
     expect(sm.status).toBe(200);
     const thumbRecord = await t.fileRepo.findOneOrFail({ where: { id: thumb.fileId } });

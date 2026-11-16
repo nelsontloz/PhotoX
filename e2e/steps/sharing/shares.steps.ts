@@ -87,7 +87,7 @@ async function seedAlbumShare(request: APIRequestContext, ctx: Ctx): Promise<voi
   await expect
     .poll(
       async () =>
-        (await request.get(`/api/share/${share.token}/assets/${assetId}/stream?size=sm`)).status(),
+        (await request.get(`/api/share/${share.token}/assets/${assetId}/content?size=sm`)).status(),
       { timeout: 120_000 },
     )
     .toBe(200);
@@ -356,7 +356,7 @@ When(
     const memberId = ctx.albumMemberId;
     if (!memberId) throw new Error('seed an album share first');
     ctx.lastStatus = (
-      await request.get(`/api/share/${share.token}/assets/${memberId}/stream?size=sm`)
+      await request.get(`/api/share/${share.token}/assets/${memberId}/content?size=sm`)
     ).status();
   },
 );
@@ -366,7 +366,7 @@ When(
   async ({ request, ctx }) => {
     const share = requireShare(ctx.albumShare ?? ctx.lastShare, 'album');
     ctx.lastStatus = (
-      await request.get(`/api/share/${share.token}/assets/${randomUUID()}/stream?size=sm`)
+      await request.get(`/api/share/${share.token}/assets/${randomUUID()}/content?size=sm`)
     ).status();
   },
 );
@@ -375,7 +375,7 @@ When(
   'an anonymous client requests the share stream with Range {string}',
   async ({ request, ctx }, range: string) => {
     const share = requireShare(ctx.videoShare ?? ctx.lastShare, 'video');
-    const response = await request.get(`/api/share/${share.token}/stream`, {
+    const response = await request.get(`/api/share/${share.token}/content`, {
       headers: { Range: range },
     });
     ctx.lastStatus = response.status();

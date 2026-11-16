@@ -126,8 +126,8 @@ describe('path-policy bypass: the route policy must not depend on the case of th
       '/api/v1/admin/orphan-counts',
       '/api/v1/admin/face-detection',
       '/api/v1/admin/assets/counts',
-      '/api/v1/admin/faces/reprocess',
-      '/api/v1/admin/metadata/reprocess',
+      '/api/v1/admin/reprocess-runs/faces',
+      '/api/v1/admin/backups/overview',
     ];
 
     for (const route of routes) {
@@ -180,11 +180,10 @@ describe('path-policy bypass: the route policy must not depend on the case of th
   it('#5 a non-admin cannot trigger a library-wide maintenance action through a case variant', async () => {
     const auth = await nonAdmin();
     const routes: { path: string; body?: unknown }[] = [
-      { path: '/api/v1/admin/cleanup-orphans/run' },
-      { path: '/api/v1/admin/thumbnails/reprocess', body: { kind: 'photo' } },
-      { path: '/api/v1/admin/faces/reprocess' },
-      { path: '/api/v1/admin/embeddings/reprocess' },
-      { path: '/api/v1/admin/places/backfill' },
+      { path: '/api/v1/admin/cleanup-orphans' },
+      { path: '/api/v1/admin/reprocess-runs', body: { kind: 'thumbnails', assetKind: 'photo' } },
+      { path: '/api/v1/admin/faces/recluster' },
+      { path: `/api/v1/admin/backups/${randomUUID()}/restores` },
     ];
 
     for (const route of routes) {

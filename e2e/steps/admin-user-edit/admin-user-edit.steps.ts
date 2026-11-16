@@ -247,7 +247,7 @@ Then(
     const admin = await requireAdmin(ctx, request);
     const account = requireAccount(ctx);
     const response = await request.get(
-      `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(account.user.id)}`,
+      `/api/v1/admin/backups/${encodeURIComponent(account.user.id)}`,
       { headers: authHeaders(admin) },
     );
     expect(response.status()).toBe(200);

@@ -23,6 +23,7 @@ const DETECTIONS = {
   ],
 };
 const JOB_ID = (assetId: string) => `detect-reprocess-${assetId}`;
+const RUNS = '/api/v1/admin/reprocess-runs';
 
 describe('asset detections HTTP', () => {
   let t: ApiTestApp;
@@ -221,8 +222,8 @@ describe('asset detections HTTP', () => {
 
     it('rejects unauthenticated and non-admin requests', async () => {
       await adminAuthHarness(t, {
-        post: ['/api/v1/admin/detections/reprocess'],
-        get: ['/api/v1/admin/detections/reprocess'],
+        post: [RUNS],
+        get: [`${RUNS}/detections`],
       });
     });
 
@@ -241,12 +242,14 @@ describe('asset detections HTTP', () => {
       await seedAsset(t, owner.id, videoFile.id, { kind: 'video' });
 
       await reprocessMatrix(t, auth, owner.id, [a, b], {
-        route: '/api/v1/admin/detections/reprocess',
+        route: RUNS,
+        statusRoute: `${RUNS}/detections`,
         queue: 'process-detect',
         jobIdFn: JOB_ID,
         jobName: 'detect',
         jobDataExtra: { reason: 'reprocess' },
-        respKeys: { enqueued: 2, total: 2 },
+        respKeys: { kind: 'detections', enqueued: 2, total: 2 },
+        reqBody: { kind: 'detections' },
         filter: [trashed.asset.id],
       });
     });

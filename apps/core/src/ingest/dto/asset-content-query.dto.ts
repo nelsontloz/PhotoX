@@ -13,7 +13,7 @@ export class AssetContentQueryDto {
     default: 'display',
     description:
       'display: the bytes to show/play (the webm transcode once the worker produced one); ' +
-      'original: the uploaded bytes.',
+      'original: the uploaded bytes. Defaults to `original` when `download` is set.',
   })
   variant?: 'display' | 'original';
 

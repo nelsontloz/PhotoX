@@ -438,7 +438,7 @@ Then('the victim library is gone but the victim backup is kept', async ({ reques
   const backupAt = state.victimBackupAt;
   if (!backupAt) throw new Error('back up the victim first');
   const statusResponse = await request.get(
-    `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(victim.user.id)}`,
+    `/api/v1/admin/backups/${encodeURIComponent(victim.user.id)}`,
     { headers: authHeaders(admin) },
   );
   expect(statusResponse.status()).toBe(200);
@@ -487,7 +487,7 @@ Then('the sibling library and backup are untouched', async ({ request, page, ctx
   const backupAt = state.siblingBackupAt;
   if (!backupAt) throw new Error('back up the sibling first');
   const statusResponse = await request.get(
-    `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(sibling.user.id)}`,
+    `/api/v1/admin/backups/${encodeURIComponent(sibling.user.id)}`,
     { headers: authHeaders(requireStateAdmin(ctx)) },
   );
   expect(statusResponse.status()).toBe(200);
@@ -578,8 +578,8 @@ When('the victim backup is restored through the API', async ({ request, ctx, $te
   const body = await startAndWaitForRun<{ email?: string }>(
     request,
     requireStateAdmin(ctx),
-    '/api/v1/admin/restores',
-    { emailOrId: requireVictim(ctx).user.id },
+    `/api/v1/admin/backups/${encodeURIComponent(requireVictim(ctx).user.id)}/restores`,
+    {},
   );
   if (!body.email) throw new Error('restore response is missing the restored email');
   scenarioState<UserDeleteState>(ctx).restoredEmail = body.email;
@@ -616,7 +616,9 @@ When(
     // on the response — the Then steps assert the toast + refreshed list, never a bare wait
     const pending = page.waitForResponse(
       (response) =>
-        response.url().includes('/api/v1/admin/restores') && response.request().method() === 'POST',
+        response.request().method() === 'POST' &&
+        // keyed restore start; `endsWith` keeps the sibling `/restores/merge` POST out
+        new URL(response.url()).pathname.endsWith('/restores'),
       { timeout: 120_000 },
     );
     await page.getByRole('button', { name: 'Restore', exact: true }).click();
@@ -818,10 +820,9 @@ Then('the source backup is gone', async ({ request, ctx }) => {
   const reregistered = state.reregistered;
   if (!reregistered) throw new Error('re-register the victim email first');
   const statusFor = async (emailOrId: string) => {
-    const response = await request.get(
-      `/api/v1/admin/backups/status?emailOrId=${encodeURIComponent(emailOrId)}`,
-      { headers: authHeaders(admin) },
-    );
+    const response = await request.get(`/api/v1/admin/backups/${encodeURIComponent(emailOrId)}`, {
+      headers: authHeaders(admin),
+    });
     expect(response.status()).toBe(200);
     return (await response.json()) as { exists: boolean; assets?: number };
   };

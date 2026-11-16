@@ -63,16 +63,6 @@ class ListBackupOverviewQueryDto extends PaginationQueryDto {
   override limit = 50;
 }
 
-class RestoreRequestDto {
-  @IsString()
-  @IsNotEmpty()
-  emailOrId!: string;
-
-  @IsOptional()
-  @IsEmail()
-  restoreEmail?: string;
-}
-
 class RestoreByKeyDto {
   @IsOptional()
   @IsEmail()
@@ -118,25 +108,6 @@ export class BackupController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ runId: string }> {
     const { runId } = await this.backups.startBackup(dto.emailOrId);
-    setResourceLocation(res, `/api/v1/admin/backups/runs/${runId}`, 2);
-    return { runId };
-  }
-
-  @Post('restores')
-  @HttpCode(HttpStatus.ACCEPTED)
-  @ApiOperation({
-    summary: 'Start a restore of one user from S3 and re-enqueue derivatives (admin-only)',
-    description:
-      'Returns 202 with a run id. Rows commit in one transaction, then one item per original ' +
-      'is downloaded and retried independently; finalize re-enqueues derivatives. A restore ' +
-      'that fails is resumable by starting it again (same manifest), not a 409.',
-  })
-  @ApiResponse({ status: 202, description: 'Restore run id', type: RunIdResponseModel })
-  async restore(
-    @Body() dto: RestoreRequestDto,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<{ runId: string }> {
-    const { runId } = await this.backups.startRestore(dto.emailOrId, dto.restoreEmail);
     setResourceLocation(res, `/api/v1/admin/backups/runs/${runId}`, 2);
     return { runId };
   }
@@ -193,30 +164,6 @@ export class BackupController {
     return { items: all.slice(q.offset, q.offset + q.limit), total: all.length };
   }
 
-  @Get('backups/status')
-  @ApiOperation({ summary: 'Backup manifest status for one user (admin-only)' })
-  @ApiResponse({
-    status: 200,
-    description: 'Manifest presence and row counts',
-    type: BackupStatusModel,
-  })
-  @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
-  async status(@Query() query: EmailOrIdQueryDto): Promise<BackupStatus> {
-    return this.backups.backupStatus(query.emailOrId);
-  }
-
-  @Get('backups/progress')
-  @ApiOperation({ summary: 'Live per-file backup progress for one user (admin-only)' })
-  @ApiResponse({
-    status: 200,
-    description: 'In-progress flag plus per-file counters',
-    type: BackupProgressModel,
-  })
-  @ApiResponse({ status: 404, description: 'No user for emailOrId' })
-  async progress(@Query() query: EmailOrIdQueryDto): Promise<BackupProgress> {
-    return this.backups.getBackupProgress(query.emailOrId);
-  }
-
   @Get('backups/runs/:runId')
   @ApiOperation({ summary: 'One backup/restore run: state, counters and final result' })
   @ApiResponse({ status: 200, description: 'Run status', type: BackupRunStatusModel })
@@ -259,7 +206,7 @@ export class BackupController {
   @ApiOperation({
     summary: 'Restore one account backup into a live account (admin-only)',
     description:
-      'Same durable run as POST /api/v1/admin/restores, addressed by the backup it restores: ' +
+      'Same durable run as the rest of the backup surface, addressed by the backup it restores: ' +
       '`restoreEmail` re-homes the snapshot into that new account when the original is gone.',
   })
   @ApiResponse({ status: 202, description: 'Restore run id', type: RunIdResponseModel })
@@ -284,18 +231,5 @@ export class BackupController {
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
   async deleteByKey(@Param('key') key: string): Promise<DeleteBackupResult> {
     return this.backups.deleteBackup(key);
-  }
-
-  @Delete('backups')
-  @ApiOperation({ summary: 'Delete one user backup from S3 (admin-only)' })
-  @ApiResponse({
-    status: 200,
-    description: 'Deleted backup prefix and object count',
-    type: DeleteBackupResultModel,
-  })
-  @ApiResponse({ status: 404, description: 'No backup for emailOrId' })
-  @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
-  async deleteBackup(@Query() query: EmailOrIdQueryDto): Promise<DeleteBackupResult> {
-    return this.backups.deleteBackup(query.emailOrId);
   }
 }

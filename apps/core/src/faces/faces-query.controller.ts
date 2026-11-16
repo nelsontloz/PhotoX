@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Put,
-  Patch,
   Param,
   Query,
   Body,
@@ -48,21 +47,6 @@ export class FacesQueryController {
   @ApiResponse({ status: 200, description: 'Face updated', type: FaceModel })
   @ApiResponse({ status: 404, description: 'Face not found or userId mismatch' })
   async setPerson(
-    @Param('id') id: string,
-    @Body() dto: AssignPersonDto,
-    @CurrentUserId() userId: string,
-  ) {
-    return this.faces.assignPerson(userId, id, dto.personId);
-  }
-
-  // Superseded by PUT on the same path (setting one value is idempotent, and personId:null is a
-  // valid replace). Kept for one release so an old client keeps working.
-  @Patch(':id/person')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Assign or unassign a face from a person', deprecated: true })
-  @ApiResponse({ status: 200, description: 'Face updated', type: FaceModel })
-  @ApiResponse({ status: 404, description: 'Face not found or userId mismatch' })
-  async assignPerson(
     @Param('id') id: string,
     @Body() dto: AssignPersonDto,
     @CurrentUserId() userId: string,

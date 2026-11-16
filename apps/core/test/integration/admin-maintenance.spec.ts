@@ -15,6 +15,9 @@ import {
 import type { ApiTestApp } from './helpers';
 import { reprocessMatrix } from './helpers/reprocess-matrix';
 
+const RUNS = '/api/v1/admin/reprocess-runs';
+const CLEANUP = '/api/v1/admin/cleanup-orphans';
+
 describe('admin maintenance', () => {
   let t: ApiTestApp;
 
@@ -100,13 +103,13 @@ describe('admin maintenance', () => {
     const videoFile = await seedFile(t, admin.id, { mimeType: 'video/mp4' });
     await seedAsset(t, admin.id, videoFile.id, { kind: 'video' });
     await reprocessMatrix(t, auth, admin.id, [{ file: photoFile, asset: photo }], {
-      route: '/api/v1/admin/thumbnails/reprocess',
+      route: RUNS,
       queue: 'process-thumbnail',
       jobIdFn: (id, size) => `thumb-reprocess-${id}-${size}`,
       jobName: 'process-thumbnail',
-      respKeys: { enqueued: 4, totalAssets: 1 },
+      respKeys: { kind: 'thumbnails', enqueued: 4, total: 1 },
       fanout: ['sm', 'md', 'lg', 'xl'],
-      reqBody: { kind: 'photo' },
+      reqBody: { kind: 'thumbnails', assetKind: 'photo' },
       noStatus: true,
     });
   });
@@ -118,14 +121,12 @@ describe('admin maintenance', () => {
       .get('/api/v1/admin/orphan-counts')
       .set(t.authHeader(token));
     expect(counts.status).toBe(403);
-    const cleanup = await request(apiServer(t))
-      .post('/api/v1/admin/cleanup-orphans/run')
-      .set(t.authHeader(token));
+    const cleanup = await request(apiServer(t)).post(CLEANUP).set(t.authHeader(token));
     expect(cleanup.status).toBe(403);
     const reprocess = await request(apiServer(t))
-      .post('/api/v1/admin/thumbnails/reprocess')
+      .post(RUNS)
       .set(t.authHeader(token))
-      .send({ kind: 'photo' });
+      .send({ kind: 'thumbnails', assetKind: 'photo' });
     expect(reprocess.status).toBe(403);
     const users = await request(apiServer(t)).get('/api/v1/admin/users').set(t.authHeader(token));
     expect(users.status).toBe(403);
@@ -242,9 +243,7 @@ describe('admin maintenance', () => {
     await writeFile(join(t.storageDir, 'fresh-stray.bin'), Buffer.from('fresh'));
     await writeFile(join(t.storageDir, 'staging.tmp'), Buffer.from('tmp'));
 
-    const res = await request(apiServer(t))
-      .post('/api/v1/admin/cleanup-orphans/run')
-      .set(t.authHeader(token));
+    const res = await request(apiServer(t)).post(CLEANUP).set(t.authHeader(token));
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ deletedFiles: 1, deletedThumbnails: 1, deletedStrays: 1 });
 
@@ -259,9 +258,7 @@ describe('admin maintenance', () => {
     expect(existsSync(join(t.storageDir, 'stray.bin'))).toBe(false);
     expect(existsSync(join(t.storageDir, 'fresh-stray.bin'))).toBe(true);
 
-    const again = await request(apiServer(t))
-      .post('/api/v1/admin/cleanup-orphans/run')
-      .set(t.authHeader(token));
+    const again = await request(apiServer(t)).post(CLEANUP).set(t.authHeader(token));
     expect(again.status).toBe(200);
     expect(again.body).toEqual({ deletedFiles: 0, deletedThumbnails: 0, deletedStrays: 0 });
   });
@@ -270,9 +267,7 @@ describe('admin maintenance', () => {
     const user = await seedUser(t, { role: 'user' });
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
 
-    const run = await request(apiServer(t))
-      .post('/api/v1/admin/cleanup-orphans/run')
-      .set(t.authHeader(token));
+    const run = await request(apiServer(t)).post(CLEANUP).set(t.authHeader(token));
     expect(run.status).toBe(403);
   });
 
