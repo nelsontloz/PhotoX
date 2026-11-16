@@ -14,6 +14,8 @@ export default tseslint.config(
       'e2e/.features-gen/**',
       'e2e/playwright-report/**',
       'e2e/test-results/**',
+      // .mjs tooling outside the app tsconfig (OpenAPI exporter)
+      'apps/core/scripts/**',
     ],
   },
   js.configs.recommended,
