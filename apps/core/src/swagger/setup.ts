@@ -1,6 +1,7 @@
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { INestApplication } from '@nestjs/common';
 import { applyErrorContract } from './error-contract';
+import { applyResponseContract } from './response-contract';
 import { applyDeprecations } from './deprecations';
 
 /**
@@ -22,8 +23,9 @@ deprecated without a named replacement.
 that outlive any deploy, so that namespace never changes shape. \`/worker/*\` and \`/health\` are
 internal and unversioned: they may change without notice.
 
-**Concurrency.** Byte reads (\`/assets/:id/content\`, \`/files/:fileId/stream\`, \`/faces/:id/thumb\`)
-carry a strong \`ETag\` and honour \`If-None-Match\`/\`Range\`. JSON resources are last-write-wins:
+**Concurrency.** Byte reads (\`/assets/:id/content\`, \`/files/:fileId/stream\`, and the public
+share content routes) carry a strong \`ETag\` and honour \`If-None-Match\`/\`Range\`;
+\`/faces/:id/thumb\` is immutable-cached but has no revalidation. JSON resources are last-write-wins:
 \`updatedAt\` in the payload is the only change signal, there is no \`If-Match\` check.
 
 **Paging.** Every list answers \`{items, total}\`, plus \`nextCursor\` on keyset routes. \`total\` is the
@@ -52,9 +54,14 @@ export function setupSwagger(app: INestApplication): void {
     .setTitle('Photox API')
     .setDescription(API_DESCRIPTION)
     .setVersion('1.0')
-    // Swagger UI can send the same Bearer access token the API accepts (cookie auth works
-    // without this — the browser attaches it)
-    .addBearerAuth()
+    .setLicense('MIT', 'https://opensource.org/licenses/MIT')
+    // the API is served same-origin behind the reverse proxy; relative keeps the document
+    // portable between localhost, staging and production
+    .addServer('/', 'Same origin (relative URL)')
+    // The name is load-bearing: `error-contract.ts` stamps `bearerAuth` onto every guarded
+    // operation. DocumentBuilder defaults the scheme to `bearer`, which left 83 operations
+    // pointing at a scheme the document never defined.
+    .addBearerAuth({ type: 'http' }, 'bearerAuth')
     .build();
   const document = SwaggerModule.createDocument(app, config, {
     // Default operation ids are derived from the controller + handler and are noisy for codegen;
@@ -63,6 +70,7 @@ export function setupSwagger(app: INestApplication): void {
       `${controllerKey.replace(/Controller$/, '')}${methodKey[0]!.toUpperCase()}${methodKey.slice(1)}`,
   });
   applyErrorContract(document);
+  applyResponseContract(document);
   applyDeprecations(document);
   SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' });
 }

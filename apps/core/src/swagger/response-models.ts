@@ -1091,9 +1091,10 @@ export class BackupRunStatusModel implements BackupRunStatus {
   @ApiPropertyOptional({ type: String, format: 'date-time' })
   finishedAt?: string;
 
-  // A restore result extends the backup result, so the two shapes are told apart by `restoredFrom`.
+  // A restore result extends the backup result, so the two shapes are told apart by
+  // `kind` on the run; `anyOf` avoids claiming the extended shape is mutually exclusive.
   @ApiPropertyOptional({
-    oneOf: [
+    anyOf: [
       { $ref: getSchemaPath(BackupResultModel) },
       { $ref: getSchemaPath(RestoreResultModel) },
     ],

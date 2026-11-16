@@ -8,6 +8,7 @@ export class FaceThumbQueryDto {
   @IsOptional()
   @Transform(({ value }) => (value === '' ? Number.NaN : Number(value)))
   @ApiProperty({
+    type: 'integer',
     required: false,
     description: 'Square crop size in px (clamped 32-600, default 240)',
   })

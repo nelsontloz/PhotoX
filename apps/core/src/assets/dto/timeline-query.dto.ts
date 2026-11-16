@@ -56,7 +56,7 @@ export class TimelineWindowQueryDto extends TimelineFilterDto {
   @IsInt()
   @Min(0)
   @ApiProperty({
-    type: Number,
+    type: 'integer',
     default: 0,
     required: false,
     description: 'Row index inside this window',
@@ -68,6 +68,6 @@ export class TimelineWindowQueryDto extends TimelineFilterDto {
   @IsInt()
   @Min(1)
   @Max(5000)
-  @ApiProperty({ type: Number, default: 2000, required: false })
+  @ApiProperty({ type: 'integer', default: 2000, required: false })
   limit?: number;
 }

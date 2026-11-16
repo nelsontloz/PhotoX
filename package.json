@@ -9,6 +9,7 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
+    "lint:openapi": "redocly lint docs/openapi.json",
     "format": "prettier --write .",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules",
@@ -20,11 +21,12 @@
     "mobile:build": "cd apps/mobile && flutter build apk --release",
     "mobile:verify": "cd apps/mobile && flutter analyze && flutter test && dart run build_runner build --only-check",
     "mobile:e2e": "bash e2e/mobile/run.sh",
-    "verify": "pnpm run lint && turbo run test --force && pnpm run typecheck && pnpm run build && E2E_BUILD=1 pnpm run test:e2e",
+    "verify": "pnpm run lint && pnpm run lint:openapi && turbo run test --force && pnpm run typecheck && pnpm run build && E2E_BUILD=1 pnpm run test:e2e",
     "postinstall": "test \"${FACE_MODEL_SKIP:-}\" = 1 || for s in face vision detect; do bash apps/worker-service/scripts/download-$s-model.sh; done"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@redocly/cli": "^2.79.0",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.9.10",

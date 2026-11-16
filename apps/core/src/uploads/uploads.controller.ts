@@ -13,7 +13,15 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import type {
   UploadCompleteResponse,
@@ -128,6 +136,16 @@ export class UploadsController {
   @Put(':uploadId/parts/:index')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Upload one raw chunk (idempotent per index)' })
+  @ApiConsumes('application/octet-stream')
+  @ApiBody({
+    description: 'Raw chunk bytes (8 MiB max)',
+    schema: { type: 'string', format: 'binary' },
+  })
+  @ApiParam({
+    name: 'index',
+    description: 'Zero-based part index',
+    schema: { type: 'integer', minimum: 0 },
+  })
   @ApiResponse({ status: 204, description: 'Part stored' })
   @ApiResponse({ status: 400, description: 'MISSING_LENGTH, INDEX_RANGE or PART_TOO_LARGE' })
   @ApiResponse({ status: 404, description: 'Session not found' })

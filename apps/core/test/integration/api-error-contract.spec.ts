@@ -169,6 +169,61 @@ describe('API error contract', () => {
     expect(assetsList?.responses?.['400']).toBeDefined();
   });
 
+  it('publishes the full operation contract: auth, headers, byte semantics and parameter types', async () => {
+    const res = await request(apiServer(t)).get('/docs-json');
+    expect(res.status).toBe(200);
+
+    const doc = res.body as {
+      components: { securitySchemes: Record<string, unknown> };
+      paths: Record<
+        string,
+        Record<
+          string,
+          {
+            security?: unknown;
+            parameters?: {
+              name?: string;
+              in?: string;
+              schema?: { type?: string; format?: string };
+            }[];
+            responses?: Record<string, { headers?: Record<string, unknown> }>;
+            requestBody?: {
+              content?: Record<string, { schema?: { type?: string; format?: string } }>;
+            };
+          }
+        >
+      >;
+    };
+
+    expect(doc.components.securitySchemes.bearerAuth).toBeDefined();
+    expect(doc.components.securitySchemes.bearer).toBeUndefined();
+    expect(doc.paths['/api/v1/auth/login']!.post!.security).toEqual([]);
+    expect(doc.paths['/worker/assets']!.get!.security).toEqual([
+      { bearerAuth: [], workerJobSignature: [] },
+    ]);
+
+    expect(doc.paths['/api/v1/files']!.post!.responses!['201']!.headers!.Location).toBeDefined();
+    expect(
+      doc.paths['/api/v1/auth/login']!.post!.responses!['200']!.headers!['Set-Cookie'],
+    ).toBeDefined();
+    expect(doc.paths['/api/v1/files/{fileId}/stream']!.get!.responses!['304']).toBeDefined();
+    expect(doc.paths['/api/v1/files/{fileId}/stream']!.get!.parameters!.map((p) => p.name)).toEqual(
+      expect.arrayContaining(['Range', 'If-None-Match']),
+    );
+
+    const limit = doc.paths['/api/v1/assets']!.get!.parameters!.find((p) => p.name === 'limit');
+    expect(limit?.schema?.type).toBe('integer');
+    const assetId = doc.paths['/api/v1/assets/{id}']!.get!.parameters!.find((p) => p.name === 'id');
+    expect(assetId?.schema?.format).toBe('uuid');
+
+    const part = doc.paths['/api/v1/uploads/{uploadId}/parts/{index}']!.put!;
+    expect(part.requestBody?.content?.['application/octet-stream']?.schema).toEqual({
+      type: 'string',
+      format: 'binary',
+    });
+    expect(part.parameters?.find((p) => p.name === 'index')?.schema?.type).toBe('integer');
+  });
+
   it('serves the negotiated error media type the document declares', async () => {
     const res = await request(apiServer(t))
       .get('/api/v1/assets')

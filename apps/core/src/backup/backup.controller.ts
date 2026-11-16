@@ -55,7 +55,7 @@ class EmailOrIdQueryDto {
 
 class ListBackupOverviewQueryDto extends PaginationQueryDto {
   // cap stays 200 (base allows 1000): one row per user, each backed by an S3 manifest probe
-  @ApiProperty({ type: Number, required: false, default: 50, maximum: 200 })
+  @ApiProperty({ type: 'integer', required: false, default: 50, maximum: 200 })
   @Type(() => Number)
   @IsInt()
   @Min(1)

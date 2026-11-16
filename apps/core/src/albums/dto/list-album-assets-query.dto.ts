@@ -5,7 +5,7 @@ import { PaginationQueryDto } from '../../common/pagination-query.dto';
 
 export class ListAlbumAssetsQueryDto extends PaginationQueryDto {
   // cap stays 100 (base allows 1000) — same Asset payload as GET /api/v1/assets, so the same cap
-  @ApiProperty({ type: Number, required: false, default: 20, maximum: 100 })
+  @ApiProperty({ type: 'integer', required: false, default: 20, maximum: 100 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
