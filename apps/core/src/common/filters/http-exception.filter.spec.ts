@@ -45,6 +45,43 @@ describe('HttpExceptionFilter', () => {
     expect(logged).toContain('Error: db exploded');
   });
 
+  it('keeps the status of a platform error that is not an HttpException', () => {
+    const logs = silenceLogs();
+    const { host, status, json } = makeHost({ requestId: 'req-2' });
+    const tooLarge = Object.assign(new Error('request entity too large'), {
+      status: 413,
+      type: 'entity.too.large',
+    });
+
+    new HttpExceptionFilter().catch(tooLarge, host);
+
+    expect(status).toHaveBeenCalledWith(413);
+    expect(json).toHaveBeenCalledWith({
+      statusCode: 413,
+      code: 'PAYLOAD_TOO_LARGE',
+      message: 'Payload too large',
+      requestId: 'req-2',
+    });
+    expect(logs.error).not.toHaveBeenCalled();
+  });
+
+  it('reads statusCode as well as status from the non-HttpException', () => {
+    silenceLogs();
+    const { host, status, json } = makeHost();
+
+    new HttpExceptionFilter().catch(
+      Object.assign(new Error('unsupported charset'), { statusCode: 415 }),
+      host,
+    );
+
+    expect(status).toHaveBeenCalledWith(415);
+    expect(json).toHaveBeenCalledWith({
+      statusCode: 415,
+      code: 'UNSUPPORTED_MEDIA_TYPE',
+      message: 'Unsupported media type',
+    });
+  });
+
   it('normalizes a string body into the envelope and omits requestId when absent', () => {
     const logs = silenceLogs();
     const { host, status, json } = makeHost();

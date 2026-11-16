@@ -443,6 +443,23 @@ describe('JwtAuthGuard', () => {
   });
 });
 
+describe('constructor wiring', () => {
+  it('refuses to start without the DataSource outside tests', () => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      expect(() => new JwtAuthGuard(jwt).onModuleInit()).toThrow(/DataSource/);
+    } finally {
+      process.env.NODE_ENV = prev;
+    }
+  });
+
+  it('starts normally with the DataSource present', () => {
+    const dataSource = { getRepository: () => ({}) } as unknown as DataSource;
+    expect(() => new JwtAuthGuard(jwt, dataSource).onModuleInit()).not.toThrow();
+  });
+});
+
 // Once a signing secret leaks (see .env.example), the token's `role` claim is attacker-written:
 // an ordinary account can mint `{sub: ownId, role: 'admin'}`. Admin access must therefore be
 // decided by the stored users row, not by the claim.

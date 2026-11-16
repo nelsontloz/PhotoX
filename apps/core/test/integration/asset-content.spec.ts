@@ -140,12 +140,12 @@ describe('asset content routes', () => {
     expect(res.status).toBe(404);
   });
 
-  it('404s a malformed asset id instead of surfacing the uuid cast as a 500', async () => {
+  it('400s a malformed asset id instead of surfacing the uuid cast as a 500', async () => {
     const { auth } = await seedOwnedAsset();
 
     const res = await request(apiServer(t)).get('/api/v1/assets/not-a-uuid/content').set(auth);
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
   });
 
   it('downloads the original as an attachment', async () => {

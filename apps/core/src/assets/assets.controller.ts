@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
@@ -55,7 +56,10 @@ export class AssetsController {
   @ApiResponse({ status: 204, description: 'Asset deleted' })
   @ApiResponse({ status: 400, description: 'Asset is not trashed' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async deleteTrashed(@Param('id') id: string, @CurrentUserId() userId: string) {
+  async deleteTrashed(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUserId() userId: string,
+  ) {
     await this.assets.delete(userId, id);
   }
 
@@ -64,7 +68,7 @@ export class AssetsController {
   @ApiOperation({ summary: 'Remove an asset from the trash. Idempotent.' })
   @ApiResponse({ status: 204, description: 'Asset restored' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async restore(@Param('id') id: string, @CurrentUserId() userId: string) {
+  async restore(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUserId() userId: string) {
     await this.assets.restore(userId, id);
   }
 
@@ -72,7 +76,7 @@ export class AssetsController {
   @ApiOperation({ summary: 'Get a single asset' })
   @ApiResponse({ status: 200, description: 'Asset found', type: AssetModel })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async getOne(@Param('id') id: string, @CurrentUserId() userId: string) {
+  async getOne(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUserId() userId: string) {
     return this.assets.getOne(userId, id);
   }
 
@@ -81,7 +85,7 @@ export class AssetsController {
   @ApiResponse({ status: 200, description: 'Asset updated', type: AssetModel })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async update(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdateAssetDto,
     @CurrentUserId() userId: string,
   ) {
@@ -93,7 +97,7 @@ export class AssetsController {
   @ApiOperation({ summary: 'Soft-delete (trash) an asset. Idempotent.' })
   @ApiResponse({ status: 204, description: 'Asset trashed' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async trash(@Param('id') id: string, @CurrentUserId() userId: string) {
+  async trash(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUserId() userId: string) {
     await this.assets.trash(userId, id);
   }
 
@@ -110,7 +114,10 @@ export class AssetsController {
   @ApiOperation({ summary: 'Re-process thumbnails for an asset' })
   @ApiResponse({ status: 202, description: 'Thumbnail jobs enqueued' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async reprocessThumbnails(@Param('id') id: string, @CurrentUserId() userId: string) {
+  async reprocessThumbnails(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUserId() userId: string,
+  ) {
     return this.assets.reprocessThumbnails(userId, id);
   }
 
@@ -120,7 +127,10 @@ export class AssetsController {
   @ApiResponse({ status: 202, description: 'Video job enqueued' })
   @ApiResponse({ status: 400, description: 'Not a video asset' })
   @ApiResponse({ status: 404, description: 'Asset not found' })
-  async reprocessVideo(@Param('id') id: string, @CurrentUserId() userId: string) {
+  async reprocessVideo(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUserId() userId: string,
+  ) {
     return this.assets.reprocessVideo(userId, id);
   }
 }

@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { AssetDetectionsResponse } from '@photox/shared-types';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
@@ -19,7 +19,7 @@ export class DetectionsController {
   })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async listDetections(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @CurrentUserId() userId: string,
   ): Promise<AssetDetectionsResponse> {
     return this.detections.list(userId, id);

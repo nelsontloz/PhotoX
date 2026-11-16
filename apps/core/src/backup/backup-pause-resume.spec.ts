@@ -3,6 +3,11 @@ import type { Repository } from 'typeorm';
 import { User } from '../database/entities/user.entity';
 import type { BackupRun } from '../database/entities/backup-run.entity';
 import type { BackupRunItem } from '../database/entities/backup-run-item.entity';
+import { BackupStorageIo } from './backup-storage-io';
+import { BackupStatusService } from './backup-status.service';
+import { BackupPrefixService } from './backup-prefix.service';
+import { RunFinalizeService } from './run-finalize.service';
+import { RunLifecycleService } from './run-lifecycle.service';
 import { UserBackupService } from './user-backup.service';
 
 const USER = '11111111-1111-4111-8111-111111111111';
@@ -23,15 +28,38 @@ function makeService(opts: {
   // no wipe row: startBackup's assertNoLiveWipe is a read-only pass
   const userDeletes = { findOne: vi.fn(() => Promise.resolve(null)) };
   const nil = undefined as never;
-  const svc = new UserBackupService(
+  const storageIo = new BackupStorageIo(s3 as never, nil);
+  const status = new BackupStatusService(
+    storageIo,
+    s3 as never,
+    users as unknown as Repository<User>,
+    nil,
+    nil,
+    runs as unknown as Repository<BackupRun>,
+  );
+  const prefix = new BackupPrefixService(storageIo, status, s3 as never);
+  const finalize = new RunFinalizeService(
     s3 as never,
     nil,
     nil,
     nil,
     nil,
+    nil,
+    nil,
+    runs as unknown as Repository<BackupRun>,
+    runItems as unknown as Repository<BackupRunItem>,
+    prefix,
+    storageIo,
+  );
+  const lifecycle = new RunLifecycleService(
+    finalize,
+    status,
+    prefix,
+    s3 as never,
+    nil,
+    nil,
+    storageIo,
     users as unknown as Repository<User>,
-    nil,
-    nil,
     nil,
     nil,
     nil,
@@ -41,6 +69,7 @@ function makeService(opts: {
     runItems as unknown as Repository<BackupRunItem>,
     userDeletes as never,
   );
+  const svc = new UserBackupService(status, prefix, finalize, nil, lifecycle, nil);
   return { svc, runs, runItems, s3 };
 }
 

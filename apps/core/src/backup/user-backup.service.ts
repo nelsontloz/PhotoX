@@ -1,22 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
-import { LocalStorageService } from '@photox/shared-config';
+import { Injectable } from '@nestjs/common';
 import type { AdminUserBackupSync } from '@photox/shared-types';
-import { Asset, FileRecord, Person } from '../database/entities';
-import { Album } from '../database/entities/album.entity';
-import { AlbumAsset } from '../database/entities/album-asset.entity';
-import { Share } from '../database/entities/share.entity';
 import { User } from '../database/entities/user.entity';
-import { BullMqService } from '../queue/bullmq.service';
-import { PlacesResolveService } from '../places/places-resolve.service';
-import { S3BackupService } from './s3-backup.service';
-import { BackupMerge } from '../database/entities/backup-merge.entity';
 import { BackupRun } from '../database/entities/backup-run.entity';
 import { TRANSFER_DISPATCH_BATCH_SIZE, type TransferKind } from './backup-transfer.constants';
-import { BackupRunItem } from '../database/entities/backup-run-item.entity';
-import { UserDelete } from '../database/entities/user-delete.entity';
-import { BackupStorageIo } from './backup-storage-io';
 import { BackupStatusService } from './backup-status.service';
 import { BackupPrefixService } from './backup-prefix.service';
 import { BackupMergeService } from './backup-merge.service';
@@ -101,112 +87,17 @@ export {
  */
 @Injectable()
 export class UserBackupService {
-  private readonly logger = new Logger(UserBackupService.name);
-  private readonly storageIo: BackupStorageIo;
-  private readonly statusService: BackupStatusService;
-  private readonly prefixService: BackupPrefixService;
-  private readonly finalizeService: RunFinalizeService;
-  private readonly dispatchService: TransferDispatchService;
-  private readonly lifecycleService: RunLifecycleService;
-  private readonly mergeService: BackupMergeService;
-
-  // ponytail: the facade is the composition root so the controller, dispatcher, consumers and 11 colocated specs keep their single-token wiring. Upgrade to Nest providers if a sub-service ever needs its own lifecycle or telemetry.
+  // ponytail: the facade is a thin delegator — the seven phase services are Nest providers, so
+  // the controller, dispatcher and consumers keep their single-token wiring. Upgrade to injecting
+  // a phase service directly only if a caller needs just one phase.
   constructor(
-    private readonly s3: S3BackupService,
-    private readonly dataSource: DataSource,
-    private readonly bullMq: BullMqService,
-    private readonly places: PlacesResolveService,
-    private readonly storage: LocalStorageService,
-    @InjectRepository(User) private readonly users: Repository<User>,
-    @InjectRepository(FileRecord) private readonly files: Repository<FileRecord>,
-    @InjectRepository(Asset) private readonly assets: Repository<Asset>,
-    @InjectRepository(Album) private readonly albums: Repository<Album>,
-    @InjectRepository(AlbumAsset) private readonly albumAssets: Repository<AlbumAsset>,
-    @InjectRepository(Share) private readonly shares: Repository<Share>,
-    @InjectRepository(Person) private readonly persons: Repository<Person>,
-    @InjectRepository(BackupMerge) private readonly backupMerges: Repository<BackupMerge>,
-    @InjectRepository(BackupRun) private readonly runs: Repository<BackupRun>,
-    @InjectRepository(BackupRunItem) private readonly runItems: Repository<BackupRunItem>,
-    @InjectRepository(UserDelete) private readonly userDeletes: Repository<UserDelete>,
-  ) {
-    this.storageIo = new BackupStorageIo(this.s3, this.storage);
-    this.statusService = new BackupStatusService(
-      this.storageIo,
-      this.s3,
-      this.logger,
-      this.users,
-      this.assets,
-      this.backupMerges,
-      this.runs,
-    );
-    this.prefixService = new BackupPrefixService(
-      this.storageIo,
-      this.statusService,
-      this.s3,
-      this.logger,
-    );
-    this.finalizeService = new RunFinalizeService(
-      this.s3,
-      this.dataSource,
-      this.bullMq,
-      this.places,
-      this.storage,
-      this.files,
-      this.assets,
-      this.runs,
-      this.runItems,
-      this.prefixService,
-      this.storageIo,
-      this.logger,
-    );
-    this.dispatchService = new TransferDispatchService(
-      this.finalizeService,
-      this.dataSource,
-      this.bullMq,
-      this.s3,
-      this.storage,
-      this.runs,
-      this.runItems,
-      this.logger,
-    );
-    this.lifecycleService = new RunLifecycleService(
-      this.finalizeService,
-      this.statusService,
-      this.prefixService,
-      this.s3,
-      this.dataSource,
-      this.storage,
-      this.storageIo,
-      this.users,
-      this.assets,
-      this.albums,
-      this.albumAssets,
-      this.shares,
-      this.persons,
-      this.runs,
-      this.runItems,
-      this.userDeletes,
-      this.logger,
-    );
-    this.mergeService = new BackupMergeService(
-      this.lifecycleService,
-      this.finalizeService,
-      this.statusService,
-      this.storageIo,
-      this.s3,
-      this.dataSource,
-      this.storage,
-      this.users,
-      this.files,
-      this.assets,
-      this.albums,
-      this.albumAssets,
-      this.shares,
-      this.persons,
-      this.backupMerges,
-      this.logger,
-    );
-  }
+    private readonly statusService: BackupStatusService,
+    private readonly prefixService: BackupPrefixService,
+    private readonly finalizeService: RunFinalizeService,
+    private readonly dispatchService: TransferDispatchService,
+    private readonly lifecycleService: RunLifecycleService,
+    private readonly mergeService: BackupMergeService,
+  ) {}
 
   startBackup(emailOrId: string): Promise<{ runId: string }> {
     return this.lifecycleService.startBackup(emailOrId);

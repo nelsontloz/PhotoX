@@ -8,6 +8,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  ParseUUIDPipe,
   Res,
 } from '@nestjs/common';
 import { ApiExtraModels, ApiTags, ApiOperation, ApiResponse, getSchemaPath } from '@nestjs/swagger';
@@ -63,7 +64,7 @@ export class SharesController {
   @ApiOperation({ summary: 'Revoke a share link' })
   @ApiResponse({ status: 204, description: 'Share revoked' })
   @ApiResponse({ status: 404, description: 'Share not found' })
-  async revoke(@Param('id') id: string, @CurrentUserId() userId: string) {
+  async revoke(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUserId() userId: string) {
     await this.shares.revoke(userId, id);
   }
 }

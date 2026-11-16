@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
+  OnModuleInit,
   Optional,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -100,7 +101,7 @@ function jobScopesFrom(req: Request, sub: string, path: string): string[] {
 }
 
 @Injectable()
-export class JwtAuthGuard implements CanActivate {
+export class JwtAuthGuard implements CanActivate, OnModuleInit {
   private readonly clockTolerance: number;
   private readonly userSecret: string;
   private readonly previousSecret?: string;
@@ -108,6 +109,9 @@ export class JwtAuthGuard implements CanActivate {
 
   constructor(
     private readonly jwt: JwtService,
+    // optional at the DI level only so unit specs can build a guard without a database; the
+    // lifecycle check below turns a lost DataSource into a boot failure instead of a silent
+    // fail-open (without the row the guard trusts the claimed role and skips the account floor)
     @Optional() private readonly dataSource?: DataSource,
   ) {
     this.clockTolerance = loadEnv().AUTH_CLOCK_TOLERANCE_SEC;
@@ -115,6 +119,16 @@ export class JwtAuthGuard implements CanActivate {
     this.userSecret = auth.AUTH_TOKEN_SECRET;
     this.previousSecret = auth.AUTH_TOKEN_SECRET_PREVIOUS;
     this.workerSecret = auth.WORKER_JWT_SECRET;
+  }
+
+  onModuleInit(): void {
+    // refuse to serve without the DataSource: the account lookup is what decides the role and
+    // enforces tokensValidAfter/sid, so losing it silently made every token claim authoritative.
+    // shortcut: NODE_ENV=test skips the check for the direct construction in the unit spec; no
+    // real deployment runs as test-env
+    if (!this.dataSource && process.env.NODE_ENV !== 'test') {
+      throw new Error('JwtAuthGuard requires a DataSource: authentication must not fail open');
+    }
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

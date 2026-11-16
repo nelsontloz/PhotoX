@@ -1,24 +1,20 @@
-import { NotFoundException, ServiceUnavailableException, type Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { In, type DataSource, type Repository } from 'typeorm';
-import {
-  backupPrefix,
-  manifestKey,
-  originalKey,
-  type LocalStorageService,
-} from '@photox/shared-config';
+import { DataSource, In, type Repository } from 'typeorm';
+import { backupPrefix, manifestKey, originalKey, LocalStorageService } from '@photox/shared-config';
 import { SEARCH_EMBEDDING_MODEL } from '@photox/shared-types';
 import { errorMessage, errorName } from '../common/errors';
 import { Asset, FileRecord } from '../database/entities';
 import { BackupRun } from '../database/entities/backup-run.entity';
 import { BackupRunItem } from '../database/entities/backup-run-item.entity';
 import { backfillPlaces, type PlacesBackfillItem } from '../places/places-backfill';
-import type { PlacesResolveService } from '../places/places-resolve.service';
-import type { BullMqService } from '../queue/bullmq.service';
+import { PlacesResolveService } from '../places/places-resolve.service';
+import { BullMqService } from '../queue/bullmq.service';
 import { extOf, isDerivativeStorageKey } from './backup-manifest';
-import type { BackupPrefixService } from './backup-prefix.service';
-import type { BackupStorageIo } from './backup-storage-io';
+import { BackupPrefixService } from './backup-prefix.service';
+import { BackupStorageIo } from './backup-storage-io';
 import { rowsOf } from './bulk-io';
 import type {
   BackupResult,
@@ -27,27 +23,29 @@ import type {
   RestoreResult,
   UserBackupManifest,
 } from './backup.types';
-import type { S3BackupService } from './s3-backup.service';
+import { S3BackupService } from './s3-backup.service';
 
 /**
  * Final phase of a backup/restore run: promote a drained run to `finalizing`, publish the backup
  * manifest (or trash broken restores and fan out derivatives), and write the terminal row.
  * Nothing here calls the start or dispatch phase — the dependency arrow only points inward.
  */
+@Injectable()
 export class RunFinalizeService {
+  private readonly logger = new Logger(RunFinalizeService.name);
+
   constructor(
     private readonly s3: S3BackupService,
     private readonly dataSource: DataSource,
     private readonly bullMq: BullMqService,
     private readonly places: PlacesResolveService,
     private readonly storage: LocalStorageService,
-    private readonly files: Repository<FileRecord>,
-    private readonly assets: Repository<Asset>,
-    private readonly runs: Repository<BackupRun>,
-    private readonly runItems: Repository<BackupRunItem>,
+    @InjectRepository(FileRecord) private readonly files: Repository<FileRecord>,
+    @InjectRepository(Asset) private readonly assets: Repository<Asset>,
+    @InjectRepository(BackupRun) private readonly runs: Repository<BackupRun>,
+    @InjectRepository(BackupRunItem) private readonly runItems: Repository<BackupRunItem>,
     private readonly prefixService: BackupPrefixService,
     private readonly storageIo: BackupStorageIo,
-    private readonly logger: Logger,
   ) {}
 
   /** Public status shape for the admin poller. */

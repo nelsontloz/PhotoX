@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { SearchResponse } from '@photox/shared-types';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
@@ -20,7 +20,7 @@ export class GroupsController {
   })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async duplicates(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Query() dto: DuplicatesQueryDto,
     @CurrentUserId() userId: string,
   ): Promise<SearchResponse> {
@@ -36,7 +36,7 @@ export class GroupsController {
   })
   @ApiResponse({ status: 404, description: 'Asset not found' })
   async similar(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Query() dto: SimilarQueryDto,
     @CurrentUserId() userId: string,
   ): Promise<SearchResponse> {

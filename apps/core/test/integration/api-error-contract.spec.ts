@@ -79,13 +79,15 @@ describe('API error contract', () => {
     expectEnvelope(res.body, 403, 'FORBIDDEN');
   });
 
-  it('answers a missing resource with NOT_FOUND, not a uuid-cast 500', async () => {
+  it('answers a malformed path id with BAD_REQUEST, not a uuid-cast 500', async () => {
     const user = await seedUser(t);
     const res = await request(apiServer(t))
       .get('/api/v1/assets/not-a-uuid')
       .set(t.authHeader(t.signToken({ id: user.id, email: user.email, role: user.role })));
-    expect(res.status).toBe(404);
-    expectEnvelope(res.body, 404, 'NOT_FOUND');
+    expect(res.status).toBe(400);
+    // ParseUUIDPipe throws a bare BadRequestException: the filter maps it to BAD_REQUEST, not
+    // VALIDATION_FAILED (that code belongs to createValidationPipe's DTO failures).
+    expectEnvelope(res.body, 400, 'BAD_REQUEST');
   });
 
   it('404s a share token that never existed', async () => {

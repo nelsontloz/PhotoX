@@ -63,20 +63,20 @@ export class WorkerController {
 
   @Get('assets/:id')
   @ApiOperation({ summary: 'Worker read of a single asset (job user scope)' })
-  async getAsset(@Param('id') id: string, @CurrentUserId() userId: string) {
+  async getAsset(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUserId() userId: string) {
     return this.assets.getOne(userId, id);
   }
 
   @Get('files/:id')
   @ApiOperation({ summary: 'Worker read of a file record (job user scope)' })
-  async getFile(@Param('id') id: string, @CurrentUserId() userId: string) {
+  async getFile(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUserId() userId: string) {
     return this.files.getOne(userId, id);
   }
 
   @Patch('assets/:id/metadata')
   @ApiOperation({ summary: 'Worker write of extracted metadata' })
   async patchMetadata(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: WorkerMetadataDto,
     @CurrentUserId() userId: string,
   ) {
@@ -87,7 +87,7 @@ export class WorkerController {
   @ApiOperation({ summary: "Worker replace of the asset's detected faces (atomic, idempotent)" })
   @ApiResponse({ status: 201, description: 'Face set replaced' })
   async replaceFaces(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: RegisterFacesDto,
     @CurrentUserId() userId: string,
   ) {
@@ -96,7 +96,7 @@ export class WorkerController {
 
   @Delete('assets/:id/faces')
   @ApiOperation({ summary: 'Worker delete of all detected faces for an asset (idempotent)' })
-  async deleteFaces(@Param('id') id: string, @CurrentUserId() userId: string) {
+  async deleteFaces(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUserId() userId: string) {
     return this.faces.deleteForAsset(userId, id);
   }
 
@@ -104,7 +104,7 @@ export class WorkerController {
   @ApiOperation({ summary: 'Worker register of the image embedding (idempotent upsert)' })
   @ApiResponse({ status: 201, description: 'Embedding registered' })
   async registerEmbedding(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: RegisterEmbeddingDto,
     @CurrentUserId() userId: string,
   ): Promise<{ ok: true }> {
@@ -115,7 +115,7 @@ export class WorkerController {
   @ApiOperation({ summary: "Worker replace of the asset's detected objects" })
   @ApiResponse({ status: 201, description: 'Detection set replaced' })
   async registerDetections(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: RegisterDetectionsDto,
     @CurrentUserId() userId: string,
   ): Promise<{ ok: true }> {
@@ -127,7 +127,7 @@ export class WorkerController {
   @ApiOperation({ summary: 'Worker register of a thumbnail (idempotent upsert on assetId+size)' })
   @ApiResponse({ status: 201, description: 'Thumbnail registered' })
   async registerThumbnail(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: RegisterThumbnailDto,
     @CurrentUserId() userId: string,
   ) {

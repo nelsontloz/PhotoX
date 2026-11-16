@@ -17,6 +17,7 @@ import { UserIdUuid1794600000000 } from './1794600000000-UserIdUuid';
 import { ReferentialIntegrity1794600000001 } from './1794600000001-ReferentialIntegrity';
 import { RefreshTokenExpiryIndex1794600000002 } from './1794600000002-RefreshTokenExpiryIndex';
 import { ColumnHygiene1794700000000 } from './1794700000000-ColumnHygiene';
+import { UserEmailLowerUnique1794800000000 } from './1794800000000-UserEmailLowerUnique';
 
 /**
  * The one migration list. A glob only works where the sources exist (dev/test); production
@@ -44,4 +45,5 @@ export const MIGRATIONS: (new () => MigrationInterface)[] = [
   ReferentialIntegrity1794600000001,
   RefreshTokenExpiryIndex1794600000002,
   ColumnHygiene1794700000000,
+  UserEmailLowerUnique1794800000000,
 ];

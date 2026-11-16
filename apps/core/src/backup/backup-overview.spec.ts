@@ -6,6 +6,8 @@ import { backupPrefix, manifestKey, resolveBackupPrefix } from '@photox/shared-c
 import { User } from '../database/entities/user.entity';
 import { Asset } from '../database/entities/asset.entity';
 import { BackupMerge } from '../database/entities/backup-merge.entity';
+import { BackupStorageIo } from './backup-storage-io';
+import { BackupStatusService } from './backup-status.service';
 import {
   UserBackupService,
   buildBackupOverviewRow,
@@ -317,24 +319,16 @@ function makeOverviewService(
   // S3 manifest bytes are faked in-memory, so this stays a pure unit spec (no
   // testcontainers); manifest parsing stays in test/integration/user-backup
   const nil = undefined as never;
-  const svc = new UserBackupService(
+  const storageIo = new BackupStorageIo(s3, nil);
+  const status = new BackupStatusService(
+    storageIo,
     s3,
-    nil,
-    nil,
-    nil,
-    nil,
     usersRepo,
-    nil,
     assetsRepo,
-    nil,
-    nil,
-    nil,
-    nil,
     backupMergesRepo,
     runsRepo,
-    nil,
-    nil,
   );
+  const svc = new UserBackupService(status, nil, nil, nil, nil, nil);
   return { svc, usersRepo, createQueryBuilder, qb, s3, backupMergesRepo };
 }
 
@@ -564,10 +558,10 @@ describe('backupOverview', () => {
 
   it('throws 503 when the base S3 listing fails (no partial table)', async () => {
     const ada = user();
-    const { svc } = makeOverviewService([ada], [], []);
+    const { svc, s3 } = makeOverviewService([ada], [], []);
     (
-      svc as unknown as { s3: { listKeys: Mock<(prefix: string) => Promise<string[]>> } }
-    ).s3.listKeys.mockRejectedValue(new Error('s3 down'));
+      s3 as unknown as { listKeys: Mock<(prefix: string) => Promise<string[]>> }
+    ).listKeys.mockRejectedValue(new Error('s3 down'));
     await expect(svc.backupOverview()).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 

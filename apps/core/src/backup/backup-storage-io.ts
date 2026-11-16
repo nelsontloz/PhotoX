@@ -1,13 +1,13 @@
-import { ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { createHash, randomUUID } from 'crypto';
 import { createReadStream } from 'fs';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { pipeline } from 'stream/promises';
-import type { LocalStorageService } from '@photox/shared-config';
+import { LocalStorageService } from '@photox/shared-config';
 import { userBackupManifestSchema, type ManifestReadResult } from './backup.types';
-import { isNotFound, type S3BackupService } from './s3-backup.service';
+import { isNotFound, S3BackupService } from './s3-backup.service';
 
 export async function sha256File(path: string): Promise<string> {
   const hash = createHash('sha256');
@@ -15,6 +15,7 @@ export async function sha256File(path: string): Promise<string> {
   return hash.digest('hex');
 }
 
+@Injectable()
 export class BackupStorageIo {
   constructor(
     private readonly s3: S3BackupService,
