@@ -11,7 +11,7 @@ import {
   type AuthResponse,
 } from '../support';
 
-/** Wire shape of GET /api/v1/admin/faces/reprocess. */
+/** Wire shape of GET /api/v1/admin/reprocess-runs/faces (the deprecated pair answers the same). */
 interface FaceStatus {
   lastRun: { startedAt: string; total: number; enqueued: number } | null;
   queue: {
@@ -47,7 +47,7 @@ async function fetchFaceAsset(
 
 const isReprocessPost = (response: Response): boolean =>
   response.request().method() === 'POST' &&
-  new URL(response.url()).pathname === '/api/v1/admin/faces/reprocess';
+  new URL(response.url()).pathname === '/api/v1/admin/reprocess-runs';
 
 const isReclusterPost = (response: Response): boolean =>
   response.request().method() === 'POST' &&
@@ -125,12 +125,13 @@ When('I start a face reprocess run', async ({ page, request, ctx }) => {
     page.waitForResponse(isReprocessPost),
     page.getByRole('button', { name: 'Confirm' }).click(),
   ]);
-  expect(response.status()).toBe(200);
+  // the run resource answers 202: the enqueue is done, the image work is not
+  expect(response.status()).toBe(202);
   const run = (await response.json()) as { enqueued: number; total: number };
   ctx.faceReprocess = run;
   // `enqueued` counts requested jobs; check Redis once so a run that enqueued nothing is caught.
   // Tiny race accepted (the job may drain first) — the seeded-face check below is the durable proof.
-  const statusResponse = await request.get('/api/v1/admin/faces/reprocess', {
+  const statusResponse = await request.get('/api/v1/admin/reprocess-runs/faces', {
     headers: authHeaders(requireAuth(ctx)),
   });
   expect(statusResponse.status()).toBe(200);
@@ -156,7 +157,7 @@ Then('the face reprocess queue drains', async ({ request, ctx }) => {
   if (!run) throw new Error('start a face reprocess run first');
   const auth = requireAuth(ctx);
   const fetchStatus = async (): Promise<FaceStatus> => {
-    const response = await request.get('/api/v1/admin/faces/reprocess', {
+    const response = await request.get('/api/v1/admin/reprocess-runs/faces', {
       headers: authHeaders(auth),
     });
     expect(response.status()).toBe(200);
