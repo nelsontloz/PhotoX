@@ -43,7 +43,10 @@ const API_ERROR_SCHEMA: SchemaObject = {
   description:
     'The single body shape for every non-2xx response (`ApiErrorBody` in @photox/shared-types). ' +
     'Clients branch on the stable `code`, never on the prose `message`; `Retry-After` is also ' +
-    'sent as a header when `retryAfterSec` is present.',
+    'sent as a header when `retryAfterSec` is present. Served as `application/json`, or as ' +
+    '`application/problem+json` when the request asks for it. This is not an RFC 7807 document: ' +
+    '`code` plays `type` (a stable enum instead of a URI), `message` plays `detail`, and ' +
+    '`requestId` plays `instance`.',
   required: ['statusCode', 'code', 'message'],
   properties: {
     statusCode: { type: 'integer', description: 'HTTP status, repeated in the body.' },
@@ -70,7 +73,11 @@ const API_ERROR_SCHEMA: SchemaObject = {
 function errorResponse(description: string): ResponseObject {
   return {
     description,
-    content: { 'application/json': { schema: ERROR_SCHEMA_REF } },
+    content: {
+      'application/json': { schema: ERROR_SCHEMA_REF },
+      // Same body, alternate media type: the filter negotiates it from the request's Accept.
+      'application/problem+json': { schema: ERROR_SCHEMA_REF },
+    },
   };
 }
 

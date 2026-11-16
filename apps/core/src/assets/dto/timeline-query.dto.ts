@@ -10,7 +10,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
-import { isQueryTrue } from '../../common/query-params';
+import { parseQueryBooleanParam } from '../../common/query-params';
 
 // The timeline is two resources (a month index and a window page), so it gets two DTOs:
 // `forbidNonWhitelisted` is global, which makes a param from the other family a 400 instead of
@@ -22,7 +22,7 @@ class TimelineFilterDto {
   personId?: string;
 
   @IsOptional()
-  @Transform(({ value }) => isQueryTrue(value))
+  @Transform(parseQueryBooleanParam)
   @IsBoolean()
   @ApiProperty({ required: false })
   favorite?: boolean;

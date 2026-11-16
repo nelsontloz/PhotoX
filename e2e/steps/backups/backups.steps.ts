@@ -141,11 +141,12 @@ async function fetchOverview(
   request: APIRequestContext,
   admin: AuthResponse,
 ): Promise<BackupOverviewRow[]> {
-  const response = await request.get('/api/v1/admin/backups/overview', {
+  const response = await request.get('/api/v1/admin/backups/overview?limit=200', {
     headers: authHeaders(admin),
   });
   expect(response.status()).toBe(200);
-  return (await response.json()) as BackupOverviewRow[];
+  const body = (await response.json()) as { items: BackupOverviewRow[] };
+  return body.items;
 }
 
 async function fetchProgress(

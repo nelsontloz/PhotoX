@@ -675,11 +675,12 @@ Then('the restore toast names the fallback address', async ({ page, request, ctx
   await expect
     .poll(
       async () => {
-        const response = await request.get('/api/v1/admin/backups/overview', {
+        const response = await request.get('/api/v1/admin/backups/overview?limit=200', {
           headers: authHeaders(requireStateAdmin(ctx)),
         });
         if (response.status() !== 200) return '';
-        const rows = (await response.json()) as { userId: string; email: string }[];
+        const rows = ((await response.json()) as { items: { userId: string; email: string }[] })
+          .items;
         fallback = rows.find((row) => row.userId === victim.user.id)?.email ?? '';
         return fallback;
       },
@@ -795,11 +796,11 @@ Then('the live account owns the backup library', async ({ request, ctx }) => {
   await expect
     .poll(
       async () => {
-        const response = await request.get('/api/v1/admin/backups/overview', {
+        const response = await request.get('/api/v1/admin/backups/overview?limit=200', {
           headers: authHeaders(admin),
         });
         if (response.status() !== 200) return false;
-        const rows = (await response.json()) as MergedOverviewRow[];
+        const rows = ((await response.json()) as { items: MergedOverviewRow[] }).items;
         const row = rows.find((candidate) => candidate.userId === liveId);
         return Boolean(
           row?.exists && row.backedUpAssets >= 1 && (row.legacyBackups ?? []).length === 0,

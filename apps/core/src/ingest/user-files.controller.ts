@@ -26,6 +26,7 @@ import { randomUUID } from 'crypto';
 import { tmpdir } from 'os';
 import multer from 'multer';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
+import { setResourceLocation } from '../common/resource-headers';
 import { UserFilesService, type OriginalFileInput } from './user-files.service';
 import { UploadFileBodyDto } from './dto/upload-file.body.dto';
 import { CheckFilesExistsBodyDto } from './dto/check-files-exists.body.dto';
@@ -90,7 +91,7 @@ export class UserFilesController {
   ) {
     const { asset, created } = await this.userFilesService.upload(userId, file, body);
     res.status(created ? HttpStatus.CREATED : HttpStatus.OK);
-    res.setHeader('Location', `/api/v1/assets/${asset.id}`);
+    setResourceLocation(res, `/api/v1/assets/${asset.id}`);
     return asset;
   }
 

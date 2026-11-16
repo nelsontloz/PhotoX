@@ -240,7 +240,7 @@ describe('faces HTTP', () => {
     expect(await t.faceRepo.count()).toBe(0);
   });
 
-  it('assigns a face to a person and refreshes faceCount', async () => {
+  it('assigns a face to a person and returns the updated face', async () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const { face } = await seedFace(user.id);
@@ -248,16 +248,22 @@ describe('faces HTTP', () => {
       t.personRepo.create({ userId: user.id, name: null, clusterLabel: 'c-1', faceCount: 0 }),
     );
     const res = await request(apiServer(t))
-      .patch(`/api/v1/faces/${face.id}/person`)
+      .put(`/api/v1/faces/${face.id}/person`)
       .set(t.authHeader(token))
       .send({ personId: person.id });
     expect(res.status).toBe(200);
-    expect((res.body as { ok: boolean }).ok).toBe(true);
+    expect(res.body as unknown).toEqual({
+      id: face.id,
+      assetId: face.assetId,
+      box: face.box,
+      confidence: face.confidence,
+      personId: person.id,
+    });
     expect((await t.faceRepo.findOneByOrFail({ id: face.id })).personId).toBe(person.id);
     expect((await t.personRepo.findOneByOrFail({ id: person.id })).faceCount).toBe(1);
   });
 
-  it('unassigns a face and refreshes faceCount', async () => {
+  it('unassigns a face via the deprecated PATCH alias and refreshes faceCount', async () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
     const person = await t.personRepo.save(

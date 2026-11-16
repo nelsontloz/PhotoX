@@ -14,7 +14,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { isQueryTrue } from '../../common/query-params';
+import { parseQueryBooleanParam } from '../../common/query-params';
 
 export class ListAssetsQueryDto {
   @IsOptional()
@@ -60,7 +60,7 @@ export class ListAssetsQueryDto {
   cursor?: string;
 
   @IsOptional()
-  @Transform(({ value }) => isQueryTrue(value))
+  @Transform(parseQueryBooleanParam)
   @IsBoolean()
   @ApiProperty({ default: false, required: false })
   isTrashed?: boolean;
@@ -84,13 +84,13 @@ export class ListAssetsQueryDto {
   dateTo?: string;
 
   @IsOptional()
-  @Transform(({ value }) => isQueryTrue(value))
+  @Transform(parseQueryBooleanParam)
   @IsBoolean()
   @ApiProperty({ required: false })
   favorite?: boolean;
 
   @IsOptional()
-  @Transform(({ value }) => isQueryTrue(value))
+  @Transform(parseQueryBooleanParam)
   @IsBoolean()
   @ApiProperty({ required: false, description: 'Filter to only assets with GPS coordinates' })
   hasLocations?: boolean;

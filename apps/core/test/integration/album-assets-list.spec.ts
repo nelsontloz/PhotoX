@@ -55,7 +55,10 @@ describe('album assets list', () => {
       .set(t.authHeader(token))
       .send({ name });
     expect(res.status).toBe(201);
-    return (res.body as { id: string }).id;
+    const id = (res.body as { id: string }).id;
+    // 201s point at the resource the client just created
+    expect(res.headers.location).toBe(`/api/v1/albums/${id}`);
+    return id;
   }
 
   async function addAsset(token: string, albumId: string, assetId: string): Promise<void> {
@@ -198,6 +201,34 @@ describe('album assets list', () => {
       [...assetIds].sort().reverse().slice(2, 4),
     );
     expect(offsetPage.nextCursor).not.toBeNull();
+  });
+
+  it('reports only the assets it actually added, not the ids it was handed', async () => {
+    const { id: userId, token } = await seedUserWithToken();
+    const albumId = await createAlbum(token);
+    const [first, second, third] = await Promise.all(
+      [0, 1, 2].map(async () => {
+        const file = await seedFile(t, userId);
+        return seedAsset(t, userId, file.id);
+      }),
+    );
+
+    const add = (assetIds: string[]) =>
+      request(apiServer(t))
+        .post(`/api/v1/albums/${albumId}/assets`)
+        .set(t.authHeader(token))
+        .send({ assetIds });
+
+    const created = await add([first!.id, second!.id]);
+    expect(created.status).toBe(201);
+    expect(created.body).toEqual({ added: 2 });
+
+    // one already a member, one new, one repeated id: only `third` is new
+    const again = await add([first!.id, third!.id, third!.id]);
+    expect(again.status).toBe(201);
+    expect(again.body).toEqual({ added: 1 });
+
+    expect((await listAlbumAssets(token, albumId)).total).toBe(3);
   });
 
   it('returns an empty page with zero total for an album without assets', async () => {

@@ -487,7 +487,7 @@ export class AlbumAssetsResponseModel {
 }
 
 export class AddAssetsResponseModel {
-  @ApiProperty({ type: Number, description: 'Assets sent in the request' })
+  @ApiProperty({ type: Number, description: 'Assets actually added; already-members are excluded' })
   added!: number;
 }
 
@@ -1193,6 +1193,15 @@ export class BackupOverviewRowModel implements BackupOverviewRow {
 
   @ApiPropertyOptional({ type: () => ActiveBackupRunModel })
   activeRun?: ActiveBackupRunModel;
+}
+
+/** GET /api/v1/admin/backups/overview — offset-addressed: no cursor, `total` is the whole count. */
+export class BackupOverviewPageModel {
+  @ApiProperty({ type: [BackupOverviewRowModel] })
+  items!: BackupOverviewRowModel[];
+
+  @ApiProperty({ type: Number, description: 'Whole-match count, not a page size' })
+  total!: number;
 }
 
 export class DeleteBackupResultModel implements DeleteBackupResult {

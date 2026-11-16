@@ -168,4 +168,36 @@ describe('API error contract', () => {
     expect(assetsList?.responses?.['500']).toBeDefined();
     expect(assetsList?.responses?.['400']).toBeDefined();
   });
+
+  it('serves the negotiated error media type the document declares', async () => {
+    const res = await request(apiServer(t))
+      .get('/api/v1/assets')
+      .set('Accept', 'application/problem+json');
+    expect(res.status).toBe(401);
+    expect(res.headers['content-type']).toContain('application/problem+json');
+    expect((res.body as { code: string }).code).toBe('UNAUTHENTICATED');
+
+    const doc = (await request(apiServer(t)).get('/docs-json')).body as {
+      paths: Record<string, Record<string, { responses?: Record<string, { content?: object }> }>>;
+    };
+    expect(Object.keys(doc.paths['/api/v1/assets']!.get!.responses!['401']!.content!)).toEqual([
+      'application/json',
+      'application/problem+json',
+    ]);
+  });
+
+  it('gives every operation a unique, codegen-friendly operationId', async () => {
+    const doc = (await request(apiServer(t)).get('/docs-json')).body as {
+      paths: Record<string, Record<string, { operationId?: string }>>;
+    };
+    const operationIds: string[] = [];
+    for (const pathItem of Object.values(doc.paths)) {
+      for (const operation of Object.values(pathItem)) {
+        if (operation.operationId) operationIds.push(operation.operationId);
+      }
+    }
+    expect(operationIds.length).toBeGreaterThan(100);
+    expect(new Set(operationIds).size).toBe(operationIds.length);
+    for (const id of operationIds) expect(id).toMatch(/^[A-Za-z][A-Za-z0-9]*$/);
+  });
 });

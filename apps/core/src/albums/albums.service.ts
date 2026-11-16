@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { isUUID } from 'class-validator';
 import { Album } from '../database/entities/album.entity';
 import { AlbumAsset } from '../database/entities/album-asset.entity';
@@ -124,7 +124,7 @@ export class AlbumsService {
     await this.repo.delete({ id, userId });
   }
 
-  async addAssets(userId: string, albumId: string, assetIds: string[]): Promise<void> {
+  async addAssets(userId: string, albumId: string, assetIds: string[]): Promise<number> {
     await findOwnedOr404(this.repo, albumId, userId, 'Album');
 
     const uniqueIds = [...new Set(assetIds)];
@@ -134,7 +134,17 @@ export class AlbumsService {
       throw new NotFoundException(`Asset ${missing} not found`);
     }
 
-    const rows = assetIds.map((assetId) => ({ albumId, assetId }));
+    // Read the members first: the insert is `orIgnore`, so the response must report the rows this
+    // request actually created, not the number of ids it was handed.
+    const existing = await this.albumAssetRepo.find({
+      select: { assetId: true },
+      where: { albumId, assetId: In(uniqueIds) },
+    });
+    const alreadyMembers = new Set(existing.map((row) => row.assetId));
+    const rows = uniqueIds
+      .filter((assetId) => !alreadyMembers.has(assetId))
+      .map((assetId) => ({ albumId, assetId }));
+    if (rows.length === 0) return 0;
 
     await this.albumAssetRepo
       .createQueryBuilder()
@@ -143,6 +153,7 @@ export class AlbumsService {
       .values(rows)
       .orIgnore()
       .execute();
+    return rows.length;
   }
 
   async removeAsset(userId: string, albumId: string, assetId: string): Promise<void> {
