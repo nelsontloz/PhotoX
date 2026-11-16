@@ -54,6 +54,7 @@ export function setupSwagger(app: INestApplication): void {
     .setTitle('Photox API')
     .setDescription(API_DESCRIPTION)
     .setVersion('1.0')
+    .setOpenAPIVersion('3.1.0')
     .setLicense('MIT', 'https://opensource.org/licenses/MIT')
     // the API is served same-origin behind the reverse proxy; relative keeps the document
     // portable between localhost, staging and production
