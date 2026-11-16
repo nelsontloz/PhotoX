@@ -13,6 +13,13 @@ import { BackupRun } from '../database/entities/backup-run.entity';
 import { BackupRunItem } from '../database/entities/backup-run-item.entity';
 import { S3BackupService } from './s3-backup.service';
 import { UserBackupService } from './user-backup.service';
+import { BackupStorageIo } from './backup-storage-io';
+import { BackupStatusService } from './backup-status.service';
+import { BackupPrefixService } from './backup-prefix.service';
+import { RunFinalizeService } from './run-finalize.service';
+import { TransferDispatchService } from './transfer-dispatch.service';
+import { RunLifecycleService } from './run-lifecycle.service';
+import { BackupMergeService } from './backup-merge.service';
 import { BackupTransfersDispatcher } from './backup-transfers.dispatcher';
 import { BackupTransferConsumers } from './backup-transfer.consumers';
 
@@ -37,11 +44,17 @@ import { BackupTransferConsumers } from './backup-transfer.consumers';
     PlacesModule,
   ],
   controllers: [BackupController],
-  // RunLifecycleService / TransferDispatchService / RunFinalizeService / BackupMergeService are
-  // composed by hand inside UserBackupService (its constructor is the composition root), not
-  // registered here — the short provider list is correct, not incomplete.
+  // The facade delegates to one provider per phase (storage I/O, status, prefix, finalize,
+  // dispatch, lifecycle, merge) — Nest builds them from the TypeORM scope above.
   providers: [
     S3BackupService,
+    BackupStorageIo,
+    BackupStatusService,
+    BackupPrefixService,
+    RunFinalizeService,
+    TransferDispatchService,
+    RunLifecycleService,
+    BackupMergeService,
     UserBackupService,
     BackupTransfersDispatcher,
     BackupTransferConsumers,

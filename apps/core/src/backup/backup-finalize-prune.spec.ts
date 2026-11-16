@@ -3,6 +3,10 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { backupPrefix, manifestKey, originalKey } from '@photox/shared-config';
 import type { BackupRun } from '../database/entities/backup-run.entity';
+import { BackupStorageIo } from './backup-storage-io';
+import { BackupStatusService } from './backup-status.service';
+import { BackupPrefixService } from './backup-prefix.service';
+import { RunFinalizeService } from './run-finalize.service';
 import { UserBackupService, type UserBackupManifest } from './user-backup.service';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
@@ -114,24 +118,23 @@ function makeService(
   const files = { createQueryBuilder: () => liveFiles };
   const storage = { pathFor: (key: string) => join(tmpdir(), 'photox-prune-spec', key) };
   const nil = undefined as never;
-  const svc = new UserBackupService(
+  const storageIo = new BackupStorageIo(s3 as never, storage as never);
+  const status = new BackupStatusService(storageIo, s3 as never, nil, nil, nil, nil);
+  const prefix = new BackupPrefixService(storageIo, status, s3 as never);
+  const finalizeService = new RunFinalizeService(
     s3 as never,
     nil, // dataSource
     nil, // bullMq
     nil, // places
     storage as never,
-    nil, // users
     files as never,
     nil, // assets
-    nil, // albums
-    nil, // albumAssets
-    nil, // shares
-    nil, // persons
-    nil, // backupMerges
     runs as never,
     runItems as never,
-    nil,
+    prefix,
+    storageIo,
   );
+  const svc = new UserBackupService(status, prefix, finalizeService, nil, nil, nil);
   type Finalize = (run: BackupRun, manifest: UserBackupManifest) => Promise<void>;
   const finalize = (svc as unknown as { finalizeBackupRun: Finalize }).finalizeBackupRun.bind(svc);
   return { finalize, s3, runs, runItems };

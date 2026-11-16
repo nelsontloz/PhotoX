@@ -1,27 +1,29 @@
 import {
   BadRequestException,
   ConflictException,
+  Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
-  type Logger,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { rm } from 'fs/promises';
 import { join } from 'path';
-import { EntityManager, In, type DataSource, type Repository } from 'typeorm';
+import { DataSource, EntityManager, In, type Repository } from 'typeorm';
 import {
   backupPrefix,
   manifestKey,
   normalizeEmail,
   originalKey,
-  type LocalStorageService,
+  LocalStorageService,
 } from '@photox/shared-config';
 import { errorMessage, errorName } from '../common/errors';
 import { isPostgresUniqueViolation } from '../common/sql-errors';
 import { Album, AlbumAsset, Asset, FileRecord, Person, Share, User } from '../database/entities';
 import { BackupRun } from '../database/entities/backup-run.entity';
 import { BackupRunItem } from '../database/entities/backup-run-item.entity';
-import type { UserDelete } from '../database/entities/user-delete.entity';
+import { UserDelete } from '../database/entities/user-delete.entity';
 import { buildFallbackEmail } from './backup-overview.builder';
 import {
   albumToManifestEntry,
@@ -34,12 +36,12 @@ import {
   shouldSkipUpload,
   userToManifest,
 } from './backup-manifest';
-import type { BackupPrefixService } from './backup-prefix.service';
-import type { BackupStatusService } from './backup-status.service';
-import type { BackupStorageIo } from './backup-storage-io';
+import { BackupPrefixService } from './backup-prefix.service';
+import { BackupStatusService } from './backup-status.service';
+import { BackupStorageIo } from './backup-storage-io';
 import { bulkInsert, bulkSave } from './bulk-io';
-import type { RunFinalizeService } from './run-finalize.service';
-import type { S3BackupService } from './s3-backup.service';
+import { RunFinalizeService } from './run-finalize.service';
+import { S3BackupService } from './s3-backup.service';
 import type { UserBackupManifest } from './backup.types';
 
 /**
@@ -59,7 +61,10 @@ function rethrowActiveRunConflict(err: unknown): never {
  * ledger insert that start a backup or restore, and resume of a paused/failed run. It may read
  * the finalize phase's draft/manifest helpers; nothing calls back into this file.
  */
+@Injectable()
 export class RunLifecycleService {
+  private readonly logger = new Logger(RunLifecycleService.name);
+
   constructor(
     private readonly finalize: RunFinalizeService,
     private readonly statusService: BackupStatusService,
@@ -68,16 +73,15 @@ export class RunLifecycleService {
     private readonly dataSource: DataSource,
     private readonly storage: LocalStorageService,
     private readonly storageIo: BackupStorageIo,
-    private readonly users: Repository<User>,
-    private readonly assets: Repository<Asset>,
-    private readonly albums: Repository<Album>,
-    private readonly albumAssets: Repository<AlbumAsset>,
-    private readonly shares: Repository<Share>,
-    private readonly persons: Repository<Person>,
-    private readonly runs: Repository<BackupRun>,
-    private readonly runItems: Repository<BackupRunItem>,
-    private readonly userDeletes: Repository<UserDelete>,
-    private readonly logger: Logger,
+    @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(Asset) private readonly assets: Repository<Asset>,
+    @InjectRepository(Album) private readonly albums: Repository<Album>,
+    @InjectRepository(AlbumAsset) private readonly albumAssets: Repository<AlbumAsset>,
+    @InjectRepository(Share) private readonly shares: Repository<Share>,
+    @InjectRepository(Person) private readonly persons: Repository<Person>,
+    @InjectRepository(BackupRun) private readonly runs: Repository<BackupRun>,
+    @InjectRepository(BackupRunItem) private readonly runItems: Repository<BackupRunItem>,
+    @InjectRepository(UserDelete) private readonly userDeletes: Repository<UserDelete>,
   ) {}
 
   /**

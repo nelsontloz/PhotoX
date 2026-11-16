@@ -1,4 +1,5 @@
-import { NotFoundException, ServiceUnavailableException, type Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { isUUID } from 'class-validator';
 import { In, type Repository } from 'typeorm';
 import {
@@ -8,10 +9,10 @@ import {
   parseBackupDir,
   resolveBackupPrefix,
 } from '@photox/shared-config';
-import type { Asset } from '../database/entities/asset.entity';
-import type { BackupMerge } from '../database/entities/backup-merge.entity';
-import type { BackupRun } from '../database/entities/backup-run.entity';
-import type { User } from '../database/entities/user.entity';
+import { Asset } from '../database/entities/asset.entity';
+import { BackupMerge } from '../database/entities/backup-merge.entity';
+import { BackupRun } from '../database/entities/backup-run.entity';
+import { User } from '../database/entities/user.entity';
 import { isDerivativeStorageKey } from './backup-manifest';
 import {
   buildBackupOverviewRow,
@@ -21,24 +22,26 @@ import {
   timeOf,
   type BackupDirLocation,
 } from './backup-overview.builder';
-import type { BackupStorageIo } from './backup-storage-io';
+import { BackupStorageIo } from './backup-storage-io';
 import {
   type BackupOverviewRow,
   type BackupProgress,
   type BackupSnapshot,
   type BackupStatus,
 } from './backup.types';
-import { isNotFound, type S3BackupService } from './s3-backup.service';
+import { isNotFound, S3BackupService } from './s3-backup.service';
 
+@Injectable()
 export class BackupStatusService {
+  private readonly logger = new Logger(BackupStatusService.name);
+
   constructor(
     private readonly storageIo: BackupStorageIo,
     private readonly s3: S3BackupService,
-    private readonly logger: Logger,
-    private readonly users: Repository<User>,
-    private readonly assets: Repository<Asset>,
-    private readonly backupMerges: Repository<BackupMerge>,
-    private readonly runs: Repository<BackupRun>,
+    @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(Asset) private readonly assets: Repository<Asset>,
+    @InjectRepository(BackupMerge) private readonly backupMerges: Repository<BackupMerge>,
+    @InjectRepository(BackupRun) private readonly runs: Repository<BackupRun>,
   ) {}
 
   async backupStatus(emailOrId: string): Promise<BackupStatus> {

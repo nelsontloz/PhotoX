@@ -36,6 +36,15 @@ function defaultMessageForStatus(status: number): string {
   return DEFAULT_MESSAGES[status] ?? 'Request failed';
 }
 
+/** body-parser / platform errors (413, 415, malformed JSON) carry a status but are not HttpException. */
+function statusOf(exception: unknown): number | undefined {
+  const carrier = exception as { status?: unknown; statusCode?: unknown } | null | undefined;
+  const status = carrier?.status ?? carrier?.statusCode;
+  return typeof status === 'number' && Number.isInteger(status) && status >= 400 && status <= 599
+    ? status
+    : undefined;
+}
+
 // Keys normalized into the envelope itself; everything else is a thrower's extra context.
 const ENVELOPE_KEYS = new Set([
   'statusCode',
@@ -108,6 +117,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       body = normalizeBody(status, exception.getResponse());
+    } else {
+      // Only the status crosses over: a raw body-parser error's message and props stay out of the body.
+      const platformStatus = statusOf(exception);
+      if (platformStatus !== undefined) {
+        status = platformStatus;
+        body = {
+          statusCode: status,
+          code: defaultCodeForStatus(status),
+          message: defaultMessageForStatus(status),
+        };
+      }
     }
 
     const requestId = requestIdOf(request);

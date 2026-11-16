@@ -7,6 +7,7 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  ParseUUIDPipe,
   Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -27,7 +28,7 @@ export class FacesQueryController {
   @ApiResponse({ status: 200, description: 'JPEG image bytes' })
   @ApiResponse({ status: 404, description: 'Face, asset, or source bytes not found' })
   async getThumb(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @CurrentUserId() userId: string,
     @Res() res: Response,
     @Query() q: FaceThumbQueryDto,
@@ -47,7 +48,7 @@ export class FacesQueryController {
   @ApiResponse({ status: 200, description: 'Face updated', type: FaceModel })
   @ApiResponse({ status: 404, description: 'Face not found or userId mismatch' })
   async setPerson(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: AssignPersonDto,
     @CurrentUserId() userId: string,
   ) {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import type { Repository } from 'typeorm';
 import { User } from '../database/entities/user.entity';
+import { BackupStatusService } from './backup-status.service';
 import { shouldSkipUpload, UserBackupService } from './user-backup.service';
 
 const file = { id: 'file-1', checksumSha256: 'abc', sizeBytes: 10 };
@@ -54,24 +55,8 @@ function makeProgressService(user: User | null, run: unknown = null) {
   // only the users/runs repos are faked, so this stays a pure unit spec (no
   // testcontainers); full backup runs stay in test/integration/user-backup
   const nil = undefined as never;
-  const svc = new UserBackupService(
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    users,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    runs as never,
-    nil,
-    nil,
-  );
+  const status = new BackupStatusService(nil, nil, users, nil, nil, runs as never);
+  const svc = new UserBackupService(status, nil, nil, nil, nil, nil);
   return { svc, findOne };
 }
 

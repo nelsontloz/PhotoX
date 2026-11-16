@@ -1,19 +1,21 @@
-import { NotFoundException, ServiceUnavailableException, type Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import type { AdminUserBackupSync } from '@photox/shared-types';
 import { backupPrefix, findPrefixesForUserId, resolveBackupPrefix } from '@photox/shared-config';
 import { errorMessage, errorName } from '../common/errors';
-import type { User } from '../database/entities/user.entity';
-import type { BackupStatusService } from './backup-status.service';
-import type { BackupStorageIo } from './backup-storage-io';
+import { User } from '../database/entities/user.entity';
+import { BackupStatusService } from './backup-status.service';
+import { BackupStorageIo } from './backup-storage-io';
 import type { DeleteBackupResult, UserBackupManifest } from './backup.types';
-import type { S3BackupService } from './s3-backup.service';
+import { S3BackupService } from './s3-backup.service';
 
+@Injectable()
 export class BackupPrefixService {
+  private readonly logger = new Logger(BackupPrefixService.name);
+
   constructor(
     private readonly storageIo: BackupStorageIo,
     private readonly statusService: BackupStatusService,
     private readonly s3: S3BackupService,
-    private readonly logger: Logger,
   ) {}
 
   /**

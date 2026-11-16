@@ -125,7 +125,7 @@ describe('open audit findings (fails first)', () => {
   });
 
   describe('#15 malformed path ids', () => {
-    it('reads as 404, not a Postgres uuid-cast 500', async () => {
+    it('reads as 400, not a Postgres uuid-cast 500', async () => {
       const user = await seedUser(t);
       const headers = authFor(user);
       for (const path of [
@@ -134,7 +134,7 @@ describe('open audit findings (fails first)', () => {
         '/api/v1/persons/not-a-uuid',
       ]) {
         const res = await request(apiServer(t)).get(path).set(headers);
-        expect(res.status, path).toBe(404);
+        expect(res.status, path).toBe(400);
       }
     });
   });

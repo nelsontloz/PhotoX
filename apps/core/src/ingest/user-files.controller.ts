@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Param,
+  ParseUUIDPipe,
   Body,
   Res,
   Req,
@@ -131,7 +132,7 @@ export class UserFilesController {
   @ApiResponse({ status: 404, description: 'File not found' })
   @ApiResponse({ status: 416, description: 'Range not satisfiable' })
   async stream(
-    @Param('fileId') fileId: string,
+    @Param('fileId', new ParseUUIDPipe()) fileId: string,
     @Res() res: Response,
     @Req() req: Request,
     @CurrentUserId() userId: string,

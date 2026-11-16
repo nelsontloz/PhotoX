@@ -9,6 +9,7 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  ParseUUIDPipe,
   Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -58,7 +59,7 @@ export class AlbumsController {
   @ApiOperation({ summary: 'Get a single album' })
   @ApiResponse({ status: 200, description: 'Album found', type: AlbumModel })
   @ApiResponse({ status: 404, description: 'Album not found' })
-  async getOne(@Param('id') id: string, @CurrentUserId() userId: string) {
+  async getOne(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUserId() userId: string) {
     return this.albums.getOne(userId, id);
   }
 
@@ -67,7 +68,7 @@ export class AlbumsController {
   @ApiResponse({ status: 200, description: 'Album updated', type: AlbumModel })
   @ApiResponse({ status: 404, description: 'Album not found' })
   async update(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdateAlbumDto,
     @CurrentUserId() userId: string,
   ) {
@@ -79,7 +80,7 @@ export class AlbumsController {
   @ApiOperation({ summary: 'Delete an album' })
   @ApiResponse({ status: 204, description: 'Album deleted' })
   @ApiResponse({ status: 404, description: 'Album not found' })
-  async delete(@Param('id') id: string, @CurrentUserId() userId: string) {
+  async delete(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUserId() userId: string) {
     await this.albums.delete(userId, id);
   }
 
@@ -88,7 +89,7 @@ export class AlbumsController {
   @ApiResponse({ status: 201, description: 'Assets added', type: AddAssetsResponseModel })
   @ApiResponse({ status: 404, description: 'Album or asset not found' })
   async addAssets(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: AddAssetsBodyDto,
     @CurrentUserId() userId: string,
   ) {
@@ -102,8 +103,8 @@ export class AlbumsController {
   @ApiResponse({ status: 204, description: 'Asset removed' })
   @ApiResponse({ status: 404, description: 'Album not found' })
   async removeAsset(
-    @Param('id') id: string,
-    @Param('assetId') assetId: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('assetId', new ParseUUIDPipe()) assetId: string,
     @CurrentUserId() userId: string,
   ) {
     await this.albums.removeAsset(userId, id, assetId);
@@ -114,7 +115,7 @@ export class AlbumsController {
   @ApiResponse({ status: 200, description: 'Paginated asset list', type: AlbumAssetsResponseModel })
   @ApiResponse({ status: 404, description: 'Album not found' })
   async listAssets(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @CurrentUserId() userId: string,
     @Query() q: ListAlbumAssetsQueryDto,
   ) {

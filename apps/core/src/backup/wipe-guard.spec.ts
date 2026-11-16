@@ -2,6 +2,7 @@ import { ConflictException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import type { Repository } from 'typeorm';
 import type { UserDelete } from '../database/entities/user-delete.entity';
+import { RunLifecycleService } from './run-lifecycle.service';
 import { UserBackupService } from './user-backup.service';
 
 type WipeState = UserDelete['state'];
@@ -11,7 +12,9 @@ function makeService(state: WipeState | null): UserBackupService {
     findOne: () => Promise.resolve(state === null ? null : { userId: 'u', state }),
   } as unknown as Repository<UserDelete>;
   const nil = undefined as never;
-  return new UserBackupService(
+  // only the lifecycle phase is reachable; every other phase stays nil so a
+  // delegation surprise fails loudly
+  const lifecycle = new RunLifecycleService(
     nil,
     nil,
     nil,
@@ -29,6 +32,7 @@ function makeService(state: WipeState | null): UserBackupService {
     nil,
     userDeletes,
   );
+  return new UserBackupService(nil, nil, nil, nil, lifecycle, nil);
 }
 
 function assertNoLiveWipe(service: UserBackupService): Promise<void> {

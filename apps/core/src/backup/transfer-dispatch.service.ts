@@ -1,14 +1,15 @@
-import { type Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { isUUID } from 'class-validator';
 import { randomUUID } from 'crypto';
 import { mkdir, rm } from 'fs/promises';
 import { join } from 'path';
-import type { DataSource, Repository } from 'typeorm';
-import type { LocalStorageService } from '@photox/shared-config';
+import { DataSource, type Repository } from 'typeorm';
+import { LocalStorageService } from '@photox/shared-config';
 import { errorMessage } from '../common/errors';
 import { BackupRun } from '../database/entities/backup-run.entity';
 import { BackupRunItem } from '../database/entities/backup-run-item.entity';
-import type { BullMqService } from '../queue/bullmq.service';
+import { BullMqService } from '../queue/bullmq.service';
 import { sha256File } from './backup-storage-io';
 import {
   TRANSFER_DISPATCH_BATCH_SIZE,
@@ -21,8 +22,8 @@ import {
 } from './backup-transfer.constants';
 import type { ClaimedBackupItem, TransferJobLike } from './backup.types';
 import { rowsOf } from './bulk-io';
-import type { RunFinalizeService } from './run-finalize.service';
-import { isNotFound, type S3BackupService } from './s3-backup.service';
+import { RunFinalizeService } from './run-finalize.service';
+import { isNotFound, S3BackupService } from './s3-backup.service';
 
 /** Cap for the run driver's retry backoff when it retries without BullMQ's scheduler. */
 const TRANSFER_MAX_BACKOFF_MS = 5 * 60_000;
@@ -38,16 +39,18 @@ const TRANSFER_CLAIM_TIMEOUT_MS = 30 * 60_000;
  * Middle phase: claim due ledger items, hand them to the per-kind BullMQ queues, execute one item
  * per job, and promote a drained run by delegating to the finalize phase.
  */
+@Injectable()
 export class TransferDispatchService {
+  private readonly logger = new Logger(TransferDispatchService.name);
+
   constructor(
     private readonly finalize: RunFinalizeService,
     private readonly dataSource: DataSource,
     private readonly bullMq: BullMqService,
     private readonly s3: S3BackupService,
     private readonly storage: LocalStorageService,
-    private readonly runs: Repository<BackupRun>,
-    private readonly runItems: Repository<BackupRunItem>,
-    private readonly logger: Logger,
+    @InjectRepository(BackupRun) private readonly runs: Repository<BackupRun>,
+    @InjectRepository(BackupRunItem) private readonly runItems: Repository<BackupRunItem>,
   ) {}
 
   /**

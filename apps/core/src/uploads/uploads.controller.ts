@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Post,
   Put,
   Req,
@@ -128,7 +129,7 @@ export class UploadsController {
   @ApiResponse({ status: 410, description: 'SESSION_EXPIRED' })
   async status(
     @CurrentUserId() userId: string,
-    @Param('uploadId') uploadId: string,
+    @Param('uploadId', new ParseUUIDPipe()) uploadId: string,
   ): Promise<UploadSessionStatusResponse> {
     return this.uploads.status(userId, uploadId);
   }
@@ -153,7 +154,7 @@ export class UploadsController {
   @ApiResponse({ status: 410, description: 'SESSION_EXPIRED' })
   async putPart(
     @CurrentUserId() userId: string,
-    @Param('uploadId') uploadId: string,
+    @Param('uploadId', new ParseUUIDPipe()) uploadId: string,
     @Param('index') index: string,
     @Req() req: Request,
     @Headers('x-part-sha256') declaredSha256?: string,
@@ -190,7 +191,7 @@ export class UploadsController {
   @ApiResponse({ status: 503, description: 'ENQUEUE_FAILED — the session stays retryable' })
   async complete(
     @CurrentUserId() userId: string,
-    @Param('uploadId') uploadId: string,
+    @Param('uploadId', new ParseUUIDPipe()) uploadId: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<UploadCompleteResponse> {
     const result = await this.uploads.complete(userId, uploadId);
@@ -204,7 +205,7 @@ export class UploadsController {
   @ApiResponse({ status: 204, description: 'Session removed' })
   async remove(
     @CurrentUserId() userId: string,
-    @Param('uploadId') uploadId: string,
+    @Param('uploadId', new ParseUUIDPipe()) uploadId: string,
   ): Promise<void> {
     await this.uploads.remove(userId, uploadId);
   }

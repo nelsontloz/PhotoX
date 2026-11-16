@@ -4,6 +4,10 @@ import { NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import type { Repository } from 'typeorm';
 import { backupPrefix, manifestKey } from '@photox/shared-config';
 import { User } from '../database/entities/user.entity';
+import { BackupStorageIo } from './backup-storage-io';
+import { BackupStatusService } from './backup-status.service';
+import { BackupPrefixService } from './backup-prefix.service';
+import { RunLifecycleService } from './run-lifecycle.service';
 import { UserBackupService } from './user-backup.service';
 
 function user(over: Partial<User> = {}): User {
@@ -83,7 +87,6 @@ function makeDeleteService(opts: {
     delete: vi.fn(),
     remove: vi.fn(),
   });
-  const filesRepo = writeOnlyRepo();
   const assetsRepo = writeOnlyRepo();
   const dataSource = { transaction: vi.fn(), query: vi.fn() };
   const s3 = {
@@ -110,15 +113,27 @@ function makeDeleteService(opts: {
   };
   const nil = undefined as never;
   const userDeletes = { findOne: vi.fn(() => Promise.resolve(null)) };
-  const svc = new UserBackupService(
+  const storageIo = new BackupStorageIo(s3 as never, nil);
+  const status = new BackupStatusService(
+    storageIo,
+    s3 as never,
+    usersRepo as unknown as Repository<User>,
+    assetsRepo as never,
+    nil,
+    nil,
+  );
+  const prefix = new BackupPrefixService(storageIo, status, s3 as never);
+  // DB-write guard: the delete/restore paths own the phase services, so a stray write
+  // would still land on dataSource/userDeletes
+  const lifecycle = new RunLifecycleService(
+    nil,
+    status,
+    prefix,
     s3 as never,
     dataSource as never,
     nil,
-    nil,
-    nil,
+    storageIo,
     usersRepo as unknown as Repository<User>,
-    filesRepo as never,
-    assetsRepo as never,
     nil,
     nil,
     nil,
@@ -128,6 +143,7 @@ function makeDeleteService(opts: {
     nil,
     userDeletes as never,
   );
+  const svc = new UserBackupService(status, prefix, nil, nil, lifecycle, nil);
   return { svc, mocks: { usersRepo, dataSource, s3 } };
 }
 

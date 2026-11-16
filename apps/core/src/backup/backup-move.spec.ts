@@ -2,6 +2,9 @@ import { describe, expect, it, vi, type Mock } from 'vitest';
 import { randomUUID } from 'crypto';
 import { backupPrefix } from '@photox/shared-config';
 import { User } from '../database/entities/user.entity';
+import { BackupStorageIo } from './backup-storage-io';
+import { BackupStatusService } from './backup-status.service';
+import { BackupPrefixService } from './backup-prefix.service';
 import { UserBackupService } from './user-backup.service';
 
 function user(over: Partial<User> = {}): User {
@@ -122,27 +125,13 @@ function makeMoveService(objects: Map<string, Buffer> = new Map<string, Buffer>(
       return Promise.resolve();
     }),
   };
-  // ponytail: the move path touches S3 + the logger only — the DataSource/repos
-  // are constructor-required but never reached, so stub them as undefined
+  // ponytail: the move path touches S3 + the logger only — the DB phases are
+  // reachable but never given a repository, so they stay nil
   const nil = undefined as never;
-  const svc = new UserBackupService(
-    s3 as never,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-    nil,
-  );
+  const storageIo = new BackupStorageIo(s3 as never, nil);
+  const status = new BackupStatusService(storageIo, s3 as never, nil, nil, nil, nil);
+  const prefix = new BackupPrefixService(storageIo, status, s3 as never);
+  const svc = new UserBackupService(status, prefix, nil, nil, nil, nil);
   return { svc, s3, store };
 }
 

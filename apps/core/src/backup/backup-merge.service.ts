@@ -1,14 +1,16 @@
 import {
   BadRequestException,
   ConflictException,
+  Injectable,
+  Logger,
   NotFoundException,
   PayloadTooLargeException,
   ServiceUnavailableException,
   UnprocessableEntityException,
-  type Logger,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { isUUID } from 'class-validator';
-import { In, type DataSource, type EntityManager, type Repository } from 'typeorm';
+import { DataSource, In, type EntityManager, type Repository } from 'typeorm';
 import {
   backupPrefix,
   loadEnv,
@@ -17,10 +19,10 @@ import {
   originalKey,
   parseBackupDir,
   resolveBackupPrefix,
-  type LocalStorageService,
+  LocalStorageService,
 } from '@photox/shared-config';
 import { Album, AlbumAsset, Asset, FileRecord, Person, Share, User } from '../database/entities';
-import type { BackupMerge } from '../database/entities/backup-merge.entity';
+import { BackupMerge } from '../database/entities/backup-merge.entity';
 import {
   albumToManifestEntry,
   assetToManifestEntry,
@@ -34,17 +36,17 @@ import {
 } from './backup-manifest';
 import { pickNewest, type BackupDirLocation } from './backup-overview.builder';
 import { bulkSave, chunked } from './bulk-io';
-import type { BackupStatusService } from './backup-status.service';
-import type { BackupStorageIo } from './backup-storage-io';
-import type { RunFinalizeService } from './run-finalize.service';
-import type { RunLifecycleService } from './run-lifecycle.service';
+import { BackupStatusService } from './backup-status.service';
+import { BackupStorageIo } from './backup-storage-io';
+import { RunFinalizeService } from './run-finalize.service';
+import { RunLifecycleService } from './run-lifecycle.service';
 import type {
   BackupStatus,
   MergeBackupResult,
   MergeUserBackupInput,
   UserBackupManifest,
 } from './backup.types';
-import type { S3BackupService } from './s3-backup.service';
+import { S3BackupService } from './s3-backup.service';
 
 /** `In(...)` lookups over a manifest-sized id list: one query per chunk. */
 async function findInChunks<T>(ids: string[], find: (ids: string[]) => Promise<T[]>): Promise<T[]> {
@@ -53,11 +55,13 @@ async function findInChunks<T>(ids: string[], find: (ids: string[]) => Promise<T
   return rows;
 }
 
+@Injectable()
 export class BackupMergeService {
   // In-process merge mutual exclusion (`<backupUserId>:<targetUserId>`). The unique
   // ledger pair is the durable arbiter; this only turns a concurrent double-click
   // into a clean 409 before any bytes/rows are written.
   private readonly mergesInFlight = new Set<string>();
+  private readonly logger = new Logger(BackupMergeService.name);
 
   constructor(
     private readonly lifecycle: RunLifecycleService,
@@ -67,15 +71,14 @@ export class BackupMergeService {
     private readonly s3: S3BackupService,
     private readonly dataSource: DataSource,
     private readonly storage: LocalStorageService,
-    private readonly users: Repository<User>,
-    private readonly files: Repository<FileRecord>,
-    private readonly assets: Repository<Asset>,
-    private readonly albums: Repository<Album>,
-    private readonly albumAssets: Repository<AlbumAsset>,
-    private readonly shares: Repository<Share>,
-    private readonly persons: Repository<Person>,
-    private readonly backupMerges: Repository<BackupMerge>,
-    private readonly logger: Logger,
+    @InjectRepository(User) private readonly users: Repository<User>,
+    @InjectRepository(FileRecord) private readonly files: Repository<FileRecord>,
+    @InjectRepository(Asset) private readonly assets: Repository<Asset>,
+    @InjectRepository(Album) private readonly albums: Repository<Album>,
+    @InjectRepository(AlbumAsset) private readonly albumAssets: Repository<AlbumAsset>,
+    @InjectRepository(Share) private readonly shares: Repository<Share>,
+    @InjectRepository(Person) private readonly persons: Repository<Person>,
+    @InjectRepository(BackupMerge) private readonly backupMerges: Repository<BackupMerge>,
   ) {}
 
   /**

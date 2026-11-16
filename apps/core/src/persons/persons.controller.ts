@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
@@ -73,7 +74,10 @@ export class PersonsController {
   @ApiOperation({ summary: 'Get a single person' })
   @ApiResponse({ status: 200, description: 'Person found', type: PersonModel })
   @ApiResponse({ status: 404, description: 'Person not found' })
-  async getOne(@Param('id') id: string, @CurrentUserId() userId: string): Promise<PersonDto> {
+  async getOne(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUserId() userId: string,
+  ): Promise<PersonDto> {
     return this.persons.getOne(userId, id);
   }
 
@@ -82,7 +86,7 @@ export class PersonsController {
   @ApiResponse({ status: 200, description: 'Person updated', type: PersonModel })
   @ApiResponse({ status: 404, description: 'Person not found' })
   async update(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @CurrentUserId() userId: string,
     @Body() dto: UpdatePersonDto,
   ): Promise<PersonDto> {

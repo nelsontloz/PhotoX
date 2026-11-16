@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query, Req, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
@@ -36,7 +36,7 @@ export class AssetContentController {
   @ApiResponse({ status: 404, description: 'Asset not found, trashed, or has no bytes' })
   @ApiResponse({ status: 416, description: 'Range not satisfiable' })
   async content(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Query() q: AssetContentQueryDto,
     @Req() req: Request,
     @Res() res: Response,

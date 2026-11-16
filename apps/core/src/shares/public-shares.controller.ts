@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query, Req, Res } from '@nestjs/common';
 import { ApiExtraModels, ApiTags, ApiOperation, ApiResponse, getSchemaPath } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { SharesService } from './shares.service';
@@ -68,7 +68,7 @@ export class PublicSharesController {
   @ApiResponse({ status: 416, description: 'Range not satisfiable' })
   async contentForAlbumAsset(
     @Param('token') token: string,
-    @Param('assetId') assetId: string,
+    @Param('assetId', new ParseUUIDPipe()) assetId: string,
     @Query('size') size: string | undefined,
     @Req() req: Request,
     @Res() res: Response,
