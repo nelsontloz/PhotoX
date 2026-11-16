@@ -145,7 +145,8 @@ async function fetchOverview(
     headers: authHeaders(admin),
   });
   expect(response.status()).toBe(200);
-  return (await response.json()) as BackupOverviewRow[];
+  const page = (await response.json()) as { items: BackupOverviewRow[] };
+  return page.items;
 }
 
 async function fetchProgress(

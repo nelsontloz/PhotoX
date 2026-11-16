@@ -9,8 +9,10 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
 import { AlbumsService } from './albums.service';
 import { CreateAlbumDto } from './dto/create-album.dto';
@@ -34,8 +36,14 @@ export class AlbumsController {
   @ApiOperation({ summary: 'Create a new album' })
   @ApiResponse({ status: 201, description: 'Album created', type: AlbumModel })
   @ApiResponse({ status: 400, description: 'Invalid request body' })
-  async create(@Body() dto: CreateAlbumDto, @CurrentUserId() userId: string) {
-    return this.albums.create(userId, dto);
+  async create(
+    @Body() dto: CreateAlbumDto,
+    @CurrentUserId() userId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const album = await this.albums.create(userId, dto);
+    res.setHeader('Location', `/api/v1/albums/${album.id}`);
+    return album;
   }
 
   @Get()
@@ -83,8 +91,8 @@ export class AlbumsController {
     @Body() dto: AddAssetsBodyDto,
     @CurrentUserId() userId: string,
   ) {
-    await this.albums.addAssets(userId, id, dto.assetIds);
-    return { added: dto.assetIds.length };
+    const added = await this.albums.addAssets(userId, id, dto.assetIds);
+    return { added };
   }
 
   @Delete(':id/assets/:assetId')

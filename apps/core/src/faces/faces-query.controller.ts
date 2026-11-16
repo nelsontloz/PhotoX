@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Put,
   Patch,
   Param,
   Query,
@@ -15,9 +16,9 @@ import { CurrentUserId } from '../auth/jwt-auth.guard';
 import { FacesService } from './faces.service';
 import { AssignPersonDto } from './dto/assign-person.dto';
 import { FaceThumbQueryDto } from './dto/face-thumb-query.dto';
-import { OkResponseModel } from '../swagger/response-models';
+import { FaceModel } from '../swagger/response-models';
 
-@ApiTags('faces-query')
+@ApiTags('faces')
 @Controller('api/v1/faces')
 export class FacesQueryController {
   constructor(private readonly faces: FacesService) {}
@@ -41,17 +42,29 @@ export class FacesQueryController {
     res.status(200).end(bytes);
   }
 
-  @Patch(':id/person')
+  @Put(':id/person')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Assign or unassign a face from a person' })
-  @ApiResponse({ status: 200, description: 'Face updated', type: OkResponseModel })
+  @ApiResponse({ status: 200, description: 'Face updated', type: FaceModel })
+  @ApiResponse({ status: 404, description: 'Face not found or userId mismatch' })
+  async replacePerson(
+    @Param('id') id: string,
+    @Body() dto: AssignPersonDto,
+    @CurrentUserId() userId: string,
+  ) {
+    return this.faces.assignPerson(userId, id, dto.personId);
+  }
+
+  @Patch(':id/person')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Assign or unassign a face from a person', deprecated: true })
+  @ApiResponse({ status: 200, description: 'Face updated', type: FaceModel })
   @ApiResponse({ status: 404, description: 'Face not found or userId mismatch' })
   async assignPerson(
     @Param('id') id: string,
     @Body() dto: AssignPersonDto,
     @CurrentUserId() userId: string,
   ) {
-    await this.faces.assignPerson(userId, id, dto.personId);
-    return { ok: true };
+    return this.faces.assignPerson(userId, id, dto.personId);
   }
 }

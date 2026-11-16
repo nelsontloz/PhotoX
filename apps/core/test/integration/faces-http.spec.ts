@@ -252,7 +252,17 @@ describe('faces HTTP', () => {
       .set(t.authHeader(token))
       .send({ personId: person.id });
     expect(res.status).toBe(200);
-    expect((res.body as { ok: boolean }).ok).toBe(true);
+    // item 9: PATCH answers the updated FaceModel instead of the old { ok: true }
+    expect(res.body).toMatchObject({
+      id: face.id,
+      assetId: face.assetId,
+      box: face.box,
+      confidence: face.confidence,
+      personId: person.id,
+    });
+    expect(res.body).not.toHaveProperty('ok');
+    // deprecated in favor of PUT, not scheduled for removal with a Sunset date
+    expect(res.headers.sunset).toBeUndefined();
     expect((await t.faceRepo.findOneByOrFail({ id: face.id })).personId).toBe(person.id);
     expect((await t.personRepo.findOneByOrFail({ id: person.id })).faceCount).toBe(1);
   });
@@ -269,8 +279,68 @@ describe('faces HTTP', () => {
       .set(t.authHeader(token))
       .send({ personId: null });
     expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: face.id, assetId: face.assetId, personId: null });
     expect((await t.faceRepo.findOneByOrFail({ id: face.id })).personId).toBeNull();
     expect((await t.personRepo.findOneByOrFail({ id: person.id })).faceCount).toBe(0);
+  });
+
+  it('assigns a face through PUT and returns the updated FaceModel', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const { face } = await seedFace(user.id);
+    const person = await t.personRepo.save(
+      t.personRepo.create({ userId: user.id, name: null, clusterLabel: 'c-put', faceCount: 0 }),
+    );
+
+    const res = await request(apiServer(t))
+      .put(`/api/v1/faces/${face.id}/person`)
+      .set(t.authHeader(token))
+      .send({ personId: person.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id: face.id,
+      assetId: face.assetId,
+      box: face.box,
+      confidence: face.confidence,
+      personId: person.id,
+    });
+    expect((await t.faceRepo.findOneByOrFail({ id: face.id })).personId).toBe(person.id);
+    expect((await t.personRepo.findOneByOrFail({ id: person.id })).faceCount).toBe(1);
+  });
+
+  it('unassigns a face through PUT with personId null', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const person = await t.personRepo.save(
+      t.personRepo.create({ userId: user.id, name: null, clusterLabel: 'c-put', faceCount: 1 }),
+    );
+    const { face } = await seedFace(user.id, { personId: person.id });
+
+    const res = await request(apiServer(t))
+      .put(`/api/v1/faces/${face.id}/person`)
+      .set(t.authHeader(token))
+      .send({ personId: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: face.id, personId: null });
+    expect((await t.faceRepo.findOneByOrFail({ id: face.id })).personId).toBeNull();
+    expect((await t.personRepo.findOneByOrFail({ id: person.id })).faceCount).toBe(0);
+  });
+
+  it('404s PUT on a cross-user face', async () => {
+    const a = await seedUser(t);
+    const b = await seedUser(t);
+    const tokenB = t.signToken({ id: b.id, email: b.email, role: b.role });
+    const { face } = await seedFace(a.id);
+
+    const res = await request(apiServer(t))
+      .put(`/api/v1/faces/${face.id}/person`)
+      .set(t.authHeader(tokenB))
+      .send({ personId: null });
+
+    expect(res.status).toBe(404);
+    expect((await t.faceRepo.findOneByOrFail({ id: face.id })).personId).toBeNull();
   });
 
   it('404s assigning a cross-user face', async () => {

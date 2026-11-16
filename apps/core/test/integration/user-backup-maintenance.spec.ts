@@ -40,7 +40,7 @@ describe('user backup round-trip', () => {
 
       // overview + status read exists:false while the rows stay live
       await expect(t.svc.backupStatus(email)).resolves.toEqual({ exists: false });
-      const rows = await t.svc.backupOverview();
+      const { items: rows } = await t.svc.backupOverview();
       expect(rows.find((r) => r.userId === user.id)).toMatchObject({
         email,
         deleted: false,
@@ -71,7 +71,7 @@ describe('user backup round-trip', () => {
       await expect(t.fake.listKeys(prefix)).resolves.toEqual([]);
       expect([...t.fake.objects.keys()].some((k) => k.startsWith(prefix))).toBe(false);
 
-      const rows = await t.svc.backupOverview();
+      const { items: rows } = await t.svc.backupOverview();
       expect(rows.some((r) => r.userId === user.id)).toBe(false);
       await expect(t.svc.backupStatus(email)).resolves.toEqual({ exists: false });
     });
@@ -243,7 +243,7 @@ describe('user backup round-trip', () => {
 
       // the live row is now the normal backup: its own manifest at the target
       // prefix, no previous-account sub-row and no mergedAt/backupUserId extras
-      const row = (await t.svc.backupOverview()).find((r) => r.userId === target.id)!;
+      const row = (await t.svc.backupOverview()).items.find((r) => r.userId === target.id)!;
       expect(row).toMatchObject({
         deleted: false,
         exists: true,

@@ -6,7 +6,7 @@ import { GroupsService } from './groups.service';
 import { DuplicatesQueryDto, SimilarQueryDto } from './dto/groups-query.dto';
 import { SearchResponseModel } from '../swagger/response-models';
 
-@ApiTags('groups')
+@ApiTags('assets')
 @Controller('api/v1')
 export class GroupsController {
   constructor(private readonly groups: GroupsService) {}

@@ -135,7 +135,9 @@ export class BackupStatusService {
    * the S3 wrapper exposes only full-prefix listKeys (no Delimiter/CommonPrefixes
    * path), so prefix-only enumeration would need a new op + fake parity.
    */
-  async backupOverview(): Promise<BackupOverviewRow[]> {
+  async backupOverview(
+    opts: { limit?: number; offset?: number } = {},
+  ): Promise<{ items: BackupOverviewRow[]; total: number }> {
     const users = await this.users.find({ order: { email: 'ASC' } });
     const liveIds = new Set(users.map((u) => u.id));
     const liveByEmail = new Set(users.map((u) => normalizeEmail(u.email)));
@@ -317,7 +319,10 @@ export class BackupStatusService {
         : { ...row, activeRun: { id: run.id, kind: run.kind, state: run.state } };
     });
     all.sort((a, b) => a.email.localeCompare(b.email) || a.userId.localeCompare(b.userId));
-    return all;
+    // total is the whole table before the slice; probing already happened above.
+    const offset = opts.offset ?? 0;
+    const limit = opts.limit ?? 1000;
+    return { items: all.slice(offset, offset + limit), total: all.length };
   }
 
   /**

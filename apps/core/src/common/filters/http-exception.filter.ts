@@ -116,6 +116,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
       response.setHeader('Retry-After', String(Math.max(1, Math.ceil(body.retryAfterSec))));
     }
 
+    // Deliberate RFC 7807 deviation: the same envelope, re-serialized under the problem media type
+    // with `status`/`detail` aliases; a plain Accept still gets the untouched application/json body.
+    const acceptsProblem = /application\/problem\+json/i.test(request.headers?.accept ?? '');
+    if (acceptsProblem) {
+      body = { ...body, status: body.statusCode, detail: body.message };
+      response.type('application/problem+json');
+    }
+
     // Every failure is logged now, not just 5xx: a 401/403/429 is exactly what you need to see
     // during an incident, and unmatched paths stay in the request log below the filter level.
     const userId = (request as Request & { user?: { sub?: string } }).user?.sub ?? '-';

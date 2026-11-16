@@ -238,7 +238,7 @@ describe('user backup admin API', () => {
     });
   });
 
-  it('getBackupOverview passes orphan rows through untouched', async () => {
+  it('getBackupOverview unwraps the Page envelope and returns the rows', async () => {
     const rows = [
       {
         userId: 'u-1',
@@ -265,7 +265,8 @@ describe('user backup admin API', () => {
         deleted: true,
       },
     ];
-    getMock.mockResolvedValue({ data: rows });
+    // GET /admin/backups/overview answers Page<BackupOverviewRow>; the page still gets an array
+    getMock.mockResolvedValue({ data: { items: rows, total: rows.length } });
     await expect(getBackupOverview()).resolves.toEqual(rows);
     expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/overview', { timeout: 30_000 });
   });

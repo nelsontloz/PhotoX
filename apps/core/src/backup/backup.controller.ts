@@ -9,20 +9,22 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 import {
   UserBackupService,
-  type BackupOverviewRow,
   type BackupProgress,
   type BackupRunStatus,
   type BackupStatus,
   type DeleteBackupResult,
   type MergeBackupResult,
 } from './user-backup.service';
+import { ListBackupOverviewQueryDto } from './dto/list-backup-overview-query.dto';
 import {
-  BackupOverviewRowModel,
+  BackupOverviewListResponseModel,
   BackupProgressModel,
   BackupRunStatusModel,
   BackupStatusModel,
@@ -81,8 +83,13 @@ export class BackupController {
       'counts. A failed file retries alone and a failed run never writes a manifest.',
   })
   @ApiResponse({ status: 202, description: 'Backup run id', type: RunIdResponseModel })
-  async backup(@Body() dto: EmailOrIdQueryDto): Promise<{ runId: string }> {
-    return this.backups.startBackup(dto.emailOrId);
+  async backup(
+    @Body() dto: EmailOrIdQueryDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ runId: string }> {
+    const started = await this.backups.startBackup(dto.emailOrId);
+    res.setHeader('Location', `/api/v1/admin/backups/runs/${started.runId}`);
+    return started;
   }
 
   @Post('restores')
@@ -95,8 +102,13 @@ export class BackupController {
       'that fails is resumable by starting it again (same manifest), not a 409.',
   })
   @ApiResponse({ status: 202, description: 'Restore run id', type: RunIdResponseModel })
-  async restore(@Body() dto: RestoreRequestDto): Promise<{ runId: string }> {
-    return this.backups.startRestore(dto.emailOrId, dto.restoreEmail);
+  async restore(
+    @Body() dto: RestoreRequestDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ runId: string }> {
+    const started = await this.backups.startRestore(dto.emailOrId, dto.restoreEmail);
+    res.setHeader('Location', `/api/v1/admin/backups/runs/${started.runId}`);
+    return started;
   }
 
   @Post('restores/merge')
@@ -139,12 +151,12 @@ export class BackupController {
   @ApiOperation({ summary: 'Aggregated backup overview, one row per user (admin-only)' })
   @ApiResponse({
     status: 200,
-    description: 'Live asset counts joined with manifest status',
-    type: [BackupOverviewRowModel],
+    description: 'Live asset counts joined with manifest status, total before the slice',
+    type: BackupOverviewListResponseModel,
   })
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
-  async overview(): Promise<BackupOverviewRow[]> {
-    return this.backups.backupOverview();
+  async overview(@Query() query: ListBackupOverviewQueryDto) {
+    return this.backups.backupOverview(query);
   }
 
   @Get('backups/status')

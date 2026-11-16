@@ -124,7 +124,7 @@ export class AlbumsService {
     await this.repo.delete({ id, userId });
   }
 
-  async addAssets(userId: string, albumId: string, assetIds: string[]): Promise<void> {
+  async addAssets(userId: string, albumId: string, assetIds: string[]): Promise<number> {
     await findOwnedOr404(this.repo, albumId, userId, 'Album');
 
     const uniqueIds = [...new Set(assetIds)];
@@ -135,14 +135,19 @@ export class AlbumsService {
     }
 
     const rows = assetIds.map((assetId) => ({ albumId, assetId }));
+    if (rows.length === 0) return 0;
 
-    await this.albumAssetRepo
+    // orIgnore + RETURNING: only the rows this request actually inserted come back, so a
+    // re-add reports 0 and a partially-overlapping batch reports the new rows only.
+    const result = await this.albumAssetRepo
       .createQueryBuilder()
       .insert()
       .into(AlbumAsset)
       .values(rows)
       .orIgnore()
+      .returning(['assetId'])
       .execute();
+    return (result.raw as unknown[]).length;
   }
 
   async removeAsset(userId: string, albumId: string, assetId: string): Promise<void> {

@@ -182,7 +182,7 @@ describe('user backup round-trip', () => {
       const orphan = await backupOneFile(orphanEmail);
       await deleteUserRowsKeepS3(orphan.user.id);
 
-      const rows = await t.svc.backupOverview();
+      const { items: rows } = await t.svc.backupOverview();
       const byId = new Map(rows.map((r) => [r.userId, r]));
       const liveRow = byId.get(live.user.id)!;
       expect(liveRow).toMatchObject({ email: liveEmail, deleted: false, exists: true });
@@ -226,7 +226,7 @@ describe('user backup round-trip', () => {
       t.fake.objects.set(`${barePrefix}originals/stray.bin`, Buffer.from('stray'));
 
       try {
-        const rows = await t.svc.backupOverview();
+        const { items: rows } = await t.svc.backupOverview();
         const byId = new Map(rows.map((r) => [r.userId, r]));
         expect(byId.get(corrupt.user.id)).toMatchObject({
           deleted: true,

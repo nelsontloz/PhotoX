@@ -232,8 +232,13 @@ export class UserBackupService {
     return this.statusService.backupStatus(emailOrId);
   }
 
-  backupOverview(): Promise<BackupOverviewRow[]> {
-    return this.statusService.backupOverview();
+  backupOverview(
+    opts: {
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): Promise<{ items: BackupOverviewRow[]; total: number }> {
+    return this.statusService.backupOverview(opts);
   }
 
   getBackupProgress(emailOrId: string): Promise<BackupProgress> {

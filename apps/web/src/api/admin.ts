@@ -436,10 +436,12 @@ export interface BackupOverviewRow {
 }
 
 export async function getBackupOverview(): Promise<BackupOverviewRow[]> {
-  const { data } = await api.get<BackupOverviewRow[]>('/v1/admin/backups/overview', {
-    timeout: BACKUP_STATUS_TIMEOUT_MS,
-  });
-  return data;
+  // The route answers Page<BackupOverviewRow>; this page wants the (single, capped) page.
+  const { data } = await api.get<{ items: BackupOverviewRow[]; total: number }>(
+    '/v1/admin/backups/overview',
+    { timeout: BACKUP_STATUS_TIMEOUT_MS },
+  );
+  return data.items;
 }
 
 // --- admin user account edits ----------------------------------------------------------

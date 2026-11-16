@@ -1,9 +1,11 @@
 import { NestFactory } from '@nestjs/core';
+import { Reflector } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { createValidationPipe } from './common/validation';
+import { AsyncAcceptedInterceptor } from './common/async-accepted.interceptor';
 import { configureBodyParsers } from './common/body-parsers';
 import { requestIdMiddleware } from './common/request-id';
 import { setupSwagger } from './swagger/setup';
@@ -37,6 +39,7 @@ async function bootstrap() {
 
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalInterceptors(new AsyncAcceptedInterceptor(app.get(Reflector)));
 
   // ponytail: no CORS — browsers reach the API same-origin via the Vite proxy / reverse proxy
   setupSwagger(app);

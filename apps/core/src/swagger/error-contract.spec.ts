@@ -65,6 +65,11 @@ function contentSchema(response: OperationObject['responses'][string]) {
   return response.content?.['application/json']?.schema;
 }
 
+function problemSchema(response: OperationObject['responses'][string]) {
+  if (!response || '$ref' in response) return undefined;
+  return response.content?.['application/problem+json']?.schema;
+}
+
 function descriptionOf(response: OperationObject['responses'][string]) {
   return response && !('$ref' in response) ? response.description : undefined;
 }
@@ -87,7 +92,10 @@ describe('applyErrorContract', () => {
     expect((schema?.properties?.details as SchemaObject).type).toBe('array');
     expect((schema?.properties?.retryAfterSec as SchemaObject).type).toBe('integer');
     expect((schema?.properties?.requestId as SchemaObject).type).toBe('string');
+    expect((schema?.properties?.status as SchemaObject).type).toBe('integer');
+    expect((schema?.properties?.detail as SchemaObject).type).toBe('string');
     expect(schema?.description).toMatch(/single body shape for every non-2xx/);
+    expect(schema?.description).toMatch(/problem\+json/i);
   });
 
   it('declares the bearer and cookie security schemes', () => {
@@ -145,6 +153,33 @@ describe('applyErrorContract', () => {
     expect(operation(document, '/api/v1/auth/refresh', 'post').responses['429']).toBeDefined();
     expect(operation(document, '/api/v1/auth/logout', 'post').responses['429']).toBeUndefined();
     expect(operation(document, '/api/v1/assets', 'get').responses['429']).toBeUndefined();
+  });
+
+  it('declares both application/json and application/problem+json on every error response', () => {
+    for (const [path, item] of Object.entries(document.paths)) {
+      for (const method of ['get', 'post', 'delete'] as const) {
+        const op = item[method];
+        if (!op) continue;
+        for (const [status, response] of Object.entries(op.responses)) {
+          if (Number(status) < 400 || !response || '$ref' in response) continue;
+          expect(contentSchema(response), `${method} ${path} ${status} json`).toEqual({
+            $ref: ERROR_REF,
+          });
+          expect(problemSchema(response), `${method} ${path} ${status} problem+json`).toEqual({
+            $ref: ERROR_REF,
+          });
+        }
+      }
+    }
+  });
+
+  it('never adds problem+json to a 2xx response', () => {
+    expect(problemSchema(operation(document, '/api/v1/assets', 'post').responses['201'])).toBe(
+      undefined,
+    );
+    expect(problemSchema(operation(document, '/api/v1/assets', 'get').responses['200'])).toBe(
+      undefined,
+    );
   });
 
   it('keeps declared responses and never overwrites a 2xx', () => {

@@ -49,8 +49,10 @@ import { UsersModule } from '../../src/users/users.module';
 import { AuthModule } from '../../src/auth/auth.module';
 import { BullMqModule } from '../../src/queue/bullmq.module';
 import { BullMqService } from '../../src/queue/bullmq.service';
+import { Reflector } from '@nestjs/core';
 import { HttpExceptionFilter } from '../../src/common/filters/http-exception.filter';
 import { createValidationPipe } from '../../src/common/validation';
+import { AsyncAcceptedInterceptor } from '../../src/common/async-accepted.interceptor';
 import { requestIdMiddleware } from '../../src/common/request-id';
 import { setupSwagger } from '../../src/swagger/setup';
 import { configureBodyParsers } from '../../src/common/body-parsers';
@@ -176,6 +178,7 @@ export async function createApiTestApp(opts?: {
     app.use(requestIdMiddleware);
     app.useGlobalPipes(createValidationPipe());
     app.useGlobalFilters(new HttpExceptionFilter());
+    app.useGlobalInterceptors(new AsyncAcceptedInterceptor(app.get(Reflector)));
     // opt-in: building the document is not free, so only the contract spec pays for it
     if (opts?.swagger) setupSwagger(app);
     await app.init();

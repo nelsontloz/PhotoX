@@ -115,11 +115,14 @@ describe('albums JWT identity', () => {
       .set(t.authHeader(token))
       .send({ name: 'Trip' });
     const album = created.body as unknown as { id: string };
+    // every album 201 announces its resource
+    expect(created.headers.location).toBe(`/api/v1/albums/${album.id}`);
     const add = await request(apiServer(t))
       .post(`/api/v1/albums/${album.id}/assets`)
       .set(t.authHeader(token))
       .send({ assetIds: [asset.id] });
     expect(add.status).toBe(201);
+    expect(add.body).toEqual({ added: 1 });
     const list = await request(apiServer(t))
       .get(`/api/v1/albums/${album.id}/assets`)
       .set(t.authHeader(token));
@@ -210,15 +213,48 @@ describe('albums JWT identity', () => {
       .set(t.authHeader(token))
       .send({ assetIds: [asset.id] });
     expect(first.status).toBe(201);
+    expect(first.body).toEqual({ added: 1 });
     const second = await request(apiServer(t))
       .post(`/api/v1/albums/${album.id}/assets`)
       .set(t.authHeader(token))
       .send({ assetIds: [asset.id] });
-    // the insert is `.orIgnore()`d, so a repeat add is still a success response
+    // the insert is `.orIgnore()`d, so a repeat add is still a success response with added: 0
     expect(second.status).toBe(201);
+    expect(second.body).toEqual({ added: 0 });
     expect(await t.albumAssetRepo.count({ where: { albumId: album.id, assetId: asset.id } })).toBe(
       1,
     );
+  });
+
+  it('counts only the rows actually inserted when a batch mixes new and existing assets', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const firstFile = await seedFile(t, user.id);
+    const existing = await seedAsset(t, user.id, firstFile.id);
+    const secondFile = await seedFile(t, user.id);
+    const freshA = await seedAsset(t, user.id, secondFile.id);
+    const thirdFile = await seedFile(t, user.id);
+    const freshB = await seedAsset(t, user.id, thirdFile.id);
+    const created = await request(apiServer(t))
+      .post('/api/v1/albums')
+      .set(t.authHeader(token))
+      .send({ name: 'Trip' });
+    const album = created.body as unknown as { id: string };
+
+    const seed = await request(apiServer(t))
+      .post(`/api/v1/albums/${album.id}/assets`)
+      .set(t.authHeader(token))
+      .send({ assetIds: [existing.id] });
+    expect(seed.body).toEqual({ added: 1 });
+
+    const add = await request(apiServer(t))
+      .post(`/api/v1/albums/${album.id}/assets`)
+      .set(t.authHeader(token))
+      .send({ assetIds: [existing.id, freshA.id, freshB.id] });
+
+    expect(add.status).toBe(201);
+    expect(add.body).toEqual({ added: 2 });
+    expect(await t.albumAssetRepo.count({ where: { albumId: album.id } })).toBe(3);
   });
 
   it('lists albums newest first with limit and offset', async () => {

@@ -869,7 +869,7 @@ describe('user backup round-trip', () => {
     await seedOriginal(user.id, Buffer.from('active-run-bytes'));
 
     const { runId } = await t.svc.startBackup(user.id);
-    const row = (await t.svc.backupOverview()).find((entry) => entry.userId === user.id);
+    const row = (await t.svc.backupOverview()).items.find((entry) => entry.userId === user.id);
     expect(row?.activeRun).toEqual({ id: runId, kind: 'backup', state: 'running' });
 
     // the overview's activeRun is a projection of a non-terminal run row, not of cancel
@@ -878,7 +878,7 @@ describe('user backup round-trip', () => {
       currentFile: null,
       finishedAt: new Date(),
     });
-    const after = (await t.svc.backupOverview()).find((entry) => entry.userId === user.id);
+    const after = (await t.svc.backupOverview()).items.find((entry) => entry.userId === user.id);
     expect(after?.activeRun).toBeUndefined();
   }, 120_000);
 });

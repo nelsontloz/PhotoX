@@ -364,7 +364,7 @@ describe('backupOverview', () => {
       [manifestKey(ada.email, ada.id)],
       objects,
     );
-    const rows = await svc.backupOverview();
+    const { items: rows } = await svc.backupOverview();
     expect(rows).toEqual([
       {
         userId: ada.id,
@@ -430,7 +430,7 @@ describe('backupOverview', () => {
       [`${orphanPrefix}manifest.json`, `${orphanPrefix}originals/file.bin`],
       objects,
     );
-    const rows = await svc.backupOverview();
+    const { items: rows } = await svc.backupOverview();
     expect(rows).toEqual([
       {
         userId: ada.id,
@@ -500,7 +500,7 @@ describe('backupOverview', () => {
       }
       return origGet(key);
     });
-    const rows = await svc.backupOverview();
+    const { items: rows } = await svc.backupOverview();
     expect(rows.map((r) => r.userId).sort()).toEqual([corruptId, unreadId].sort());
     expect(rows.find((r) => r.userId === corruptId)?.degraded).toBe('corrupt');
     expect(rows.find((r) => r.userId === unreadId)?.degraded).toBe('unreadable');
@@ -535,7 +535,7 @@ describe('backupOverview', () => {
     const barePrefix = backupPrefix('bare@example.com', '66666666-6666-4666-8666-666666666666');
     keys.push(`${barePrefix}originals/stray.bin`);
     const { svc, s3 } = makeOverviewService([ada], [{ userId: ada.id, count: '4' }], keys, objects);
-    const rows = await svc.backupOverview();
+    const { items: rows } = await svc.backupOverview();
     expect(rows).toHaveLength(4);
     expect(rows.filter((r) => r.deleted)).toHaveLength(3);
     const s3Mock = s3 as unknown as {
@@ -554,7 +554,7 @@ describe('backupOverview', () => {
 
   it('returns [] when no users and no S3 prefixes exist', async () => {
     const { svc, createQueryBuilder, s3 } = makeOverviewService([], [], []);
-    await expect(svc.backupOverview()).resolves.toEqual([]);
+    await expect(svc.backupOverview()).resolves.toEqual({ items: [], total: 0 });
     expect(createQueryBuilder).not.toHaveBeenCalled();
     const s3Mock = s3 as unknown as {
       getBuffer: Mock<(key: string) => Promise<Buffer>>;
@@ -594,7 +594,7 @@ describe('backupOverview', () => {
       [orphanManifest],
       objects,
     );
-    const rows = await svc.backupOverview();
+    const { items: rows } = await svc.backupOverview();
     expect(rows).toHaveLength(1);
     // the live account has no backup of its own — its row stays the exact own
     // prefix (exists:false) and never adopts the previous account's numbers
@@ -639,7 +639,7 @@ describe('backupOverview', () => {
       ],
     ]);
     const { svc } = makeOverviewService([ada], [], [orphanManifest], objects);
-    const rows = await svc.backupOverview();
+    const { items: rows } = await svc.backupOverview();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       userId: ada.id,
@@ -703,7 +703,7 @@ describe('backupOverview', () => {
       objects,
       merges,
     );
-    const rows = await svc.backupOverview();
+    const { items: rows } = await svc.backupOverview();
     expect(rows).toHaveLength(1);
     const row = rows[0]!;
     expect(row).toMatchObject({
@@ -756,7 +756,7 @@ describe('backupOverview', () => {
       ],
     ]);
     const { svc } = makeOverviewService([ada], [], [olderManifest, newerManifest], objects);
-    const rows = await svc.backupOverview();
+    const { items: rows } = await svc.backupOverview();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       userId: ada.id,
@@ -785,7 +785,7 @@ describe('backupOverview', () => {
     const orphanManifest = `${orphanPrefix}manifest.json`;
     const objects = new Map([[orphanManifest, Buffer.from('not-json{{{')]]);
     const { svc } = makeOverviewService([ada], [], [orphanManifest], objects);
-    const rows = await svc.backupOverview();
+    const { items: rows } = await svc.backupOverview();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       userId: ada.id,
@@ -814,7 +814,7 @@ describe('backupOverview', () => {
       ],
     ]);
     const { svc } = makeOverviewService([ada], [], [otherManifest], objects);
-    const rows = await svc.backupOverview();
+    const { items: rows } = await svc.backupOverview();
     expect(rows).toHaveLength(2);
     expect(rows.find((r) => r.userId === ada.id)?.deleted).toBe(false);
     expect(rows.find((r) => r.userId === otherId)).toMatchObject({
@@ -822,5 +822,41 @@ describe('backupOverview', () => {
       prefix: otherPrefix,
       exists: true,
     });
+  });
+});
+
+describe('backupOverview pagination', () => {
+  const ada = user({ email: 'ada@example.com' });
+  const bob = user({
+    id: '22222222-2222-4222-8222-222222222222',
+    email: 'bob@example.com',
+  });
+  const cleo = user({
+    id: '33333333-3333-4333-8333-333333333333',
+    email: 'cleo@example.com',
+  });
+
+  it('returns a Page envelope whose total is all rows before the slice', async () => {
+    const { svc } = makeOverviewService([ada, bob, cleo], []);
+
+    const all = await svc.backupOverview();
+    expect(all.total).toBe(3);
+    expect(all.items.map((row) => row.email)).toEqual([
+      'ada@example.com',
+      'bob@example.com',
+      'cleo@example.com',
+    ]);
+
+    const sliced = await svc.backupOverview({ limit: 1, offset: 1 });
+    expect(sliced.total).toBe(3);
+    expect(sliced.items.map((row) => row.email)).toEqual(['bob@example.com']);
+  });
+
+  it('defaults to the full overview and never echoes limit/offset', async () => {
+    const { svc } = makeOverviewService([ada, bob, cleo], []);
+    const page = await svc.backupOverview({});
+    expect(page.items).toHaveLength(3);
+    expect(page).not.toHaveProperty('limit');
+    expect(page).not.toHaveProperty('offset');
   });
 });

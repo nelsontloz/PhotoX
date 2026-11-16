@@ -8,8 +8,10 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Res,
 } from '@nestjs/common';
 import { ApiExtraModels, ApiTags, ApiOperation, ApiResponse, getSchemaPath } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
 import { SharesService } from './shares.service';
 import { CreateShareDto } from './dto/create-share.dto';
@@ -27,7 +29,12 @@ export class SharesController {
   constructor(private readonly shares: SharesService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a public share link for an asset or an album' })
+  @ApiOperation({
+    summary: 'Create a public share link for an asset or an album',
+    description:
+      'The Location header is the public link (`/api/share/{token}`); the body also carries ' +
+      'the raw token, which is returned on create only.',
+  })
   @ApiResponse({
     status: 201,
     description: 'Share created',
@@ -38,8 +45,14 @@ export class SharesController {
   })
   @ApiResponse({ status: 400, description: 'Provide exactly one of assetId or albumId' })
   @ApiResponse({ status: 404, description: 'Asset or album not found' })
-  async create(@Body() dto: CreateShareDto, @CurrentUserId() userId: string) {
-    return this.shares.create(userId, dto);
+  async create(
+    @Body() dto: CreateShareDto,
+    @CurrentUserId() userId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const share = await this.shares.create(userId, dto);
+    res.setHeader('Location', `/api/share/${share.token}`);
+    return share;
   }
 
   @Get()

@@ -43,6 +43,23 @@ describe('response models', () => {
     expect(JSON.stringify(schemas.ShareListResponseModel)).toContain('oneOf');
   });
 
+  it('models the backup overview page envelope', () => {
+    const schemas = document.components?.schemas ?? {};
+    const page = schemas.BackupOverviewListResponseModel as SchemaObject | undefined;
+    expect(page).toBeDefined();
+    expect((page?.properties?.items as SchemaObject).type).toBe('array');
+    expect((page?.properties?.total as SchemaObject).type).toBe('number');
+    expect(page?.required).toEqual(expect.arrayContaining(['items', 'total']));
+  });
+
+  it('documents AddAssetsResponseModel.added as rows actually inserted', () => {
+    const schemas = document.components?.schemas ?? {};
+    const added = (schemas.AddAssetsResponseModel as SchemaObject | undefined)?.properties
+      ?.added as SchemaObject | undefined;
+    expect(added?.type).toBe('number');
+    expect(added?.description).toMatch(/inserted/i);
+  });
+
   it('advertises the raw share token on create responses only', () => {
     const schemas = document.components?.schemas ?? {};
     for (const item of ['AssetShareItemModel', 'AlbumShareItemModel']) {

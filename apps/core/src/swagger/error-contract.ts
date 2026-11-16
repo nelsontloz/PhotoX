@@ -43,7 +43,9 @@ const API_ERROR_SCHEMA: SchemaObject = {
   description:
     'The single body shape for every non-2xx response (`ApiErrorBody` in @photox/shared-types). ' +
     'Clients branch on the stable `code`, never on the prose `message`; `Retry-After` is also ' +
-    'sent as a header when `retryAfterSec` is present.',
+    'sent as a header when `retryAfterSec` is present. A client sending ' +
+    '`Accept: application/problem+json` gets the same envelope under that media type plus the ' +
+    'aliases `status` (= `statusCode`) and `detail` (= `message`).',
   required: ['statusCode', 'code', 'message'],
   properties: {
     statusCode: { type: 'integer', description: 'HTTP status, repeated in the body.' },
@@ -64,13 +66,18 @@ const API_ERROR_SCHEMA: SchemaObject = {
     },
     retryAfterSec: { type: 'integer', description: 'Seconds to wait before retrying.' },
     requestId: { type: 'string', description: 'Correlates the failure with the server log.' },
+    status: { type: 'integer', description: 'problem+json alias of `statusCode`.' },
+    detail: { type: 'string', description: 'problem+json alias of `message`.' },
   },
 };
 
 function errorResponse(description: string): ResponseObject {
   return {
     description,
-    content: { 'application/json': { schema: ERROR_SCHEMA_REF } },
+    content: {
+      'application/json': { schema: ERROR_SCHEMA_REF },
+      'application/problem+json': { schema: ERROR_SCHEMA_REF },
+    },
   };
 }
 
@@ -130,8 +137,10 @@ export function applyErrorContract(document: OpenAPIObject): void {
       // never touch a 2xx.
       for (const [status, response] of Object.entries(operation.responses)) {
         if (!response || '$ref' in response) continue;
-        if (!(Number(status) >= 400) || response.content) continue;
-        response.content = { 'application/json': { schema: ERROR_SCHEMA_REF } };
+        if (!(Number(status) >= 400)) continue;
+        response.content ??= {};
+        response.content['application/json'] ??= { schema: ERROR_SCHEMA_REF };
+        response.content['application/problem+json'] ??= { schema: ERROR_SCHEMA_REF };
       }
     }
   }

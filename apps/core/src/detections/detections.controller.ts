@@ -5,7 +5,7 @@ import { CurrentUserId } from '../auth/jwt-auth.guard';
 import { DetectionsService } from './detections.service';
 import { AssetDetectionsResponseModel } from '../swagger/response-models';
 
-@ApiTags('detections')
+@ApiTags('assets')
 @Controller('api/v1/assets')
 export class DetectionsController {
   constructor(private readonly detections: DetectionsService) {}

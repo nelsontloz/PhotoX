@@ -183,3 +183,180 @@ describe('HttpExceptionFilter', () => {
     expect(String(logs.error.mock.calls[0]?.[0])).toContain('"message":"upstream gone"');
   });
 });
+
+/**
+ * RFC 7807-flavoured negotiation: the same envelope is serialized as
+ * `application/problem+json` when the Accept header asks for it, adding `status`/`detail`
+ * aliases, while the plain `application/json` body stays byte-compatible.
+ */
+function makeNegotiationHost(accept?: string): {
+  host: ArgumentsHost;
+  response: {
+    statusCode: number;
+    body: unknown;
+    contentType: string;
+    headers: Record<string, string>;
+  };
+} {
+  const response = {
+    statusCode: 0,
+    body: undefined as unknown,
+    contentType: '',
+    headers: {} as Record<string, string>,
+  };
+
+  const record = (name: string, value: string): void => {
+    if (name.toLowerCase() === 'content-type') response.contentType = value;
+    else response.headers[name.toLowerCase()] = value;
+  };
+
+  const res = {
+    status(code: number) {
+      response.statusCode = code;
+      return res;
+    },
+    json(payload: unknown) {
+      // Express defaults the content type when the handler never set one.
+      if (response.contentType === '') response.contentType = 'application/json';
+      response.body = payload;
+      return res;
+    },
+    type(value: string) {
+      record('Content-Type', value);
+      return res;
+    },
+    contentType(value: string) {
+      record('Content-Type', value);
+      return res;
+    },
+    setHeader(name: string, value: string) {
+      record(name, value);
+      return res;
+    },
+    set(name: string, value: string) {
+      record(name, value);
+      return res;
+    },
+    getHeader(name: string) {
+      return name.toLowerCase() === 'content-type'
+        ? response.contentType
+        : response.headers[name.toLowerCase()];
+    },
+  };
+
+  const request = {
+    method: 'GET',
+    path: '/api/v1/assets',
+    headers: accept === undefined ? {} : { accept },
+    requestId: 'rid-1',
+  };
+
+  const host = {
+    switchToHttp: () => ({
+      getResponse: () => res,
+      getRequest: () => request,
+    }),
+  } as unknown as ArgumentsHost;
+
+  return { host, response };
+}
+
+function negotiationFailure(): BadRequestException {
+  return new BadRequestException({
+    statusCode: 400,
+    code: 'VALIDATION_FAILED',
+    message: 'limit must be at least 1',
+    details: [{ field: 'limit', message: 'limit must be at least 1' }],
+  });
+}
+
+describe('HttpExceptionFilter problem+json negotiation', () => {
+  beforeEach(() => {
+    silenceLogs();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('keeps the plain application/json body byte-compatible', () => {
+    const { host, response } = makeNegotiationHost();
+    new HttpExceptionFilter().catch(negotiationFailure(), host);
+
+    expect(response.contentType).toBe('application/json');
+    expect(response.body).toEqual({
+      statusCode: 400,
+      code: 'VALIDATION_FAILED',
+      message: 'limit must be at least 1',
+      details: [{ field: 'limit', message: 'limit must be at least 1' }],
+      requestId: 'rid-1',
+    });
+    expect(response.body).not.toHaveProperty('status');
+    expect(response.body).not.toHaveProperty('detail');
+    expect(Object.keys(response.body as Record<string, unknown>)).toEqual([
+      'statusCode',
+      'code',
+      'message',
+      'details',
+      'requestId',
+    ]);
+  });
+
+  it('answers application/problem+json when the client asks for it', () => {
+    const { host, response } = makeNegotiationHost('application/problem+json');
+    new HttpExceptionFilter().catch(negotiationFailure(), host);
+
+    expect(response.contentType).toContain('application/problem+json');
+    expect(response.body).toMatchObject({
+      statusCode: 400,
+      code: 'VALIDATION_FAILED',
+      message: 'limit must be at least 1',
+      requestId: 'rid-1',
+      status: 400,
+      detail: 'limit must be at least 1',
+    });
+    expect((response.body as { details?: unknown }).details).toEqual([
+      { field: 'limit', message: 'limit must be at least 1' },
+    ]);
+  });
+
+  it('matches the media type case-insensitively and tolerates parameters', () => {
+    const { host, response } = makeNegotiationHost('text/html, Application/Problem+JSON; q=0.9');
+    new HttpExceptionFilter().catch(negotiationFailure(), host);
+
+    expect(response.contentType).toContain('application/problem+json');
+    expect((response.body as { status?: number }).status).toBe(400);
+    expect((response.body as { detail?: string }).detail).toBe('limit must be at least 1');
+  });
+
+  it('adds the aliases to a non-HttpException 500 as well', () => {
+    const { host, response } = makeNegotiationHost('application/problem+json');
+    new HttpExceptionFilter().catch(new Error('boom'), host);
+
+    expect(response.contentType).toContain('application/problem+json');
+    expect(response.body).toMatchObject({
+      statusCode: 500,
+      code: 'INTERNAL_ERROR',
+      status: 500,
+      detail: 'Internal server error',
+    });
+    expect((response.body as { message?: string }).message).toBe('Internal server error');
+  });
+
+  it('keeps Retry-After and retryAfterSec on both serializations', () => {
+    const exception = new HttpException(
+      { statusCode: 429, code: 'RATE_LIMITED', message: 'Too many requests', retryAfterSec: 5 },
+      429,
+    );
+
+    const plain = makeNegotiationHost();
+    new HttpExceptionFilter().catch(exception, plain.host);
+    expect(plain.response.headers['retry-after']).toBe('5');
+    expect((plain.response.body as { retryAfterSec?: number }).retryAfterSec).toBe(5);
+
+    const problem = makeNegotiationHost('application/problem+json');
+    new HttpExceptionFilter().catch(exception, problem.host);
+    expect(problem.response.headers['retry-after']).toBe('5');
+    expect(problem.response.body).toMatchObject({ retryAfterSec: 5, status: 429 });
+  });
+});

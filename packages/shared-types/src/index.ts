@@ -515,6 +515,10 @@ export interface ApiErrorDetail {
 /**
  * The one non-2xx body shape: `{statusCode, code, message, details?, retryAfterSec?, requestId}`.
  * `Retry-After` is also sent as a header when `retryAfterSec` is present.
+ *
+ * A client sending `Accept: application/problem+json` gets the same envelope as
+ * `application/problem+json` plus the RFC 7807 aliases `status` (= `statusCode`) and
+ * `detail` (= `message`); the canonical fields are never removed.
  */
 export interface ApiErrorBody {
   statusCode: number;
@@ -525,6 +529,10 @@ export interface ApiErrorBody {
   retryAfterSec?: number;
   /** Correlates the failure with the server log (`X-Request-Id`). */
   requestId?: string;
+  /** problem+json alias of `statusCode`. */
+  status?: number;
+  /** problem+json alias of `message`. */
+  detail?: string;
 }
 
 // POST /api/v1/uploads — chunkSizeBytes/totalParts are server-fixed (8 MiB chunks)

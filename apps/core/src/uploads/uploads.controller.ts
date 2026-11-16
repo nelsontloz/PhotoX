@@ -101,8 +101,11 @@ export class UploadsController {
   async create(
     @CurrentUserId() userId: string,
     @Body() body: CreateUploadSessionBodyDto,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<UploadSessionCreated> {
-    return this.uploads.create(userId, body);
+    const session = await this.uploads.create(userId, body);
+    res.setHeader('Location', `/api/v1/uploads/${session.uploadId}`);
+    return session;
   }
 
   @Get(':uploadId')
@@ -173,6 +176,8 @@ export class UploadsController {
   ): Promise<UploadCompleteResponse> {
     const result = await this.uploads.complete(userId, uploadId);
     res.status(result.deduplicated ? HttpStatus.OK : HttpStatus.CREATED);
+    // 201 and 200 both announce the asset; the replay (200) points at the same resource.
+    res.setHeader('Location', `/api/v1/assets/${result.asset.id}`);
     return result;
   }
 

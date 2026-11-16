@@ -487,7 +487,7 @@ export class AlbumAssetsResponseModel {
 }
 
 export class AddAssetsResponseModel {
-  @ApiProperty({ type: Number, description: 'Assets sent in the request' })
+  @ApiProperty({ type: Number, description: 'Album-asset rows actually inserted by this request' })
   added!: number;
 }
 
@@ -1193,6 +1193,15 @@ export class BackupOverviewRowModel implements BackupOverviewRow {
 
   @ApiPropertyOptional({ type: () => ActiveBackupRunModel })
   activeRun?: ActiveBackupRunModel;
+}
+
+/** GET /api/v1/admin/backups/overview — `total` counts all rows before the limit/offset slice. */
+export class BackupOverviewListResponseModel {
+  @ApiProperty({ type: [BackupOverviewRowModel] })
+  items!: BackupOverviewRowModel[];
+
+  @ApiProperty({ type: Number })
+  total!: number;
 }
 
 export class DeleteBackupResultModel implements DeleteBackupResult {
