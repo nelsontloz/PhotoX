@@ -3,6 +3,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { DeprecationInterceptor } from './common/deprecation.interceptor';
 import { createValidationPipe } from './common/validation';
 import { configureBodyParsers } from './common/body-parsers';
 import { requestIdMiddleware } from './common/request-id';
@@ -37,6 +38,8 @@ async function bootstrap() {
 
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalFilters(new HttpExceptionFilter());
+  // keep the test app helper in sync: it registers the same interceptor
+  app.useGlobalInterceptors(new DeprecationInterceptor());
 
   // ponytail: no CORS — browsers reach the API same-origin via the Vite proxy / reverse proxy
   setupSwagger(app);

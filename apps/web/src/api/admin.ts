@@ -13,7 +13,6 @@ import type {
   AdminUserUpdateResponse,
   AdminAssetCountsResponse,
   AdminLibraryStatsResponse,
-  AdminReprocessThumbnailsResponse,
   FaceDetectionSettings,
   Page,
   RegistrationSettings,
@@ -47,14 +46,14 @@ export interface PipelineResponse {
 export async function reprocessPipeline<R extends PipelineResponse>(
   path: 'faces' | 'embeddings' | 'detections',
 ): Promise<R> {
-  const { data } = await api.post<R>(`/v1/admin/${path}/reprocess`);
+  const { data } = await api.post<R>('/v1/admin/reprocess-runs', { kind: path });
   return data;
 }
 
 export async function getPipelineStatus<L extends PipelineRun>(
   path: 'faces' | 'embeddings' | 'detections',
 ): Promise<ReprocessStatus<L>> {
-  const { data } = await api.get<ReprocessStatus<L>>(`/v1/admin/${path}/reprocess`);
+  const { data } = await api.get<ReprocessStatus<L>>(`/v1/admin/reprocess-runs/${path}`);
   return data;
 }
 
@@ -124,11 +123,11 @@ export async function getAdminLibraryStats(): Promise<AdminLibraryStatsResponse>
 
 export async function reprocessThumbnails(
   kind: 'photo' | 'video',
-): Promise<AdminReprocessThumbnailsResponse> {
-  const { data } = await api.post<AdminReprocessThumbnailsResponse>(
-    '/v1/admin/thumbnails/reprocess',
-    { kind },
-  );
+): Promise<{ enqueued: number; total: number }> {
+  const { data } = await api.post<{ enqueued: number; total: number }>('/v1/admin/reprocess-runs', {
+    kind: 'thumbnails',
+    assetKind: kind,
+  });
   return data;
 }
 

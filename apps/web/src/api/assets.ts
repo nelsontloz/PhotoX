@@ -118,7 +118,7 @@ export function getAssetOriginalUrl(asset: Pick<Asset, 'id' | 'fileId'>): string
 
 /** Same-origin URL the browser downloads natively: bytes stream straight to disk (no Blob). */
 export function getAssetDownloadUrl(asset: Pick<Asset, 'id' | 'fileId'>): string {
-  return `/api/v1/assets/${asset.id}/content/download?v=${encodeURIComponent(asset.fileId)}`;
+  return `/api/v1/assets/${asset.id}/content?download=true&v=${encodeURIComponent(asset.fileId)}`;
 }
 
 /**
@@ -127,7 +127,9 @@ export function getAssetDownloadUrl(asset: Pick<Asset, 'id' | 'fileId'>): string
  * navigating to a JSON error page mid-download.
  */
 export async function preflightAssetDownload(asset: Pick<Asset, 'id' | 'fileId'>): Promise<void> {
-  await api.head(`/v1/assets/${asset.id}/content/download?v=${encodeURIComponent(asset.fileId)}`);
+  await api.head(
+    `/v1/assets/${asset.id}/content?download=true&v=${encodeURIComponent(asset.fileId)}`,
+  );
 }
 
 /**
@@ -191,7 +193,7 @@ export async function reprocessVideo(assetId: string): Promise<void> {
 }
 
 export async function trashAssets(assetIds: string[]): Promise<void> {
-  await api.post('/v1/assets/bulk-trash', { assetIds });
+  await api.post('/v1/assets/trash', { assetIds });
 }
 
 interface SearchParams {

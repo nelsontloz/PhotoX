@@ -8,6 +8,7 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
@@ -18,6 +19,7 @@ import { PaginationQueryDto } from '../common/pagination-query.dto';
 import type { PersonListResponse, PersonDto } from '@photox/shared-types';
 import {
   PersonClusterResponseModel,
+  PersonClusterStatusModel,
   PersonListResponseModel,
   PersonModel,
 } from '../swagger/response-models';
@@ -44,6 +46,17 @@ export class PersonsController {
       { jobId },
     );
     return { queued: true, jobId };
+  }
+
+  // The 202 above hands back a jobId; this is the route that makes it readable.
+  @Get('cluster/:jobId')
+  @ApiOperation({ summary: 'State of one queued face-cluster job' })
+  @ApiResponse({ status: 200, description: 'Job state', type: PersonClusterStatusModel })
+  @ApiResponse({ status: 404, description: 'Job not found (finished jobs are removed)' })
+  async clusterStatus(@Param('jobId') jobId: string): Promise<{ jobId: string; state: string }> {
+    const job = await this.bullmq.getQueue('process-faces-cluster').getJob(jobId);
+    if (!job) throw new NotFoundException('Cluster job not found');
+    return { jobId, state: await job.getState() };
   }
 
   @Get()

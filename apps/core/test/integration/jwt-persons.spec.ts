@@ -160,8 +160,27 @@ describe('persons JWT identity', () => {
       .post('/api/v1/persons/cluster')
       .set(t.authHeader(token));
     expect(res.status).toBe(202);
-    const body = res.body as unknown as { queued: boolean };
+    const body = res.body as unknown as { queued: boolean; jobId: string };
     expect(body.queued).toBe(true);
+
+    // the id the 202 hands back is readable, not decoration
+    const status = await request(apiServer(t))
+      .get(`/api/v1/persons/cluster/${body.jobId}`)
+      .set(t.authHeader(token));
+    expect(status.status).toBe(200);
+    expect((status.body as unknown as { jobId: string }).jobId).toBe(body.jobId);
+    expect(['waiting', 'active', 'completed', 'failed', 'delayed']).toContain(
+      (status.body as unknown as { state: string }).state,
+    );
+  });
+
+  it('404s the status of an unknown cluster job', async () => {
+    const user = await seedUser(t);
+    const token = t.signToken({ id: user.id, email: user.email, role: user.role });
+    const res = await request(apiServer(t))
+      .get('/api/v1/persons/cluster/cluster-missing-job')
+      .set(t.authHeader(token));
+    expect(res.status).toBe(404);
   });
 
   it('returns 404 for an unknown person id', async () => {

@@ -116,6 +116,28 @@ export class AdminJobsService {
     );
   }
 
+  /** Re-enqueue the four thumbnail sizes for every asset of one kind (was inline in the controller). */
+  async reprocessThumbnails(
+    assetKind: 'photo' | 'video',
+  ): Promise<{ enqueued: number; total: number }> {
+    let enqueued = 0;
+    let total = 0;
+    for (const size of ['sm', 'md', 'lg', 'xl'] as const) {
+      const page = await this.bullMq.enqueuePaged(
+        'process-thumbnail',
+        'process-thumbnail',
+        (offset) => this.admin.listForReprocess(assetKind, REPROCESS_PAGE_SIZE, offset),
+        (item) => ({
+          data: { assetId: item.id, fileId: item.fileId, userId: item.userId, size },
+          jobId: `thumb-reprocess-${item.id}-${size}`,
+        }),
+      );
+      enqueued += page.enqueued;
+      total = page.total;
+    }
+    return { enqueued, total };
+  }
+
   async reclusterFaces(): Promise<{ enqueued: number }> {
     const rows: { userId: string }[] = await this.dataSource.query(
       'SELECT DISTINCT "userId" FROM faces',

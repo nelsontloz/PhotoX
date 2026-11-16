@@ -437,6 +437,18 @@ export class PersonClusterResponseModel {
   jobId!: string;
 }
 
+export class PersonClusterStatusModel {
+  @ApiProperty({ type: String })
+  jobId!: string;
+
+  @ApiProperty({
+    type: String,
+    example: 'completed',
+    description: 'BullMQ job state: waiting | active | completed | failed | delayed | unknown',
+  })
+  state!: string;
+}
+
 // --- albums ------------------------------------------------------------------
 
 export class AlbumModel implements AlbumDto {
@@ -1496,6 +1508,42 @@ export class ReprocessStatusModel {
     example: { waiting: 0, active: 0 },
   })
   queue!: Record<string, number>;
+}
+
+/** POST /api/v1/admin/reprocess-runs — one address for every bulk pipeline. */
+export class ReprocessRunStartResponseModel {
+  @ApiProperty({ enum: ['faces', 'embeddings', 'detections', 'metadata', 'places', 'thumbnails'] })
+  kind!: string;
+
+  @ApiProperty({ type: Number, description: 'Jobs enqueued (rows updated for places)' })
+  enqueued!: number;
+
+  @ApiProperty({ type: Number, description: 'Candidate count the run covered' })
+  total!: number;
+
+  @ApiPropertyOptional({ type: String, description: 'Embedding model, for kind=embeddings' })
+  model?: string;
+}
+
+/** GET /api/v1/admin/reprocess-runs/:kind — last run record plus live queue depth. */
+export class ReprocessRunStatusResponseModel {
+  @ApiProperty({ enum: ['faces', 'embeddings', 'detections', 'metadata', 'places', 'thumbnails'] })
+  kind!: string;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+    description: 'Last recorded run for this kind (null when never run or not recorded)',
+  })
+  lastRun?: object | null;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: { type: 'number' },
+    description: 'Live queue depth; absent for pipelines that run inline (places, thumbnails)',
+  })
+  queue?: Record<string, number>;
 }
 
 export class EmbeddingReprocessStatusModel {

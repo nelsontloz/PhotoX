@@ -73,6 +73,12 @@ class RestoreRequestDto {
   restoreEmail?: string;
 }
 
+class RestoreByKeyDto {
+  @IsOptional()
+  @IsEmail()
+  restoreEmail?: string;
+}
+
 class MergeRestoreRequestDto {
   @IsString()
   @IsNotEmpty()
@@ -217,6 +223,67 @@ export class BackupController {
   @ApiResponse({ status: 404, description: 'Run not found' })
   async runStatus(@Param('runId', new ParseUUIDPipe()) runId: string): Promise<BackupRunStatus> {
     return this.backups.getRunStatus(runId);
+  }
+
+  // --- keyed backup resource -------------------------------------------------------------
+  // A backup outlives its account, so the key is a user id or (for a deleted account) its
+  // email — the manifest prefix is `backups/<email>__<userId>/`. Keyed routes are declared
+  // after the literals above so `overview`/`status`/`progress`/`runs` are never read as a key.
+
+  @Get('backups/:key')
+  @ApiOperation({ summary: 'Backup manifest status for one account (admin-only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Manifest presence and row counts',
+    type: BackupStatusModel,
+  })
+  @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
+  async statusByKey(@Param('key') key: string): Promise<BackupStatus> {
+    return this.backups.backupStatus(key);
+  }
+
+  @Get('backups/:key/progress')
+  @ApiOperation({ summary: 'Live per-file backup progress for one account (admin-only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'In-progress flag plus per-file counters',
+    type: BackupProgressModel,
+  })
+  @ApiResponse({ status: 404, description: 'No account for key' })
+  async progressByKey(@Param('key') key: string): Promise<BackupProgress> {
+    return this.backups.getBackupProgress(key);
+  }
+
+  @Post('backups/:key/restores')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Restore one account backup into a live account (admin-only)',
+    description:
+      'Same durable run as POST /api/v1/admin/restores, addressed by the backup it restores: ' +
+      '`restoreEmail` re-homes the snapshot into that new account when the original is gone.',
+  })
+  @ApiResponse({ status: 202, description: 'Restore run id', type: RunIdResponseModel })
+  async restoreByKey(
+    @Param('key') key: string,
+    @Body() dto: RestoreByKeyDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ runId: string }> {
+    const { runId } = await this.backups.startRestore(key, dto.restoreEmail);
+    setResourceLocation(res, `/api/v1/admin/backups/runs/${runId}`, 2);
+    return { runId };
+  }
+
+  @Delete('backups/:key')
+  @ApiOperation({ summary: 'Delete one account backup from S3 (admin-only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Deleted backup prefix and object count',
+    type: DeleteBackupResultModel,
+  })
+  @ApiResponse({ status: 404, description: 'No backup for key' })
+  @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
+  async deleteByKey(@Param('key') key: string): Promise<DeleteBackupResult> {
+    return this.backups.deleteBackup(key);
   }
 
   @Delete('backups')

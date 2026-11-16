@@ -57,7 +57,7 @@ describe('content URL builders', () => {
 
   it('the download URL targets the asset content route', () => {
     expect(getAssetDownloadUrl({ id: 'asset-1', fileId: 'file-1' })).toBe(
-      '/api/v1/assets/asset-1/content/download?v=file-1',
+      '/api/v1/assets/asset-1/content?download=true&v=file-1',
     );
   });
 });
@@ -68,7 +68,7 @@ describe('preflightAssetDownload', () => {
 
     await preflightAssetDownload({ id: 'asset-1', fileId: 'file-1' });
 
-    expect(headMock).toHaveBeenCalledWith('/v1/assets/asset-1/content/download?v=file-1');
+    expect(headMock).toHaveBeenCalledWith('/v1/assets/asset-1/content?download=true&v=file-1');
   });
 });
 

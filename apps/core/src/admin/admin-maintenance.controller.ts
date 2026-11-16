@@ -6,8 +6,6 @@ import type { LastRun } from '../settings/settings.service';
 import { SettingsService } from '../settings/settings.service';
 import { AdminAssetsService } from './admin-assets.service';
 import { AdminJobsService } from './admin-jobs.service';
-import { REPROCESS_PAGE_SIZE } from './reprocess.util';
-import { BullMqService } from '../queue/bullmq.service';
 import {
   AdminReprocessThumbnailsResponseModel,
   CleanupOrphansResponseModel,
@@ -32,7 +30,6 @@ class ReprocessThumbnailsDto {
 export class AdminMaintenanceController {
   constructor(
     private readonly admin: AdminAssetsService,
-    private readonly bullMq: BullMqService,
     private readonly adminJobs: AdminJobsService,
     private readonly settings: SettingsService,
   ) {}
@@ -44,9 +41,27 @@ export class AdminMaintenanceController {
     return this.admin.getOrphanCounts();
   }
 
-  @Post('cleanup-orphans/run')
+  @Post('cleanup-orphans')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Run orphan cleanup inline (admin-only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Deleted orphan file, thumbnail and stray counts',
+    type: CleanupOrphansResponseModel,
+  })
+  async cleanupOrphans(): Promise<{
+    deletedFiles: number;
+    deletedThumbnails: number;
+    deletedStrays: number;
+  }> {
+    return this.admin.cleanupOrphans();
+  }
+
+  @Post('cleanup-orphans/run')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Run orphan cleanup inline (admin-only). Deprecated: use POST /admin/cleanup-orphans',
+  })
   @ApiResponse({
     status: 200,
     description: 'Deleted orphan file, thumbnail and stray counts',
@@ -71,22 +86,8 @@ export class AdminMaintenanceController {
   async reprocess(
     @Body() dto: ReprocessThumbnailsDto,
   ): Promise<{ enqueued: number; totalAssets: number }> {
-    let enqueued = 0;
-    let totalAssets = 0;
-    for (const size of ['sm', 'md', 'lg', 'xl'] as const) {
-      const page = await this.bullMq.enqueuePaged(
-        'process-thumbnail',
-        'process-thumbnail',
-        (offset) => this.admin.listForReprocess(dto.kind, REPROCESS_PAGE_SIZE, offset),
-        (item) => ({
-          data: { assetId: item.id, fileId: item.fileId, userId: item.userId, size },
-          jobId: `thumb-reprocess-${item.id}-${size}`,
-        }),
-      );
-      enqueued += page.enqueued;
-      totalAssets = page.total;
-    }
-    return { enqueued, totalAssets };
+    const { enqueued, total } = await this.adminJobs.reprocessThumbnails(dto.kind);
+    return { enqueued, totalAssets: total };
   }
 
   @Post('faces/reprocess')

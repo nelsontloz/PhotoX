@@ -27,6 +27,9 @@ export class AssetContentController {
   @Get(':id/content')
   @ApiOperation({
     summary: 'Stream an asset’s displayable bytes (transcode when available, else the original)',
+    description:
+      'The one asset byte route: `variant` picks display vs original, `download` flips it to an ' +
+      'attachment. Replaces `GET :id/content/download` (deprecated).',
   })
   @ApiResponse({ status: 200, description: 'File stream' })
   @ApiResponse({ status: 206, description: 'Partial content' })
@@ -40,11 +43,11 @@ export class AssetContentController {
     @CurrentUserId() userId: string,
   ): Promise<void> {
     const fileId = await this.assets.contentTarget(userId, id, q.variant ?? 'display');
-    await serveFileBytes(req, res, this.files, userId, fileId);
+    await serveFileBytes(req, res, this.files, userId, fileId, { attachment: q.download });
   }
 
   @Get(':id/content/download')
-  @ApiOperation({ summary: 'Download an asset’s original bytes' })
+  @ApiOperation({ summary: 'Download an asset’s original bytes (deprecated: use ?download=true)' })
   @ApiResponse({
     status: 200,
     description: 'Original file stream (Content-Disposition attachment)',
