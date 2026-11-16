@@ -21,6 +21,7 @@ import type {
   UploadSessionStatusResponse,
 } from '@photox/shared-types';
 import { CurrentUserId } from '../auth/jwt-auth.guard';
+import { setResourceLocation } from '../common/resource-headers';
 import { UPLOAD_CHUNK_SIZE_BYTES, UploadsService } from './uploads.service';
 import { ingestErrorBody } from '../common/ingest-errors';
 import { CreateUploadSessionBodyDto } from './dto/create-upload-session.body.dto';
@@ -101,8 +102,11 @@ export class UploadsController {
   async create(
     @CurrentUserId() userId: string,
     @Body() body: CreateUploadSessionBodyDto,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<UploadSessionCreated> {
-    return this.uploads.create(userId, body);
+    const session = await this.uploads.create(userId, body);
+    setResourceLocation(res, `/api/v1/uploads/${session.uploadId}`);
+    return session;
   }
 
   @Get(':uploadId')

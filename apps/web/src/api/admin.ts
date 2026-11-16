@@ -15,6 +15,7 @@ import type {
   AdminLibraryStatsResponse,
   AdminReprocessThumbnailsResponse,
   FaceDetectionSettings,
+  Page,
   RegistrationSettings,
 } from '@photox/shared-types';
 
@@ -436,10 +437,13 @@ export interface BackupOverviewRow {
 }
 
 export async function getBackupOverview(): Promise<BackupOverviewRow[]> {
-  const { data } = await api.get<BackupOverviewRow[]>('/v1/admin/backups/overview', {
+  // ponytail: the admin table renders the first 200 users; wire offset paging into the page when
+  // the account count outgrows it. `total` in the envelope is the whole match count.
+  const { data } = await api.get<Page<BackupOverviewRow>>('/v1/admin/backups/overview', {
+    params: { limit: 200 },
     timeout: BACKUP_STATUS_TIMEOUT_MS,
   });
-  return data;
+  return data.items;
 }
 
 // --- admin user account edits ----------------------------------------------------------

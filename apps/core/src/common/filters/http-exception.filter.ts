@@ -127,6 +127,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else {
       this.logger.warn(`${line}: ${body.message}`);
     }
+    // Same body either way; the media type only follows the client's Accept so a problem+json
+    // client can parse it without a special case.
+    if (request.headers?.accept?.includes('application/problem+json')) {
+      response.type('application/problem+json');
+    }
     response.status(status).json(body);
   }
 }

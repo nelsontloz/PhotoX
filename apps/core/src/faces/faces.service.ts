@@ -136,17 +136,18 @@ export class FacesService {
     return new Set(trashed.map((a) => a.id));
   }
 
-  async assignPerson(userId: string, faceId: string, personId: string | null): Promise<void> {
+  async assignPerson(userId: string, faceId: string, personId: string | null): Promise<FaceDto> {
     const face = await findOwnedOr404(this.repo, faceId, userId, 'Face');
     if (personId) {
       await findOwnedOr404(this.personRepo, personId, userId, 'Person');
     }
     const oldPersonId = face.personId;
     face.personId = personId;
-    await this.repo.save(face);
+    const saved = await this.repo.save(face);
     // ponytail: keep Person.faceCount in sync after assign/unassign (cluster job + manual edits both route here)
     if (oldPersonId) await refreshPersonFaceCount(this.repo, this.personRepo, oldPersonId, userId);
     if (personId) await refreshPersonFaceCount(this.repo, this.personRepo, personId, userId);
+    return toFaceDto(saved);
   }
 
   // ponytail: synchronous crop on demand. Caching the resulting jpeg (e.g. via a `face_thumbs` table or local disk) is the upgrade path when traffic warrants.

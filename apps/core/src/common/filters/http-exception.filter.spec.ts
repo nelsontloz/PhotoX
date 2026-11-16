@@ -3,15 +3,16 @@ import { HttpExceptionFilter } from './http-exception.filter';
 
 function makeHost(request: Record<string, unknown> = {}) {
   const json = vi.fn();
+  const type = vi.fn();
   const setHeader = vi.fn();
   const status = vi.fn().mockReturnValue({ json });
   const host = {
     switchToHttp: () => ({
-      getResponse: () => ({ status, setHeader }),
+      getResponse: () => ({ status, setHeader, type }),
       getRequest: () => ({ method: 'POST', path: '/api/v1/files', ...request }),
     }),
   } as unknown as ArgumentsHost;
-  return { host, status, json, setHeader };
+  return { host, status, json, setHeader, type };
 }
 
 function silenceLogs() {
@@ -181,5 +182,23 @@ describe('HttpExceptionFilter', () => {
 
     expect(String(logs.error.mock.calls[0]?.[0])).toContain('"code":"SERVICE_UNAVAILABLE"');
     expect(String(logs.error.mock.calls[0]?.[0])).toContain('"message":"upstream gone"');
+  });
+
+  it('serves the same error body as application/problem+json when the client asks for it', () => {
+    silenceLogs();
+    const { host, type } = makeHost({ headers: { accept: 'application/problem+json' } });
+
+    new HttpExceptionFilter().catch(new HttpException('nope', 400), host);
+
+    expect(type).toHaveBeenCalledWith('application/problem+json');
+  });
+
+  it('keeps application/json when the client does not ask for problem+json', () => {
+    silenceLogs();
+    const { host, type } = makeHost({ headers: { accept: 'application/json' } });
+
+    new HttpExceptionFilter().catch(new HttpException('nope', 400), host);
+
+    expect(type).not.toHaveBeenCalled();
   });
 });

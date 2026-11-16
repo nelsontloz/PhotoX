@@ -175,24 +175,21 @@ describe('assets favorite filter', () => {
     expect((trashed.body as { items: { id: string }[] }).items.map((i) => i.id)).toEqual([assetId]);
   });
 
-  // the DTO coerces the query string through isQueryTrue before @IsBoolean runs, so only the
-  // literal 'true' means true and any other value is false — a typo fails closed (never shows
-  // favorites) instead of 400ing. Asserts the real contract, not the plan doc's 400.
-  it('rejects a non-boolean favorite query value as false', async () => {
+  // Only the literal 'true'/'false' are boolean filters: any other value is a 400, so a typo'd
+  // filter can never quietly widen the result set (see parseQueryBoolean).
+  it('rejects a non-boolean favorite query value with a 400', async () => {
     const user = await seedUser(t);
     const token = t.signToken({ id: user.id, email: user.email, role: user.role });
-    const favorite = await seedAt(user.id, '2024-06-02T00:00:00.000Z', { favorite: true });
-    const notFavorite = await seedAt(user.id, '2024-06-01T00:00:00.000Z');
+    await seedAt(user.id, '2024-06-02T00:00:00.000Z', { favorite: true });
 
     const res = await request(apiServer(t))
       .get('/api/v1/assets')
       .query({ favorite: 'yes', limit: 100 })
       .set(t.authHeader(token));
 
-    expect(res.status).toBe(200);
-    const body = res.body as unknown as { items: { id: string }[]; total: number };
-    expect(body.items.map((a) => a.id)).toEqual([notFavorite]);
-    expect(body.items.map((a) => a.id)).not.toContain(favorite);
-    expect(body.total).toBe(1);
+    expect(res.status).toBe(400);
+    const body = res.body as unknown as { code: string; details: { field: string }[] };
+    expect(body.code).toBe('VALIDATION_FAILED');
+    expect(body.details).toEqual([{ field: 'favorite', message: 'must be true or false' }]);
   });
 });

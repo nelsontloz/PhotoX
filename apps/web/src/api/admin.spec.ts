@@ -265,9 +265,12 @@ describe('user backup admin API', () => {
         deleted: true,
       },
     ];
-    getMock.mockResolvedValue({ data: rows });
+    getMock.mockResolvedValue({ data: { items: rows, total: rows.length } });
     await expect(getBackupOverview()).resolves.toEqual(rows);
-    expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/overview', { timeout: 30_000 });
+    expect(getMock).toHaveBeenCalledWith('/v1/admin/backups/overview', {
+      params: { limit: 200 },
+      timeout: 30_000,
+    });
   });
 });
 

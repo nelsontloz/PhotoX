@@ -8,8 +8,10 @@ import {
   Param,
   Patch,
   Post,
+  Res,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import type { Response } from 'express';
 import type {
   AdminUserBackupSync,
   AdminUserDeleteResponse,
@@ -21,6 +23,7 @@ import type {
 } from '@photox/shared-types';
 import { Query } from '@nestjs/common';
 import { CurrentUserId } from '../../auth/jwt-auth.guard';
+import { setResourceLocation } from '../../common/resource-headers';
 import { AdminService } from './admin.service';
 import { AdminUserIdParamsDto } from './dto/admin-user-id.params.dto';
 import { CreateAdminUserDto } from './dto/create-admin-user.body.dto';
@@ -73,8 +76,13 @@ export class AdminController {
   })
   @ApiResponse({ status: 201, description: 'Created user row', type: AdminUserRowModel })
   @ApiResponse({ status: 409, description: 'Email already registered' })
-  async create(@Body() body: CreateAdminUserDto): Promise<AdminUserRow> {
-    return this.admin.createUser(body);
+  async create(
+    @Body() body: CreateAdminUserDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AdminUserRow> {
+    const user = await this.admin.createUser(body);
+    setResourceLocation(res, `/api/v1/admin/users/${user.id}`);
+    return user;
   }
 
   @Patch(':id')
@@ -139,8 +147,11 @@ export class AdminController {
   async remove(
     @Param() params: AdminUserIdParamsDto,
     @CurrentUserId() requesterId: string,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<AdminUserDeleteResponse> {
-    return this.admin.requestUserDelete(params.id, requesterId);
+    const result = await this.admin.requestUserDelete(params.id, requesterId);
+    setResourceLocation(res, `/api/v1/admin/users/${params.id}/delete-status`, 1);
+    return result;
   }
 
   @Get(':id/delete-status')

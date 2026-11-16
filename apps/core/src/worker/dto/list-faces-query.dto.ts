@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsBoolean, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { isQueryTrue } from '../../common/query-params';
+import { parseQueryBooleanParam } from '../../common/query-params';
 
 // ponytail: cursor is the last seen face id (keyset over id ASC); nextCursor=null ends the walk.
 // limit defaults to 500 in the controller, so every call takes the paginated path.
@@ -20,13 +20,13 @@ export class ListFacesQueryDto {
   cursor?: string;
 
   @IsOptional()
-  @Transform(({ value }) => isQueryTrue(value))
+  @Transform(parseQueryBooleanParam)
   @IsBoolean()
   @ApiProperty({ required: false, default: false })
   includeEmbeddings?: boolean;
 
   @IsOptional()
-  @Transform(({ value }) => isQueryTrue(value))
+  @Transform(parseQueryBooleanParam)
   @IsBoolean()
   @ApiProperty({ required: false, default: false })
   excludeTrashed?: boolean;

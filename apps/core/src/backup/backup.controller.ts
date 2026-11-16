@@ -9,9 +9,25 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { ApiTags, ApiOperation, ApiResponse, ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsEmail,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
+import type { Response } from 'express';
+import type { Page } from '@photox/shared-types';
+import { PaginationQueryDto } from '../common/pagination-query.dto';
+import { setResourceLocation } from '../common/resource-headers';
 import {
   UserBackupService,
   type BackupOverviewRow,
@@ -22,7 +38,7 @@ import {
   type MergeBackupResult,
 } from './user-backup.service';
 import {
-  BackupOverviewRowModel,
+  BackupOverviewPageModel,
   BackupProgressModel,
   BackupRunStatusModel,
   BackupStatusModel,
@@ -35,6 +51,16 @@ class EmailOrIdQueryDto {
   @IsString()
   @IsNotEmpty()
   emailOrId!: string;
+}
+
+class ListBackupOverviewQueryDto extends PaginationQueryDto {
+  // cap stays 200 (base allows 1000): one row per user, each backed by an S3 manifest probe
+  @ApiProperty({ type: Number, required: false, default: 50, maximum: 200 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  override limit = 50;
 }
 
 class RestoreRequestDto {
@@ -81,8 +107,13 @@ export class BackupController {
       'counts. A failed file retries alone and a failed run never writes a manifest.',
   })
   @ApiResponse({ status: 202, description: 'Backup run id', type: RunIdResponseModel })
-  async backup(@Body() dto: EmailOrIdQueryDto): Promise<{ runId: string }> {
-    return this.backups.startBackup(dto.emailOrId);
+  async backup(
+    @Body() dto: EmailOrIdQueryDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ runId: string }> {
+    const { runId } = await this.backups.startBackup(dto.emailOrId);
+    setResourceLocation(res, `/api/v1/admin/backups/runs/${runId}`, 2);
+    return { runId };
   }
 
   @Post('restores')
@@ -95,8 +126,13 @@ export class BackupController {
       'that fails is resumable by starting it again (same manifest), not a 409.',
   })
   @ApiResponse({ status: 202, description: 'Restore run id', type: RunIdResponseModel })
-  async restore(@Body() dto: RestoreRequestDto): Promise<{ runId: string }> {
-    return this.backups.startRestore(dto.emailOrId, dto.restoreEmail);
+  async restore(
+    @Body() dto: RestoreRequestDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ runId: string }> {
+    const { runId } = await this.backups.startRestore(dto.emailOrId, dto.restoreEmail);
+    setResourceLocation(res, `/api/v1/admin/backups/runs/${runId}`, 2);
+    return { runId };
   }
 
   @Post('restores/merge')
@@ -140,11 +176,15 @@ export class BackupController {
   @ApiResponse({
     status: 200,
     description: 'Live asset counts joined with manifest status',
-    type: [BackupOverviewRowModel],
+    type: BackupOverviewPageModel,
   })
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
-  async overview(): Promise<BackupOverviewRow[]> {
-    return this.backups.backupOverview();
+  async overview(@Query() q: ListBackupOverviewQueryDto): Promise<Page<BackupOverviewRow>> {
+    // ponytail: the page slices the assembled view, so every request still probes every manifest.
+    // `total` stays exact; page the user query + orphan dirs only if the account count outgrows
+    // the client's 30s timeout.
+    const all = await this.backups.backupOverview();
+    return { items: all.slice(q.offset, q.offset + q.limit), total: all.length };
   }
 
   @Get('backups/status')
