@@ -3,7 +3,13 @@ import { Type } from 'class-transformer';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 export class DuplicatesQueryDto {
-  @ApiProperty({ required: false, default: 10, maximum: 64, description: 'Max Hamming distance' })
+  @ApiProperty({
+    type: 'integer',
+    required: false,
+    default: 10,
+    maximum: 64,
+    description: 'Max Hamming distance',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -13,7 +19,7 @@ export class DuplicatesQueryDto {
 }
 
 export class SimilarQueryDto {
-  @ApiProperty({ required: false, default: 12, maximum: 100 })
+  @ApiProperty({ type: 'integer', required: false, default: 12, maximum: 100 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

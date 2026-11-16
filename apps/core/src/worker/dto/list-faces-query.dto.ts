@@ -11,7 +11,7 @@ export class ListFacesQueryDto {
   @IsInt()
   @Min(1)
   @Max(1000)
-  @ApiProperty({ required: false, default: 500, maximum: 1000 })
+  @ApiProperty({ type: 'integer', required: false, default: 500, maximum: 1000 })
   limit?: number;
 
   @IsOptional()

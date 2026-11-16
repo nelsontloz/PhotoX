@@ -13,7 +13,7 @@ export class PaginationQueryDto {
   @Max(1000)
   // type: Number is load-bearing — an initializer-only field emits design:type Object, which
   // swagger renders as an `object` query param that swagger-ui then refuses to send
-  @ApiProperty({ type: Number, default: 20, required: false, maximum: 1000 })
+  @ApiProperty({ type: 'integer', default: 20, required: false, maximum: 1000 })
   limit = 20;
 
   // @IsInt on both fields: a float offset/limit reached SQL as `OFFSET 1.5` and 500'd
@@ -21,6 +21,6 @@ export class PaginationQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  @ApiProperty({ type: Number, default: 0, required: false })
+  @ApiProperty({ type: 'integer', default: 0, required: false })
   offset = 0;
 }

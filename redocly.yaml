@@ -1,0 +1,11 @@
+extends:
+  - recommended
+
+rules:
+  # /health takes no input and /api/v1/auth/registration is a read-only settings lookup: neither
+  # has a client-error path to document.
+  operation-4xx-response: off
+  # /admin/backups/runs/{runId} and /admin/backups/{key}/{progress,restores} only collide when a
+  # backup key is literally named "runs"; the controller declares the literal routes first.
+  # Renaming a shipped path would be a breaking API change, so the document keeps the wire shape.
+  no-ambiguous-paths: off

@@ -28,7 +28,7 @@ export class ListAssetsQueryDto {
   @ApiProperty({
     required: false,
     type: String,
-    example: 'uuid1,uuid2',
+    example: '550e8400-e29b-41d4-a716-446655440000',
     description: 'Comma-separated asset IDs. Maximum 100.',
   })
   ids?: string[];
@@ -38,14 +38,14 @@ export class ListAssetsQueryDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  @ApiProperty({ type: Number, default: 20, required: false, maximum: 100 })
+  @ApiProperty({ type: 'integer', default: 20, required: false, maximum: 100 })
   limit?: number;
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  @ApiProperty({ type: Number, default: 0, required: false })
+  @ApiProperty({ type: 'integer', default: 0, required: false })
   offset?: number;
 
   @IsOptional()

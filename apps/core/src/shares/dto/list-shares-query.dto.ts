@@ -9,7 +9,7 @@ export class ListSharesQueryDto {
   @IsInt()
   @Min(1)
   @Max(200)
-  @ApiProperty({ type: Number, required: false, default: 20, maximum: 200 })
+  @ApiProperty({ type: 'integer', required: false, default: 20, maximum: 200 })
   limit?: number;
 
   @IsOptional()
@@ -26,7 +26,7 @@ export class ListPublicAlbumAssetsQueryDto {
   @IsInt()
   @Min(1)
   @Max(500)
-  @ApiProperty({ type: Number, required: false, default: 100, maximum: 500 })
+  @ApiProperty({ type: 'integer', required: false, default: 100, maximum: 500 })
   limit?: number;
 
   @IsOptional()

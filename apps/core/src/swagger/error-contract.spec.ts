@@ -34,6 +34,9 @@ function makeDocument(): OpenAPIObject {
       '/api/v1/admin/users': {
         get: { responses: { 200: { description: 'ok' } } },
       },
+      '/worker/assets': {
+        get: { responses: { 200: { description: 'ok' } } },
+      },
       '/api/v1/auth/login': {
         post: {
           requestBody: { content: {} },
@@ -108,8 +111,14 @@ describe('applyErrorContract', () => {
       { bearerAuth: [] },
       { cookieAuth: [] },
     ]);
-    expect(operation(document, '/health', 'get').security).toBeUndefined();
-    expect(operation(document, '/api/v1/auth/login', 'post').security).toBeUndefined();
+    expect(operation(document, '/health', 'get').security).toEqual([]);
+    expect(operation(document, '/api/v1/auth/login', 'post').security).toEqual([]);
+  });
+
+  it('requires the delegated bearer and the job signature together on the worker surface', () => {
+    expect(operation(document, '/worker/assets', 'get').security).toEqual([
+      { bearerAuth: [], workerJobSignature: [] },
+    ]);
   });
 
   it('documents a 500 with the ApiError body on every operation', () => {

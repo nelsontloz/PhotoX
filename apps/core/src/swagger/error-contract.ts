@@ -119,10 +119,15 @@ export function applyErrorContract(document: OpenAPIObject): void {
       if (!operation) continue;
       operation.responses ??= {};
 
-      if (!open) operation.security = [{ bearerAuth: [] }, { cookieAuth: [] }];
-      // internal job surface: not a user credential — say what it actually takes
-      if (isWorkerRoute(path))
-        operation.security = [{ bearerAuth: [] }, { workerJobSignature: [] }];
+      // Public routes say so explicitly (an absent requirement inherits the document root, and
+      // an empty requirement is the standard "no auth" marker); the worker surface requires the
+      // delegated Bearer AND the job signature, so both live in one requirement object, never in
+      // two alternatives.
+      operation.security = open
+        ? []
+        : isWorkerRoute(path)
+          ? [{ bearerAuth: [], workerJobSignature: [] }]
+          : [{ bearerAuth: [] }, { cookieAuth: [] }];
       ensureResponse(operation, '500', 'Unexpected server error.');
       if (!open) ensureResponse(operation, '401', 'Missing, invalid or revoked credentials.');
       if (admin) ensureResponse(operation, '403', 'Authenticated, but not an admin.');
