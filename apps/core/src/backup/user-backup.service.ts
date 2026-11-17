@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { AdminUserBackupSync } from '@photox/shared-types';
+import type {
+  AdminUserBackupSync,
+  TransferClaim,
+  TransferFinishRequest,
+  TransferFinishResult,
+} from '@photox/shared-types';
 import { User } from '../database/entities/user.entity';
 import { TRANSFER_DISPATCH_BATCH_SIZE, type TransferKind } from './backup-transfer.constants';
 import { BackupStatusService } from './backup-status.service';
@@ -15,7 +20,6 @@ import type {
   DeleteBackupResult,
   MergeBackupResult,
   MergeUserBackupInput,
-  TransferJobLike,
 } from './backup.types';
 
 export * from './backup.types';
@@ -32,8 +36,8 @@ export { buildFallbackEmail } from './backup-overview.builder';
  * detections/thumbnails (all regenerable via re-enqueue). Trashed rows+bytes
  * travel as-is and stay degraded (reprocess filters exclude trashed).
  *
- * Restore commits rows + one ledger item per original in one transaction, then the
- * advisory-locked sweeper downloads one file per item and retries each file on its
+ * Restore commits rows + one ledger item per original in one transaction, then the worker
+ * executes one item per job through core's claim/finish routes, so every file retries on its
  * own schedule; finalize re-enqueues derivatives. Backup uses the same ledger, writes
  * original bytes per item and `manifest.json` LAST (HEAD-verified), so a failed run
  * never leaves a live manifest over missing bytes. Successful items are deleted; a
@@ -74,9 +78,9 @@ export { buildFallbackEmail } from './backup-overview.builder';
  */
 @Injectable()
 export class UserBackupService {
-  // ponytail: the facade is a thin delegator — the seven phase services are Nest providers, so
-  // the controller, dispatcher and consumers keep their single-token wiring. Upgrade to injecting
-  // a phase service directly only if a caller needs just one phase.
+  // ponytail: the facade is a thin delegator — the phase services are Nest providers, so the
+  // controller, dispatcher and worker routes keep their single-token wiring. Upgrade to
+  // injecting a phase service directly only if a caller needs just one phase.
   constructor(
     private readonly statusService: BackupStatusService,
     private readonly prefixService: BackupPrefixService,
@@ -118,8 +122,12 @@ export class UserBackupService {
     return this.finalizeService.getRunStatus(runId);
   }
 
-  runTransfersOnce(ignoreBackoff = false): Promise<number> {
-    return this.dispatchService.runTransfersOnce(ignoreBackoff);
+  claimDueTransfers(
+    kind: TransferKind,
+    limit: number,
+    ignoreBackoff = false,
+  ): Promise<{ runId: string; itemId: string; userId: string; attempts: number }[]> {
+    return this.dispatchService.claimDueTransfers(kind, limit, ignoreBackoff);
   }
 
   dispatchPendingTransfers(
@@ -133,7 +141,23 @@ export class UserBackupService {
     return this.dispatchService.reconcileTransfers();
   }
 
-  consumeTransferJob(kind: TransferKind, job: TransferJobLike): Promise<void> {
-    return this.dispatchService.consumeTransferJob(kind, job);
+  claimTransfer(
+    kind: TransferKind,
+    userId: string,
+    runId: string,
+    itemId: string,
+    attempt: number,
+  ): Promise<TransferClaim | null> {
+    return this.dispatchService.claimTransfer(kind, userId, runId, itemId, attempt);
+  }
+
+  finishTransfer(
+    kind: TransferKind,
+    userId: string,
+    runId: string,
+    itemId: string,
+    request: TransferFinishRequest,
+  ): Promise<TransferFinishResult> {
+    return this.dispatchService.finishTransfer(kind, userId, runId, itemId, request);
   }
 }

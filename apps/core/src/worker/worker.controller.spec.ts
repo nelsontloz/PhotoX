@@ -5,6 +5,7 @@ import type { PersonsService } from '../persons/persons.service';
 import type { EmbeddingsService } from '../embeddings/embeddings.service';
 import type { DetectionsService } from '../detections/detections.service';
 import type { UserDeleteService } from '../users/admin/user-delete.service';
+import type { UserBackupService } from '../backup/user-backup.service';
 import { ForbiddenException } from '@nestjs/common';
 import { WorkerController } from './worker.controller';
 
@@ -23,6 +24,7 @@ function controllerWith(
     svc,
     { register } as unknown as DetectionsService,
     deletes as unknown as UserDeleteService,
+    {} as UserBackupService,
   );
 }
 

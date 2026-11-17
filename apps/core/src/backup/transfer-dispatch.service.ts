@@ -1,16 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { isUUID } from 'class-validator';
-import { randomUUID } from 'crypto';
-import { mkdir, rm } from 'fs/promises';
-import { join } from 'path';
 import { DataSource, type Repository } from 'typeorm';
-import { LocalStorageService } from '@photox/shared-config';
-import { errorMessage } from '../common/errors';
+import type {
+  TransferClaim,
+  TransferFinishRequest,
+  TransferFinishResult,
+} from '@photox/shared-types';
 import { BackupRun } from '../database/entities/backup-run.entity';
 import { BackupRunItem } from '../database/entities/backup-run-item.entity';
 import { BullMqService } from '../queue/bullmq.service';
-import { sha256File } from './backup-storage-io';
 import {
   TRANSFER_DISPATCH_BATCH_SIZE,
   TRANSFER_JOB_ATTEMPTS,
@@ -20,24 +18,21 @@ import {
   type TransferJobData,
   type TransferKind,
 } from './backup-transfer.constants';
-import type { ClaimedBackupItem, TransferJobLike } from './backup.types';
 import { rowsOf } from './bulk-io';
 import { RunFinalizeService } from './run-finalize.service';
-import { isNotFound, S3BackupService } from './s3-backup.service';
 
-/** Cap for the run driver's retry backoff when it retries without BullMQ's scheduler. */
-const TRANSFER_MAX_BACKOFF_MS = 5 * 60_000;
 // ponytail: a claim is a timestamp, not a lease — no owner, no heartbeat — so a transfer that
 // outlives this window can be re-queued while the first job still runs. Both sides write the same
 // bytes to the same key through tmp+rename, so the cost is duplicate work, never corruption.
 // Upgrade to a renewing lease only if a single file can legitimately take this long (the 4 GiB
 // upload cap and the 1h transcode cap say it cannot).
-/** A crashed core leaves items 'running'; after this they are claimable again. */
+/** A crashed core/worker leaves items 'running'; after this they are claimable again. */
 const TRANSFER_CLAIM_TIMEOUT_MS = 30 * 60_000;
 
 /**
- * Middle phase: claim due ledger items, hand them to the per-kind BullMQ queues, execute one item
- * per job, and promote a drained run by delegating to the finalize phase.
+ * Middle phase: claim due ledger items and hand them to the per-kind BullMQ queues, then serve
+ * the worker's claim/finish calls for one item per job and promote a drained run by delegating
+ * to the finalize phase.
  */
 @Injectable()
 export class TransferDispatchService {
@@ -47,74 +42,39 @@ export class TransferDispatchService {
     private readonly finalize: RunFinalizeService,
     private readonly dataSource: DataSource,
     private readonly bullMq: BullMqService,
-    private readonly s3: S3BackupService,
-    private readonly storage: LocalStorageService,
     @InjectRepository(BackupRun) private readonly runs: Repository<BackupRun>,
     @InjectRepository(BackupRunItem) private readonly runItems: Repository<BackupRunItem>,
   ) {}
 
   /**
-   * One sweeper pass without BullMQ: requeue crashed claims, drive one batch of each kind
-   * through the same consumer, then finish runs with nothing left. Test-only driver — the
-   * production executor is the queue pair (dispatcher + consumers).
-   */
-  async runTransfersOnce(ignoreBackoff = false): Promise<number> {
-    await this.requeueStuckFinalizing();
-    await this.requeueStaleClaims();
-    let consumed = 0;
-    for (const kind of Object.keys(TRANSFER_QUEUES) as TransferKind[]) {
-      const rows = await this.claimDispatchable(kind, TRANSFER_DISPATCH_BATCH_SIZE, ignoreBackoff);
-      for (const row of rows) {
-        try {
-          await this.consumeTransferJob(kind, {
-            data: { runId: row.runId, itemId: row.id },
-            attemptsMade: row.attempts,
-            opts: { attempts: TRANSFER_JOB_ATTEMPTS },
-          });
-        } catch {
-          // transient: the consumer left the row queued, so own the retry here instead of BullMQ
-          const delayMs = ignoreBackoff
-            ? 0
-            : Math.min(TRANSFER_MAX_BACKOFF_MS, 1000 * 2 ** row.attempts);
-          await this.runItems.update(row.id, {
-            state: 'retrying',
-            nextAttemptAt: new Date(Date.now() + delayMs),
-            claimedAt: null,
-          });
-        }
-        consumed += 1;
-      }
-    }
-    await this.finalize.finalizeDueRuns(null);
-    return consumed;
-  }
-
-  /**
    * Atomic claim of one kind's due items: pending/retrying rows become queued (the lease
    * marker the dispatcher and the local driver both use) and their attempt count comes back
-   * so the consumer can decide permanent vs transient without another read.
+   * so the executor can decide permanent vs transient without another read.
    */
   private async claimDispatchable(
     kind: TransferKind,
     limit: number,
     ignoreBackoff = false,
-  ): Promise<{ id: string; runId: string; attempts: number }[]> {
+  ): Promise<{ id: string; runId: string; userId: string; attempts: number }[]> {
     const due = ignoreBackoff ? '' : 'AND i2."nextAttemptAt" <= now()';
-    const rows = rowsOf<{ id: string; runId: string; attempts: number }>(
+    const rows = rowsOf<{ id: string; runId: string; userId: string; attempts: number }>(
       await this.dataSource.query(
         `UPDATE "backup_run_items" i
          SET "state" = 'queued', "claimedAt" = now()
-         WHERE i."id" IN (
-           SELECT i2."id" FROM "backup_run_items" i2
-           JOIN "backup_runs" r ON r."id" = i2."runId"
-           WHERE r."state" = 'running' AND r."kind" = $2
-             AND i2."state" IN ('pending', 'retrying')
-             ${due}
-           ORDER BY i2."nextAttemptAt" ASC
-           FOR UPDATE OF i2 SKIP LOCKED
-           LIMIT $1
-         )
-         RETURNING i."id" AS "id", i."runId" AS "runId", i."attempts" AS "attempts"`,
+         FROM "backup_runs" r
+         WHERE r."id" = i."runId"
+           AND i."id" IN (
+             SELECT i2."id" FROM "backup_run_items" i2
+             JOIN "backup_runs" r2 ON r2."id" = i2."runId"
+             WHERE r2."state" = 'running' AND r2."kind" = $2
+               AND i2."state" IN ('pending', 'retrying')
+               ${due}
+             ORDER BY i2."nextAttemptAt" ASC
+             FOR UPDATE OF i2 SKIP LOCKED
+             LIMIT $1
+           )
+         RETURNING i."id" AS "id", i."runId" AS "runId", r."userId" AS "userId",
+                   i."attempts" AS "attempts"`,
         [limit, kind],
       ),
     );
@@ -122,9 +82,28 @@ export class TransferDispatchService {
   }
 
   /**
+   * Claim half of the local test driver: production dispatch hands rows to BullMQ
+   * (`dispatchPendingTransfers`), while the integration harness claims here and drives the
+   * worker's own claim/finish calls against them.
+   */
+  async claimDueTransfers(
+    kind: TransferKind,
+    limit: number,
+    ignoreBackoff = false,
+  ): Promise<{ runId: string; itemId: string; userId: string; attempts: number }[]> {
+    const rows = await this.claimDispatchable(kind, limit, ignoreBackoff);
+    return rows.map((row) => ({
+      runId: row.runId,
+      itemId: row.id,
+      userId: row.userId,
+      attempts: row.attempts,
+    }));
+  }
+
+  /**
    * Hands a bounded batch of one kind's due items to its queue. This is the producer half of the
-   * BullMQ executor; the DB rows stay the source of truth. The kinds use separate queues and
-   * separate advisory locks, so a slow or paused backup never stalls restore dispatch.
+   * executor; the DB rows stay the source of truth. The kinds use separate queues and separate
+   * advisory locks, so a slow or paused backup never stalls restore dispatch.
    */
   async dispatchPendingTransfers(
     kind: TransferKind,
@@ -136,7 +115,7 @@ export class TransferDispatchService {
       const ok = await this.bullMq.enqueue(
         TRANSFER_QUEUES[kind],
         'transfer',
-        { runId: row.runId, itemId: row.id } satisfies TransferJobData,
+        { runId: row.runId, itemId: row.id, userId: row.userId } satisfies TransferJobData,
         {
           jobId: `${kind}-${row.id}`,
           attempts: TRANSFER_JOB_ATTEMPTS,
@@ -176,28 +155,66 @@ export class TransferDispatchService {
     await this.finalize.finalizeDueRuns(null);
   }
 
-  /** Consumer half: one BullMQ job = one file, re-read from the DB before any I/O. */
-  async consumeTransferJob(kind: TransferKind, job: TransferJobLike): Promise<void> {
-    const data = job.data as Partial<TransferJobData> | undefined;
-    if (typeof data?.runId !== 'string' || typeof data?.itemId !== 'string') return;
-    if (!isUUID(data.runId) || !isUUID(data.itemId)) return;
-    const run = await this.runs.findOne({ where: { id: data.runId } });
-    // a job in the wrong queue, or for a terminal run, must never write bytes
-    if (run?.kind !== kind) return;
-    if (run.state !== 'running' && run.state !== 'paused') return;
-    const item = await this.runItems.findOne({ where: { id: data.itemId, runId: run.id } });
-    if (!item || item.state === 'failed' || item.state === 'missing') return;
-    if (!(await this.claimQueuedItem(item.id, run.id, job.attemptsMade + 1))) return;
+  /**
+   * Worker half, claim: re-read the row under the job's user scope and hand back the work
+   * descriptor. A wrong kind, a terminal run, a settled item or a lost race returns null —
+   * the worker never writes bytes it did not claim.
+   */
+  async claimTransfer(
+    kind: TransferKind,
+    userId: string,
+    runId: string,
+    itemId: string,
+    attempt: number,
+  ): Promise<TransferClaim | null> {
+    const run = await this.runs.findOne({ where: { id: runId, userId } });
+    if (run?.kind !== kind) return null;
+    if (run.state !== 'running' && run.state !== 'paused') return null;
+    const item = await this.runItems.findOne({ where: { id: itemId, runId: run.id } });
+    if (!item || item.state === 'failed' || item.state === 'missing') return null;
+    if (!(await this.claimQueuedItem(item.id, run.id, attempt))) return null;
 
     await this.runs.update(run.id, { currentFile: item.storageKey, updatedAt: new Date() });
-    try {
-      await this.performTransfer(run, item);
+    return {
+      kind,
+      runId: run.id,
+      itemId: item.id,
+      fileId: item.fileId,
+      storageKey: item.storageKey,
+      s3Key: item.s3Key,
+      checksumSha256: item.checksumSha256,
+      mimeType: item.mimeType,
+    };
+  }
+
+  /**
+   * Worker half, finish: the worker moved the bytes (or failed to) and core records it in the
+   * ledger. Never byte-level I/O here, so a worker restart can only re-run an item.
+   */
+  async finishTransfer(
+    kind: TransferKind,
+    userId: string,
+    runId: string,
+    itemId: string,
+    request: TransferFinishRequest,
+  ): Promise<TransferFinishResult> {
+    const run = await this.runs.findOne({ where: { id: runId, userId } });
+    if (run?.kind !== kind) return { retry: false };
+    if (run.state !== 'running' && run.state !== 'paused') return { retry: false };
+    const item = await this.runItems.findOne({ where: { id: itemId, runId: run.id } });
+    // a success deletes its row, so a repeated finish must be a 200 no-op
+    if (!item) return { retry: false };
+
+    if (request.ok) {
+      // the failure record stays: a late success must not erase a settled item
+      if (item.state === 'failed' || item.state === 'missing') return { retry: false };
       await this.runItems.delete(item.id);
       await this.bumpRun(run.id, 'uploaded');
+      // not gated on the run state: a run paused while this item was in flight still records it
       await this.finalize.finalizeDueRuns(run.id);
-    } catch (err) {
-      await this.handleQueueTransferError(run, item, err, job);
+      return { retry: false };
     }
+    return this.applyTransferFailure(run, item, request);
   }
 
   /** Atomic claim for one queued item; a crash-retried job may re-claim its own running row. */
@@ -216,14 +233,13 @@ export class TransferDispatchService {
     return rows.length > 0;
   }
 
-  private async handleQueueTransferError(
+  private async applyTransferFailure(
     run: BackupRun,
     item: { id: string },
-    err: unknown,
-    job: TransferJobLike,
-  ): Promise<void> {
-    const message = errorMessage(err);
-    const code = (err as NodeJS.ErrnoException).code;
+    request: TransferFinishRequest,
+  ): Promise<TransferFinishResult> {
+    const message = request.errorMessage ?? request.errorCode ?? 'transfer failed';
+    const code = request.errorCode;
 
     // local storage is full/unwritable: retrying this or other files is pointless — pause the run
     if (code === 'ENOSPC' || code === 'EDQUOT' || code === 'EACCES') {
@@ -235,16 +251,13 @@ export class TransferDispatchService {
         updatedAt: new Date(),
       });
       this.logger.error(`Transfer paused for run ${run.id}: ${message}`);
-      return;
+      return { retry: false };
     }
 
-    const missing = run.kind === 'restore' && isNotFound(err);
-    const maxAttempts =
-      job.opts.attempts !== undefined && job.opts.attempts > 0
-        ? job.opts.attempts
-        : TRANSFER_JOB_ATTEMPTS;
-    const attempts = job.attemptsMade + 1;
-    if (missing || code === 'ENOENT' || attempts >= maxAttempts) {
+    const missing =
+      run.kind === 'restore' &&
+      (code === 'NotFound' || code === 'NoSuchKey' || code === 'NoSuchBucket');
+    if (missing || code === 'ENOENT' || request.attempt >= TRANSFER_JOB_ATTEMPTS) {
       await this.runItems.update(item.id, {
         state: missing ? 'missing' : 'failed',
         error: message,
@@ -256,28 +269,15 @@ export class TransferDispatchService {
         `Transfer ${missing ? 'missing' : 'failed'} (${run.kind}) item=${item.id} ` +
           `run=${run.id}: ${message}`,
       );
-      return;
+      return { retry: false };
     }
 
     // transient: hand the item back as dispatchable and let BullMQ's backoff own the retry
     await this.runItems.update(item.id, { state: 'queued', claimedAt: null, error: message });
     this.logger.warn(
-      `Transfer retry (${run.kind}) item=${item.id} attempt=${attempts}: ${message}`,
+      `Transfer retry (${run.kind}) item=${item.id} attempt=${request.attempt}: ${message}`,
     );
-    throw err;
-  }
-
-  /** The actual byte movement shared by the synchronous driver and the queue consumer. */
-  private async performTransfer(run: BackupRun, item: ClaimedBackupItem): Promise<void> {
-    if (run.kind === 'backup') {
-      await this.s3.putFile(
-        item.s3Key,
-        this.storage.pathFor(item.storageKey),
-        item.mimeType ?? undefined,
-      );
-    } else {
-      await this.restoreFile(run, item);
-    }
+    return { retry: true };
   }
 
   /** A crashed core leaves items claimed; after the timeout they become claimable again. */
@@ -295,25 +295,6 @@ export class TransferDispatchService {
       `UPDATE "backup_runs" SET "state" = 'running', "updatedAt" = now()
        WHERE "state" = 'finalizing' AND "updatedAt" < now() - interval '10 minutes'`,
     );
-  }
-
-  private async restoreFile(run: BackupRun, item: ClaimedBackupItem): Promise<void> {
-    const dir = this.storage.pathFor(join('backup-runs', run.id, 'tmp'));
-    await mkdir(dir, { recursive: true });
-    const tmp = join(dir, `${item.fileId}.${randomUUID()}.part`);
-    try {
-      await this.s3.downloadToFile(item.s3Key, tmp);
-      if (item.checksumSha256) {
-        const actual = await sha256File(tmp);
-        if (actual !== item.checksumSha256) {
-          throw new Error(`checksum mismatch for ${item.fileId}`);
-        }
-      }
-      // atomic save consumes the temp file; a failure leaves the run item retryable
-      await this.storage.save(item.storageKey, tmp);
-    } finally {
-      await rm(tmp, { force: true }).catch(() => undefined);
-    }
   }
 
   private async bumpRun(runId: string, outcome: 'uploaded' | 'failed'): Promise<void> {

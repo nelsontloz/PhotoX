@@ -11,19 +11,14 @@ import {
   S3Client,
   type GetObjectCommandOutput,
 } from '@aws-sdk/client-s3';
-import { Upload } from '@aws-sdk/lib-storage';
 import { randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'fs';
-import { readFile, rename, rm, stat } from 'fs/promises';
+import { createWriteStream } from 'fs';
+import { rename, rm } from 'fs/promises';
 import { loadEnv } from '@photox/shared-config';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { errorName } from '../common/errors';
 
-// ponytail: 100MB single-PUT ceiling — manifests/thumbs go single-PUT, originals
-// (videos up to the 4GiB upload cap) stream via lib-storage MPU. Floci single-op
-// caps at 5GiB with disk-backed modes; memory mode caps ~2GiB heap.
-const MULTIPART_THRESHOLD_BYTES = 100 * 1024 * 1024;
 // DeleteObjects caps a single request at 1000 keys
 const DELETE_BATCH_SIZE = 1000;
 const DEFAULT_BUCKET = 'photox-dev-backups';
@@ -124,39 +119,6 @@ export class S3BackupService {
       }),
       { abortSignal: AbortSignal.timeout(30_000) },
     );
-  }
-
-  /**
-   * Uploads a local file: single PUT at or under 100MB, lib-storage MPU above.
-   * The SDK retries individual parts, but a Floci restart wipes the in-progress MPU —
-   * the retried part then fails for good, so restart the whole upload once from scratch.
-   */
-  async putFile(
-    key: string,
-    localPath: string,
-    contentType = 'application/octet-stream',
-  ): Promise<void> {
-    const size = (await stat(localPath)).size;
-    if (size <= MULTIPART_THRESHOLD_BYTES) {
-      await this.putObject(key, await readFile(localPath), contentType);
-      return;
-    }
-    const upload = async (): Promise<void> => {
-      await new Upload({
-        client: this.client,
-        params: {
-          Bucket: this.bucket,
-          Key: key,
-          Body: createReadStream(localPath),
-          ContentType: contentType,
-        },
-      }).done();
-    };
-    try {
-      await upload();
-    } catch {
-      await upload();
-    }
   }
 
   /** Small-object fetch (manifests) — whole body buffered. */

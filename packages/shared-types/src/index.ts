@@ -625,3 +625,56 @@ export interface AdminUserDeleteStatus {
 // The user-delete queue + job-id contract lives here because core produces and the worker consumes.
 export const USER_DELETE_QUEUE = 'user-delete';
 export const userDeleteJobId = (userId: string): string => `user-delete-${userId}`;
+
+// Backup/restore transfer contract: core owns the ledger and produces these jobs; the
+// worker-service consumes them and does the bytes (it has no DB access, so every item is
+// claimed and settled through core's job-bound /worker routes).
+export const BACKUP_TRANSFER_QUEUE = 'backup-transfer';
+export const RESTORE_TRANSFER_QUEUE = 'restore-transfer';
+
+export const TRANSFER_QUEUES = {
+  backup: BACKUP_TRANSFER_QUEUE,
+  restore: RESTORE_TRANSFER_QUEUE,
+} as const;
+
+export type TransferKind = keyof typeof TRANSFER_QUEUES;
+
+/** Ids only: the worker re-reads the work descriptor through core's claim call. */
+export interface TransferJobData {
+  runId: string;
+  itemId: string;
+  /** Run owner — the job-binding sub the guard verifies (missing means the job is unsigned). */
+  userId: string;
+  sig?: string;
+}
+
+/** One item's work descriptor, returned by the claim call. */
+export interface TransferClaim {
+  kind: TransferKind;
+  runId: string;
+  itemId: string;
+  fileId: string;
+  storageKey: string;
+  s3Key: string;
+  checksumSha256: string | null;
+  mimeType: string | null;
+}
+
+export interface TransferClaimRequest {
+  /** 1-based BullMQ attempt number (attemptsMade + 1). */
+  attempt: number;
+}
+
+/** What the executor did; core decides the ledger transition (parity with the old consumer). */
+export interface TransferFinishRequest {
+  attempt: number;
+  ok: boolean;
+  errorMessage?: string;
+  /** Node errno code (ENOSPC, ENOENT, EACCES) or the S3 error name (NotFound, NoSuchKey). */
+  errorCode?: string;
+}
+
+/** `retry` true means throw so BullMQ backs off; false means core already settled the item. */
+export interface TransferFinishResult {
+  retry: boolean;
+}

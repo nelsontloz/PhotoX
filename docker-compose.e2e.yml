@@ -64,6 +64,10 @@ services:
       CORE_URL: http://core:3000
       STORAGE_DIR: /data/storage
       REDIS_HOST: redis
+      # transfers run here, so the worker needs the same S3 target core uses (in-Compose
+      # endpoint; the e2e-only bucket keeps dev/prod apart)
+      S3_ENDPOINT: http://floci:4566
+      S3_BACKUP_BUCKET: photox-e2e-backups
     volumes:
       - storage-data:/data/storage
       - ./data/storage/models:/data/storage/models:ro
@@ -72,6 +76,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      floci:
+        condition: service_started
     healthcheck:
       <<: *healthcheck
       test: ['CMD-SHELL', 'wget -qO- http://localhost:3004/health || exit 1']

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   ForbiddenException,
@@ -32,8 +33,25 @@ import { WorkerMetadataDto } from './dto/worker-metadata.dto';
 import { ListFacesQueryDto } from './dto/list-faces-query.dto';
 import { PurgeUserDto } from './dto/purge-user.dto';
 import { PurgeUserFinishDto } from './dto/purge-user-finish.dto';
+import { ClaimTransferDto } from './dto/claim-transfer.dto';
+import { FinishTransferDto } from './dto/finish-transfer.dto';
 import { UserDeleteService } from '../users/admin/user-delete.service';
-import type { UserDeleteStepResult, FaceListResponse } from '@photox/shared-types';
+import { UserBackupService } from '../backup/user-backup.service';
+import type {
+  TransferClaim,
+  TransferFinishResult,
+  TransferKind,
+  UserDeleteStepResult,
+  FaceListResponse,
+} from '@photox/shared-types';
+
+/** Transfer kinds are a closed pair: an unknown path segment is a 400, not a 404. */
+function transferKind(value: string): TransferKind {
+  if (value !== 'backup' && value !== 'restore') {
+    throw new BadRequestException('kind must be backup or restore');
+  }
+  return value;
+}
 
 // Worker job surface (agreed interface with the worker lane — do not rename paths). Every route
 // is act-required via JwtAuthGuard; ownership is scoped by the job's sub through the reused
@@ -49,6 +67,7 @@ export class WorkerController {
     private readonly embeddings: EmbeddingsService,
     private readonly detections: DetectionsService,
     private readonly deletes: UserDeleteService,
+    private readonly backups: UserBackupService,
   ) {}
 
   @Get('assets')
@@ -163,6 +182,36 @@ export class WorkerController {
   @ApiOperation({ summary: 'Worker delete of persons with no live faces' })
   async pruneEmpty(@CurrentUserId() userId: string): Promise<{ deleted: number }> {
     return this.persons.pruneEmpty(userId);
+  }
+
+  // Backup/restore byte execution lives in the worker-service: it claims one ledger item per
+  // job here (the DB ledger stays core-owned) and reports the outcome back. The job binding
+  // pins (sub, scope=userId), and the run/item lookups are scoped by that same sub.
+  @Post('transfers/:kind/runs/:id/items/:itemId/claim')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Worker claim of one backup/restore transfer item (job user scope)' })
+  @ApiResponse({ status: 200, description: 'Transfer work descriptor, or null when not claimable' })
+  async claimTransfer(
+    @Param('kind') kind: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('itemId', new ParseUUIDPipe()) itemId: string,
+    @Body() dto: ClaimTransferDto,
+    @CurrentUserId() userId: string,
+  ): Promise<TransferClaim | null> {
+    return this.backups.claimTransfer(transferKind(kind), userId, id, itemId, dto.attempt);
+  }
+
+  @Post('transfers/:kind/runs/:id/items/:itemId/finish')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Worker outcome report for one backup/restore transfer item' })
+  async finishTransfer(
+    @Param('kind') kind: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('itemId', new ParseUUIDPipe()) itemId: string,
+    @Body() dto: FinishTransferDto,
+    @CurrentUserId() userId: string,
+  ): Promise<TransferFinishResult> {
+    return this.backups.finishTransfer(transferKind(kind), userId, id, itemId, dto);
   }
 
   // The `user-delete` queue consumer lives in the worker-service (no DB access), so the wipe

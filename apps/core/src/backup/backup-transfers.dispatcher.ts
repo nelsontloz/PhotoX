@@ -20,7 +20,7 @@ const DISPATCH_LOCKS: Record<TransferKind, number> = {
  * bounded batch of each kind's due items to its own queue under its own advisory lock. A full
  * batch schedules the next tick immediately, so a multi-GB run never waits on the interval.
  *
- * Nothing here touches S3 or the filesystem; the queue consumers do the transfer.
+ * Nothing here touches S3 or the filesystem; the worker-service does the transfer.
  */
 @Injectable()
 export class BackupTransfersDispatcher implements OnModuleInit, OnModuleDestroy {

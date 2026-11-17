@@ -10,13 +10,16 @@ import {
   RESTORE_TRANSFER_QUEUE,
   type TransferJobData,
 } from '../../src/backup/backup-transfer.constants';
+import { runTransferItem } from '../../../worker-service/src/queue/transfer.worker';
 import {
   closeBackupTestApp,
   createBackupTestApp,
   t,
   resetBackupDb,
   runBackup,
+  runTransfersOnce,
   seedOriginal,
+  transferStore,
   wipeUserData,
 } from './helpers/user-backup';
 
@@ -64,12 +67,21 @@ describe('user backup round-trip', () => {
       expect(await t.svc.dispatchPendingTransfers('backup', 10)).toBe(1);
       const data = await takeJob(BACKUP_TRANSFER_QUEUE);
       expect(await t.bullMq.getQueue(RESTORE_TRANSFER_QUEUE).getJobs(['waiting'])).toHaveLength(0);
+      // the job carries the run owner: it is also the binding `sub` core scopes the call by
+      expect(data.userId).toBe(user.id);
 
-      await t.svc.consumeTransferJob('backup', { data, attemptsMade: 0, opts: { attempts: 5 } });
+      const claim = await t.svc.claimTransfer('backup', data.userId, data.runId, data.itemId, 1);
+      const key = originalKey(email, user.id, photo.id, 'bin');
+      expect(claim).toMatchObject({ kind: 'backup', s3Key: key });
+
+      await runTransferItem(claim!, { storage: t.storage, store: transferStore() });
+      await t.svc.finishTransfer('backup', data.userId, data.runId, data.itemId, {
+        attempt: 1,
+        ok: true,
+      });
 
       expect((await t.svc.getRunStatus(runId)).state).toBe('completed');
       expect(await queuedItemCount(runId)).toBe(0);
-      const key = originalKey(email, user.id, photo.id, 'bin');
       expect(t.fake.objects.has(key)).toBe(true);
     });
 
@@ -91,8 +103,16 @@ describe('user backup round-trip', () => {
       expect(await t.svc.dispatchPendingTransfers('restore', 10)).toBe(1);
       const data = await takeJob(RESTORE_TRANSFER_QUEUE);
       expect(await t.bullMq.getQueue(BACKUP_TRANSFER_QUEUE).getJobs(['waiting'])).toHaveLength(0);
+      expect(data.userId).toBe(user.id);
 
-      await t.svc.consumeTransferJob('restore', { data, attemptsMade: 0, opts: { attempts: 5 } });
+      const claim = await t.svc.claimTransfer('restore', data.userId, data.runId, data.itemId, 1);
+      expect(claim).toMatchObject({ kind: 'restore' });
+
+      await runTransferItem(claim!, { storage: t.storage, store: transferStore() });
+      await t.svc.finishTransfer('restore', data.userId, data.runId, data.itemId, {
+        attempt: 1,
+        ok: true,
+      });
 
       expect((await t.svc.getRunStatus(runId)).state).toBe('completed');
       const restored = await t.fileRepo.findOneOrFail({ where: { id: photo.record.id } });
@@ -113,7 +133,10 @@ describe('user backup round-trip', () => {
       await t.svc.dispatchPendingTransfers('backup', 10);
       const data = await takeJob(BACKUP_TRANSFER_QUEUE);
 
-      await t.svc.consumeTransferJob('restore', { data, attemptsMade: 0, opts: { attempts: 5 } });
+      // the claim is bound to the run's kind, so a misrouted job can never settle it
+      expect(
+        await t.svc.claimTransfer('restore', data.userId, data.runId, data.itemId, 1),
+      ).toBeNull();
 
       expect(await queuedItemCount(runId)).toBe(1);
       expect((await t.svc.getRunStatus(runId)).state).toBe('running');
@@ -134,16 +157,30 @@ describe('user backup round-trip', () => {
       const data = await takeJob(BACKUP_TRANSFER_QUEUE);
 
       t.fake.failNextPuts = 1;
+      const first = await t.svc.claimTransfer('backup', data.userId, data.runId, data.itemId, 1);
       await expect(
-        t.svc.consumeTransferJob('backup', { data, attemptsMade: 0, opts: { attempts: 5 } }),
+        runTransferItem(first!, { storage: t.storage, store: transferStore() }),
       ).rejects.toThrow('injected putFile failure');
+
+      const settled = await t.svc.finishTransfer('backup', data.userId, data.runId, data.itemId, {
+        attempt: 1,
+        ok: false,
+        errorCode: 'Error',
+        errorMessage: 'injected putFile failure',
+      });
+      expect(settled).toEqual({ retry: true });
       const queued = await t.dataSource.query<{ state: string }[]>(
         'SELECT "state" FROM backup_run_items WHERE "id" = $1',
         [data.itemId],
       );
       expect(queued[0]?.state).toBe('queued');
 
-      await t.svc.consumeTransferJob('backup', { data, attemptsMade: 1, opts: { attempts: 5 } });
+      const second = await t.svc.claimTransfer('backup', data.userId, data.runId, data.itemId, 2);
+      await runTransferItem(second!, { storage: t.storage, store: transferStore() });
+      await t.svc.finishTransfer('backup', data.userId, data.runId, data.itemId, {
+        attempt: 2,
+        ok: true,
+      });
       expect((await t.svc.getRunStatus(runId)).state).toBe('completed');
     });
 
@@ -164,16 +201,88 @@ describe('user backup round-trip', () => {
       await t.svc.dispatchPendingTransfers('restore', 10);
       const data = await takeJob(RESTORE_TRANSFER_QUEUE);
 
+      const claim = await t.svc.claimTransfer('restore', data.userId, data.runId, data.itemId, 1);
       const noSpace = Object.assign(new Error('no space left on device'), { code: 'ENOSPC' });
       const save = vi.spyOn(t.storage, 'save').mockRejectedValueOnce(noSpace);
       try {
-        await t.svc.consumeTransferJob('restore', { data, attemptsMade: 0, opts: { attempts: 5 } });
+        await expect(
+          runTransferItem(claim!, { storage: t.storage, store: transferStore() }),
+        ).rejects.toThrow('no space left on device');
       } finally {
         save.mockRestore();
       }
 
+      const settled = await t.svc.finishTransfer('restore', data.userId, data.runId, data.itemId, {
+        attempt: 1,
+        ok: false,
+        errorCode: 'ENOSPC',
+        errorMessage: 'no space left on device',
+      });
+      expect(settled).toEqual({ retry: false });
       expect((await t.svc.getRunStatus(runId)).state).toBe('paused');
       expect(await queuedItemCount(runId)).toBe(1);
+    });
+
+    it('treats a repeated finish after success as a no-op', async () => {
+      const user = await t.userRepo.save(
+        t.userRepo.create({
+          email: `queue-again-${randomUUID()}@example.com`,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Queue Again',
+        }),
+      );
+      await seedOriginal(user.id, Buffer.from('queue-again-bytes'));
+      const { runId } = await t.svc.startBackup(user.id);
+      await t.svc.dispatchPendingTransfers('backup', 10);
+      const data = await takeJob(BACKUP_TRANSFER_QUEUE);
+
+      const claim = await t.svc.claimTransfer('backup', data.userId, data.runId, data.itemId, 1);
+      await runTransferItem(claim!, { storage: t.storage, store: transferStore() });
+      await t.svc.finishTransfer('backup', data.userId, data.runId, data.itemId, {
+        attempt: 1,
+        ok: true,
+      });
+      const uploaded = async (): Promise<number | undefined> =>
+        (
+          await t.dataSource.query<{ uploaded: number }[]>(
+            'SELECT "uploaded" FROM backup_runs WHERE "id" = $1',
+            [runId],
+          )
+        )[0]?.uploaded;
+      expect(await uploaded()).toBe(1);
+
+      const again = await t.svc.finishTransfer('backup', data.userId, data.runId, data.itemId, {
+        attempt: 1,
+        ok: true,
+      });
+      expect(again).toEqual({ retry: false });
+      expect((await t.svc.getRunStatus(runId)).state).toBe('completed');
+      expect(await uploaded()).toBe(1);
+    });
+
+    it('refuses a finish reported for the wrong kind', async () => {
+      const user = await t.userRepo.save(
+        t.userRepo.create({
+          email: `queue-kind-${randomUUID()}@example.com`,
+          role: 'user',
+          passwordHash: 'test-hash',
+          displayName: 'Queue Kind',
+        }),
+      );
+      await seedOriginal(user.id, Buffer.from('queue-kind-bytes'));
+      const { runId } = await t.svc.startBackup(user.id);
+      await t.svc.dispatchPendingTransfers('backup', 10);
+      const data = await takeJob(BACKUP_TRANSFER_QUEUE);
+
+      const res = await t.svc.finishTransfer('restore', data.userId, data.runId, data.itemId, {
+        attempt: 1,
+        ok: true,
+      });
+
+      expect(res).toEqual({ retry: false });
+      expect(await queuedItemCount(runId)).toBe(1);
+      expect((await t.svc.getRunStatus(runId)).state).toBe('running');
     });
   });
 
@@ -248,7 +357,7 @@ describe('user backup round-trip', () => {
 
       for (let i = 0; i < 20; i++) {
         if ((await t.svc.getRunStatus(runId)).state !== 'running') break;
-        await t.svc.runTransfersOnce();
+        await runTransfersOnce();
       }
       expect((await t.svc.getRunStatus(runId)).state).toBe('completed');
 

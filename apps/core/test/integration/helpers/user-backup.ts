@@ -26,6 +26,10 @@ import {
 import type { BackupRunStatus } from '../../../src/backup/backup.types';
 import { BullMqModule } from '../../../src/queue/bullmq.module';
 import { BullMqService } from '../../../src/queue/bullmq.service';
+import {
+  runTransferItem,
+  type TransferStore,
+} from '../../../../worker-service/src/queue/transfer.worker';
 import { resetDb, type ApiTestApp } from '../helpers';
 import { setupTestInfra, teardownTestInfra } from '../test-setup';
 import { ENTITIES } from '../entities';
@@ -343,9 +347,61 @@ export function refuseQueue(queueName: string) {
     );
 }
 
+/** The worker's `TransferStore` over the in-memory S3 fake — the harness plays the worker. */
+export function transferStore(): TransferStore {
+  return {
+    putFile: (key, localPath) => t.fake.putFile(key, localPath),
+    downloadToFile: (key, destPath) => t.fake.downloadToFile(key, destPath),
+  };
+}
+
 /**
- * Drives the real ledger path (claim -> consume -> finalize) to a terminal run. The
- * production executor is the queue pair; this is only its synchronous stand-in.
+ * The old in-core driver, now played by the harness: claim the due rows, run the worker's own
+ * executor over each, and settle it through the same finish call the queue consumer uses.
+ */
+export async function runTransfersOnce(ignoreBackoff = false): Promise<number> {
+  let count = 0;
+  for (const kind of ['backup', 'restore'] as const) {
+    const due = await t.svc.claimDueTransfers(kind, 4, ignoreBackoff);
+    for (const row of due) {
+      const attempt = row.attempts + 1;
+      const claim = await t.svc.claimTransfer(kind, row.userId, row.runId, row.itemId, attempt);
+      count += 1;
+      // the row stays queued, exactly as a claim that lost its race in production
+      if (!claim) continue;
+      try {
+        await runTransferItem(claim, { storage: t.storage, store: transferStore() });
+        await t.svc.finishTransfer(kind, row.userId, row.runId, row.itemId, { attempt, ok: true });
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        const errorCode = (err as NodeJS.ErrnoException).code ?? (err as { name?: string }).name;
+        const res = await t.svc.finishTransfer(kind, row.userId, row.runId, row.itemId, {
+          attempt,
+          ok: false,
+          errorMessage,
+          errorCode,
+        });
+        // core handed it back for retry; stand in for BullMQ's exponential backoff
+        if (res.retry) {
+          await t.dataSource.query(
+            `UPDATE "backup_run_items"
+             SET "state" = 'retrying', "claimedAt" = NULL,
+                 "nextAttemptAt" = now() + ($2::int * interval '1 millisecond')
+             WHERE "id" = $1`,
+            [row.itemId, Math.min(5 * 60_000, 1000 * 2 ** row.attempts)],
+          );
+        }
+      }
+    }
+  }
+  // the old driver's final step: promote any drained run (the only public path to it now)
+  await t.svc.reconcileTransfers();
+  return count;
+}
+
+/**
+ * Drives the real ledger path (claim -> execute -> finish) to a terminal run. The production
+ * executor is the queue pair in the worker; this is only its synchronous stand-in.
  */
 export async function driveRun<T extends BackupResult | RestoreResult>(
   runId: string,
@@ -360,7 +416,7 @@ export async function driveRun<T extends BackupResult | RestoreResult>(
     if (status.state !== 'running' && status.state !== 'finalizing') {
       throw new Error(status.error ?? `${label} ${status.state}`);
     }
-    if ((await t.svc.runTransfersOnce(true)) === 0) {
+    if ((await runTransfersOnce(true)) === 0) {
       const after = await t.svc.getRunStatus(runId);
       if (after.state === 'completed') return after.result as T;
       throw new Error(after.error ?? `${label} stalled in ${after.state}`);

@@ -276,7 +276,6 @@ describe('AdminService.requestUserDelete backup exclusion', () => {
     'copyPrefix',
     'copyKey',
     'putObject',
-    'putFile',
     'getBuffer',
     'headObject',
     'downloadToFile',
