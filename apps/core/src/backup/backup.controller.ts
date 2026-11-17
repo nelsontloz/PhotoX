@@ -11,7 +11,13 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiProperty } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiProperty,
+  ApiPropertyOptional,
+} from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
@@ -45,7 +51,14 @@ import {
   RunIdResponseModel,
 } from '../swagger/response-models';
 
+// Inline controller DTOs are outside the swagger plugin's `dtoFileNameSuffix`
+// (`.dto.ts`), so their fields need an explicit @ApiProperty or the exported
+// schema is an empty object.
 class EmailOrIdQueryDto {
+  @ApiProperty({
+    description: 'Account to back up, by user id or email',
+    example: 'admin@photox.test',
+  })
   @IsString()
   @IsNotEmpty()
   emailOrId!: string;
@@ -62,23 +75,43 @@ class ListBackupOverviewQueryDto extends PaginationQueryDto {
 }
 
 class RestoreByKeyDto {
+  @ApiPropertyOptional({
+    format: 'email',
+    description: 'Re-home the snapshot into this new account when the original is gone',
+  })
   @IsOptional()
   @IsEmail()
   restoreEmail?: string;
 }
 
 class MergeRestoreRequestDto {
+  @ApiProperty({
+    description: 'Live target account to merge into, by user id or email',
+    example: 'new-owner@photox.test',
+  })
   @IsString()
   @IsNotEmpty()
   targetEmailOrId!: string;
 
+  @ApiProperty({
+    format: 'uuid',
+    description: 'Deleted source account the backup belongs to',
+  })
   @IsUUID()
   backupUserId!: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Source backup prefix; defaults to backups/<email>__<userId>/ and must stay under the backup root',
+  })
   @IsOptional()
   @IsString()
   prefix?: string;
 
+  @ApiPropertyOptional({
+    description: 'Replay an already-merged source (upserts the ledger)',
+    type: 'boolean',
+  })
   @IsOptional()
   @IsBoolean()
   force?: boolean;
