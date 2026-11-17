@@ -14,6 +14,7 @@ import { faceProcessor } from './face.processor';
 import { embeddingProcessor } from './embed.processor';
 import { detectProcessor } from './detect.processor';
 import { userDeleteProcessor } from './user-delete.processor';
+import { createTransferProcessor } from './transfer.worker';
 import { assetFileRunner } from './asset-file-job';
 import type { ProcessorDeps, ProcessorSpec } from './processor-spec';
 
@@ -27,6 +28,8 @@ export const PROCESSORS: readonly ((deps: ProcessorDeps) => ProcessorSpec)[] = [
   embeddingProcessor,
   detectProcessor,
   userDeleteProcessor,
+  createTransferProcessor('backup'),
+  createTransferProcessor('restore'),
 ];
 
 /**

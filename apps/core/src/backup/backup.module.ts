@@ -21,7 +21,6 @@ import { TransferDispatchService } from './transfer-dispatch.service';
 import { RunLifecycleService } from './run-lifecycle.service';
 import { BackupMergeService } from './backup-merge.service';
 import { BackupTransfersDispatcher } from './backup-transfers.dispatcher';
-import { BackupTransferConsumers } from './backup-transfer.consumers';
 
 // ponytail: BullMqService is @Global, so no QueueModule import — like AdminModule,
 // this module only declares the TypeORM scope its own queries touch
@@ -57,7 +56,6 @@ import { BackupTransferConsumers } from './backup-transfer.consumers';
     BackupMergeService,
     UserBackupService,
     BackupTransfersDispatcher,
-    BackupTransferConsumers,
   ],
   exports: [UserBackupService],
 })

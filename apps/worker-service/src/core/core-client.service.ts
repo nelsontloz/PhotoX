@@ -13,6 +13,11 @@ import type {
   MetadataStatus,
   RegisterDetectionsRequestDto,
   RegisterEmbeddingRequestDto,
+  TransferClaim,
+  TransferClaimRequest,
+  TransferFinishRequest,
+  TransferFinishResult,
+  TransferKind,
   UserDeleteFinishRequest,
   UserDeleteStepResult,
 } from '@photox/shared-types';
@@ -393,6 +398,41 @@ export class CoreClient {
     );
   }
 
+  /**
+   * Claim one backup/restore item before touching its bytes: null means there is nothing to do
+   * (terminal run, item already settled, wrong queue). Core owns the ledger and the attempt count.
+   */
+  async claimTransfer(
+    kind: TransferKind,
+    userId: string,
+    runId: string,
+    itemId: string,
+    attempt: number,
+    binding?: JobBinding,
+  ): Promise<TransferClaim | null> {
+    return this.request('POST', `/worker/transfers/${kind}/runs/${runId}/items/${itemId}/claim`, {
+      sub: userId,
+      body: { attempt } satisfies TransferClaimRequest,
+      ...binding,
+    });
+  }
+
+  /** Report one item's outcome; `retry` is core telling this job to throw so BullMQ backs off. */
+  async finishTransfer(
+    kind: TransferKind,
+    userId: string,
+    runId: string,
+    itemId: string,
+    body: TransferFinishRequest,
+    binding?: JobBinding,
+  ): Promise<TransferFinishResult> {
+    return this.request('POST', `/worker/transfers/${kind}/runs/${runId}/items/${itemId}/finish`, {
+      sub: userId,
+      body,
+      ...binding,
+    });
+  }
+
   private async request<T>(
     method: 'GET' | 'PATCH' | 'POST' | 'DELETE',
     path: string,
@@ -423,7 +463,9 @@ export class CoreClient {
 
     if (res.ok) {
       if (res.status === 204) return undefined as T;
-      return (await res.json()) as T;
+      // Nest sends an empty 200 for a null result — the claim route's "not claimable" answer
+      const text = await res.text();
+      return (text.length > 0 ? JSON.parse(text) : undefined) as T;
     }
 
     const detail = await res.text().catch(() => '');

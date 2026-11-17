@@ -15,6 +15,7 @@ import {
   resetBackupDb,
   runBackup,
   runRestore,
+  runTransfersOnce,
   seedFile,
   seedOriginal,
   wipeUserData,
@@ -543,7 +544,7 @@ describe('user backup round-trip', () => {
     expect((await t.svc.getRunStatus(runId)).state).toBe('running');
     for (let i = 0; i < 20; i++) {
       if ((await t.svc.getRunStatus(runId)).state !== 'running') break;
-      await t.svc.runTransfersOnce();
+      await runTransfersOnce();
     }
 
     const status = await t.svc.getRunStatus(runId);
@@ -574,7 +575,7 @@ describe('user backup round-trip', () => {
     for (let i = 0; i < 20; i++) {
       if ((await t.svc.getRunStatus(runId)).state !== 'running') break;
       // the ledger backs off between attempts; the API exposes the no-backoff driver for tests
-      await t.svc.runTransfersOnce(true);
+      await runTransfersOnce(true);
     }
 
     const status = await t.svc.getRunStatus(runId);
@@ -612,7 +613,7 @@ describe('user backup round-trip', () => {
     const first = await t.svc.startRestore(user.id);
     for (let i = 0; i < 20; i++) {
       if ((await t.svc.getRunStatus(first.runId)).state !== 'running') break;
-      await t.svc.runTransfersOnce();
+      await runTransfersOnce();
     }
     const failed = await t.svc.getRunStatus(first.runId);
     expect(failed.state).toBe('failed');
@@ -625,7 +626,7 @@ describe('user backup round-trip', () => {
     expect(second.runId).toBe(first.runId);
     for (let i = 0; i < 20; i++) {
       if ((await t.svc.getRunStatus(second.runId)).state !== 'running') break;
-      await t.svc.runTransfersOnce();
+      await runTransfersOnce();
     }
 
     const done = await t.svc.getRunStatus(second.runId);
@@ -670,7 +671,7 @@ describe('user backup round-trip', () => {
       for (let i = 0; i < 20; i++) {
         const state = (await t.svc.getRunStatus(runId)).state;
         if (state !== 'running' && state !== 'finalizing') break;
-        await t.svc.runTransfersOnce();
+        await runTransfersOnce();
       }
       const failed = await t.svc.getRunStatus(runId);
       expect(failed.state).toBe('failed');
@@ -686,7 +687,7 @@ describe('user backup round-trip', () => {
     for (let i = 0; i < 20; i++) {
       const state = (await t.svc.getRunStatus(retry.runId)).state;
       if (state !== 'running' && state !== 'finalizing') break;
-      await t.svc.runTransfersOnce();
+      await runTransfersOnce();
     }
     const done = await t.svc.getRunStatus(retry.runId);
     expect(done.state).toBe('completed');

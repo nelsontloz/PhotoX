@@ -203,24 +203,6 @@ export interface BackupRunStatus {
   result?: BackupResult | RestoreResult;
 }
 
-export interface ClaimedBackupItem {
-  id: string;
-  runId: string;
-  fileId: string;
-  storageKey: string;
-  s3Key: string;
-  checksumSha256: string | null;
-  mimeType: string | null;
-  attempts: number;
-}
-
-/** The slice of a BullMQ Job the consumer needs; keeps the handler unit-testable. */
-export interface TransferJobLike {
-  data: unknown;
-  attemptsMade: number;
-  opts: { attempts?: number };
-}
-
 /** One backup account snapshot surfaced in the admin overview/merge picker. */
 export interface BackupSnapshot {
   userId: string;

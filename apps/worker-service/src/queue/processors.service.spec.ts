@@ -10,6 +10,8 @@ const QUEUES = [
   'process-embeddings',
   'process-detect',
   'user-delete',
+  'backup-transfer',
+  'restore-transfer',
 ];
 
 describe('ProcessorsService', () => {

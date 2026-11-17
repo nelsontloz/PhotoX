@@ -12,8 +12,8 @@ export type BackupRunState =
   'running' | 'paused' | 'finalizing' | 'completed' | 'failed' | 'cancelled';
 
 // One row per admin backup/restore start. The transfer itself is a ledger of per-file
-// `backup_run_items` rows claimed by the advisory-locked sweeper, so a run survives a core
-// restart and every file retries on its own (see UserBackupService.runTransfersOnce).
+// `backup_run_items` rows claimed by the dispatcher and executed by the worker-service, so a
+// run survives a core restart and every file retries on its own (see TransferDispatchService).
 @Entity('backup_runs')
 @Index(['userId', 'startedAt'])
 // At most one active run per user: `assertNoActiveRun` is a plain read, so two starts that race

@@ -6,6 +6,7 @@ import { EmbeddingsModule } from '../embeddings/embeddings.module';
 import { DetectionsModule } from '../detections/detections.module';
 import { UserFilesModule } from '../ingest/user-files.module';
 import { UsersModule } from '../users/users.module';
+import { BackupModule } from '../backup/backup.module';
 import { WorkerController } from './worker.controller';
 
 @Module({
@@ -18,6 +19,8 @@ import { WorkerController } from './worker.controller';
     UserFilesModule,
     // UserDeleteService only (the worker consumes `user-delete`; the wipe stays here)
     UsersModule,
+    // UserBackupService only (the worker executes transfers through the claim/finish routes)
+    BackupModule,
   ],
   controllers: [WorkerController],
 })

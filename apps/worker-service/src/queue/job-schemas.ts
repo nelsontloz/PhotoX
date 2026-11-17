@@ -42,7 +42,16 @@ export const userDeleteJobSchema = z.object({
   sig: z.string().optional(),
 });
 
+// Backup/restore: ids only — the claim call returns the work descriptor (s3Key, storageKey…)
+export const transferJobSchema = z.object({
+  runId: uuid,
+  itemId: uuid,
+  userId: uuid,
+  sig: z.string().optional(),
+});
+
 export type ThumbnailJob = z.infer<typeof thumbnailJobSchema>;
+export type TransferJob = z.infer<typeof transferJobSchema>;
 export type AssetRefsJob = z.infer<typeof assetRefsJobSchema>;
 export type ClusterJob = z.infer<typeof clusterJobSchema>;
 export type UserDeleteJob = z.infer<typeof userDeleteJobSchema>;
