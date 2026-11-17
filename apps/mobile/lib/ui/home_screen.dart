@@ -10,6 +10,7 @@ import 'widgets/app_background.dart';
 import 'widgets/backup_progress.dart';
 import 'widgets/last_sync_panel.dart';
 import 'widgets/panel.dart';
+import 'widgets/permission_copy.dart';
 import 'widgets/pill.dart';
 import 'widgets/queue_summary.dart';
 import 'widgets/sign_out_dialog.dart';
@@ -345,45 +346,17 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget? _permissionBanner(BuildContext context) {
-    switch (permission) {
-      case PhotoPermission.authorized:
-        return null;
-      case PhotoPermission.limited:
-        return const StatusBanner(
-          tone: StatusTone.warning,
-          icon: Icons.photo_library_outlined,
-          title: 'Limited photo access',
-          message:
-              'Only the photos you selected can be backed up. Add more in '
-              'your device settings.',
-        );
-      case PhotoPermission.notDetermined:
-        // A running pass is the first proof that access works, so the banner
-        // must not claim it is missing while photos are already uploading.
-        if (syncing) return null;
-        return const StatusBanner(
-          tone: StatusTone.warning,
-          icon: Icons.photo_library_outlined,
-          title: 'Photo access not set up',
-          message: 'Tap the button below to let PhotoX read your camera roll.',
-        );
-      case PhotoPermission.denied:
-        return const StatusBanner(
-          tone: StatusTone.danger,
-          icon: Icons.block_rounded,
-          title: 'Photo access is off',
-          message: 'Allow photo access in your device settings, then start a backup.',
-        );
-      case PhotoPermission.restricted:
-        return const StatusBanner(
-          tone: StatusTone.danger,
-          icon: Icons.block_rounded,
-          title: 'Photo access is restricted',
-          message:
-              'Device restrictions are blocking access. Change that in your '
-              'device settings, then start a backup.',
-        );
-    }
+    // A running pass is the first proof that access works, so the banner must
+    // not claim it is missing while photos are already uploading.
+    if (permission == PhotoPermission.notDetermined && syncing) return null;
+    final copy = permissionCopy(permission);
+    if (copy.title.isEmpty) return null;
+    return StatusBanner(
+      tone: copy.tone,
+      icon: copy.icon,
+      title: copy.title,
+      message: copy.message,
+    );
   }
 
   Future<void> _confirmSignOut(BuildContext context) async {

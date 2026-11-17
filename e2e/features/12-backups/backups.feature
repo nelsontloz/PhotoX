@@ -7,7 +7,6 @@ Feature: Backups
     Then the backup result is 2 uploaded and 0 skipped
     And the backup prefix contains my user id
     And my backup status reports 2 assets
-    And the backup progress for my account is idle
     And the backup overview shows my account as backed up with 2 assets
 
   Scenario: An incremental backup uploads only new photos

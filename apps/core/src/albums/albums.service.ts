@@ -1,36 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { isUUID } from 'class-validator';
 import { Album } from '../database/entities/album.entity';
 import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { findOwnedOr404 } from '../common/asset-ownership';
 import { apiError } from '../common/api-error';
-import { decodeCursor, encodeCursor, invalidCursor } from '../common/cursor';
+import { pageAlbumAssetIds } from './album-assets.page';
 import { CreateAlbumDto } from './dto/create-album.dto';
 import { UpdateAlbumDto } from './dto/update-album.dto';
 import { ListAlbumAssetsQueryDto } from './dto/list-album-assets-query.dto';
 import { PaginationQueryDto } from '../common/pagination-query.dto';
 import { AssetsService } from '../assets/assets.service';
 import type { AlbumDto, AssetListResponse, AlbumListResponse } from '@photox/shared-types';
-
-interface AlbumAssetCursor {
-  addedAt: Date;
-  assetId: string;
-}
-
-/** The last row's ("addedAt", "assetId") — the full album-assets ORDER BY tuple. */
-function encodeAlbumAssetCursor(row: { addedAt: Date | string; assetId: string }): string {
-  return encodeCursor([new Date(row.addedAt).toISOString(), row.assetId]);
-}
-
-function decodeAlbumAssetCursor(raw: string): AlbumAssetCursor {
-  const parts = decodeCursor(raw, 2);
-  const addedAt = new Date(parts[0] ?? '');
-  const assetId = parts[1] ?? '';
-  if (Number.isNaN(addedAt.getTime()) || !isUUID(assetId)) invalidCursor();
-  return { addedAt, assetId };
-}
 
 @Injectable()
 export class AlbumsService {
@@ -170,54 +151,22 @@ export class AlbumsService {
 
     const limit = q.limit;
     const offset = q.offset;
-    const cursor = q.cursor ? decodeAlbumAssetCursor(q.cursor) : null;
     // one continuation style per request: a cursor already encodes the position
-    if (cursor && offset > 0) {
+    if (q.cursor && offset > 0) {
       throw apiError(400, 'VALIDATION_FAILED', 'offset must be 0 when cursor is provided', {
         details: [{ field: 'offset', message: 'offset must be 0 when cursor is provided' }],
       });
     }
 
-    const qb = this.albumAssetRepo
-      .createQueryBuilder('aa')
-      .select('aa.assetId', 'assetId')
-      .addSelect('aa.addedAt', 'addedAt')
-      .innerJoin('assets', 'asset', 'asset.id = aa."assetId"')
-      .where('aa.albumId = :albumId', { albumId })
-      .andWhere('asset.isTrashed = false')
-      .orderBy('aa.addedAt', 'DESC')
-      // id completes the sort key, so a keyset cursor can compare the whole tuple
-      .addOrderBy('aa.assetId', 'DESC')
-      .limit(limit + 1);
-
-    if (cursor) {
-      // keyset, not offset: a bulk add mid-scroll shares one addedAt, so offset pages would
-      // repeat or skip rows. A cursor alongside an offset wins; the offset is ignored.
-      qb.andWhere(
-        '(aa."addedAt", aa."assetId") < (:cursorAddedAt::timestamptz, :cursorAssetId::uuid)',
-        { cursorAddedAt: cursor.addedAt, cursorAssetId: cursor.assetId },
-      );
-    } else {
-      qb.offset(offset);
-    }
-
     // `total` is the whole album count, not the remaining window: a cursor page reports the same
     // total the first page did
-    const total = await this.assets.countActiveInAlbum(albumId);
+    const [{ assetIds, nextCursor }, total] = await Promise.all([
+      pageAlbumAssetIds(this.albumAssetRepo, { albumId, limit, offset, cursor: q.cursor }),
+      this.assets.countActiveInAlbum(albumId),
+    ]);
+    const items = await this.assets.listByIdsRanked(userId, assetIds);
 
-    const rows = await qb.getRawMany<{ assetId: string; addedAt: Date | string }>();
-    const page = rows.slice(0, limit);
-    const items = await this.assets.listByIdsRanked(
-      userId,
-      page.map((j) => j.assetId),
-    );
-    const last = page.at(-1);
-
-    return {
-      items,
-      total,
-      nextCursor: rows.length > limit && last ? encodeAlbumAssetCursor(last) : null,
-    };
+    return { items, total, nextCursor };
   }
 
   private toDto(a: Album, assetCount: number): AlbumDto {

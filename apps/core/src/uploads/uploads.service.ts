@@ -22,7 +22,7 @@ import { isUUID } from 'class-validator';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { finished } from 'node:stream/promises';
 import { LocalStorageService, loadEnv } from '@photox/shared-config';
@@ -83,15 +83,6 @@ interface CompletePlan {
   /** the just-created asset; null on a replay, where the response layer reads it by id */
   asset: AssetResponse | null;
   deduplicated: boolean;
-}
-
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 @Injectable()
@@ -260,9 +251,10 @@ export class UploadsService {
         if (existing.sizeBytes !== sizeBytes || existing.checksumSha256 !== checksum) {
           throw partConflictError(`Part ${partIndex} already stored with different bytes`);
         }
-        // identical replay: no row write. Rewrite the bytes only when the file vanished
-        // (crash between an earlier row write and the file write) so the assembly stays whole
-        await this.ensurePartFile(session, partIndex, body);
+        // identical replay: no row write. Rewrite the bytes anyway (tmp+rename is idempotent) so
+        // a part file lost to a crash between an earlier row write and its file write comes back
+        // and the assembly stays whole
+        await this.writePartFile(session, partIndex, body);
         return;
       }
 
@@ -728,15 +720,6 @@ export class UploadsService {
       await rm(tmp, { force: true }).catch(() => undefined);
       throw err;
     }
-  }
-
-  private async ensurePartFile(
-    session: UploadSession,
-    partIndex: number,
-    body: Buffer,
-  ): Promise<void> {
-    if (await pathExists(this.partPath(session, partIndex))) return;
-    await this.writePartFile(session, partIndex, body);
   }
 
   /**

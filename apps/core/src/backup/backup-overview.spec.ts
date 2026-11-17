@@ -9,12 +9,12 @@ import { BackupMerge } from '../database/entities/backup-merge.entity';
 import { BackupStorageIo } from './backup-storage-io';
 import { BackupStatusService } from './backup-status.service';
 import {
-  UserBackupService,
   buildBackupOverviewRow,
   buildFallbackEmail,
   buildOrphanBackupOverviewRow,
-  type BackupStatus,
-} from './user-backup.service';
+} from './backup-overview.builder';
+import { UserBackupService } from './user-backup.service';
+import type { BackupStatus } from './backup.types';
 
 function user(over: Partial<User> = {}): User {
   return {

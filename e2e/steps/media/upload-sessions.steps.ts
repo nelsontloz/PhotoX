@@ -6,9 +6,17 @@ import type {
   UploadSessionCreated,
   UploadSessionStatusResponse,
 } from '@photox/shared-types';
-import { FIXTURES_DIR, Then, When, authHeaders, requireAuth, type Ctx } from '../support';
+import {
+  FIXTURES_DIR,
+  Then,
+  When,
+  authHeaders,
+  requireAuth,
+  scenarioState,
+  type Ctx,
+} from '../support';
 
-// Per-scenario upload-session state, keyed by the scenario ctx (support.ts Ctx untouched).
+// Per-scenario upload-session state (support.ts Ctx untouched).
 interface UploadSessionState {
   uploadId: string;
   chunkSizeBytes: number;
@@ -17,12 +25,10 @@ interface UploadSessionState {
   completedAssetId?: string;
 }
 
-const states = new WeakMap<Ctx, UploadSessionState>();
-
 function sessionState(ctx: Ctx): UploadSessionState {
-  const state = states.get(ctx);
-  if (!state) throw new Error('create a chunked upload session first');
-  return state;
+  const state = scenarioState<Partial<UploadSessionState>>(ctx);
+  if (!state.uploadId) throw new Error('create a chunked upload session first');
+  return state as UploadSessionState;
 }
 
 When('I create a chunked upload session for {string}', async ({ request, ctx }, name: string) => {
@@ -37,12 +43,11 @@ When('I create a chunked upload session for {string}', async ({ request, ctx }, 
   expect(body.uploadId).toBeTruthy();
   // the server fixes the chunk grid — totalParts must cover the whole fixture
   expect(body.totalParts).toBe(Math.ceil(bytes.length / body.chunkSizeBytes));
-  states.set(ctx, {
-    uploadId: body.uploadId,
-    chunkSizeBytes: body.chunkSizeBytes,
-    totalParts: body.totalParts,
-    expectedSizeBytes: bytes.length,
-  });
+  const state = scenarioState<Partial<UploadSessionState>>(ctx);
+  state.uploadId = body.uploadId;
+  state.chunkSizeBytes = body.chunkSizeBytes;
+  state.totalParts = body.totalParts;
+  state.expectedSizeBytes = bytes.length;
 });
 
 When('I upload every part of {string}', async ({ request, ctx }, name: string) => {
@@ -101,18 +106,3 @@ Then('the session status reports completed with its asset id', async ({ request,
   expect(body.status).toBe('completed');
   expect(body.assetId).toBe(state.completedAssetId);
 });
-
-Then(
-  'completing the upload session again returns the same asset as a deduplicated replay',
-  async ({ request, ctx }) => {
-    const auth = requireAuth(ctx);
-    const state = sessionState(ctx);
-    const response = await request.post(`/api/v1/uploads/${state.uploadId}/complete`, {
-      headers: authHeaders(auth),
-    });
-    expect(response.status()).toBe(200);
-    const body = (await response.json()) as UploadCompleteResponse;
-    expect(body.deduplicated).toBe(true);
-    expect(body.asset.id).toBe(state.completedAssetId);
-  },
-);

@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository, type FindOptionsRelations, type SelectQueryBuilder } from 'typeorm';
-import { isUUID } from 'class-validator';
 import * as crypto from 'crypto';
 import { Share } from '../database/entities/share.entity';
 import { isPostgresUniqueViolation } from '../common/sql-errors';
@@ -10,7 +9,8 @@ import { FileRecord } from '../database/entities';
 import { Album } from '../database/entities/album.entity';
 import { AlbumAsset } from '../database/entities/album-asset.entity';
 import { findOwnedOr404 } from '../common/asset-ownership';
-import { decodeCursor, encodeCursor, invalidCursor } from '../common/cursor';
+import { decodeTimestampIdCursor, encodeTimestampIdCursor } from '../common/cursor';
+import { pageAlbumAssetIds } from '../albums/album-assets.page';
 import { playableFileId } from '../assets/content-target';
 import { AssetsService } from '../assets/assets.service';
 import { CreateShareDto } from './dto/create-share.dto';
@@ -37,15 +37,6 @@ const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 type ShareTarget =
   | { kind: 'asset'; assetId: string; albumId: null }
   | { kind: 'album'; assetId: null; albumId: string };
-
-/** The last row's ("<timestamp>", "<uuid>") — both share lists page on that tuple. */
-function decodeTimestampCursor(raw: string): { at: Date; id: string } {
-  const [rawAt, id = ''] = decodeCursor(raw, 2);
-  const at = new Date(rawAt ?? '');
-  // a non-uuid id would reach SQL as an invalid cast: 400 here, never a 500
-  if (Number.isNaN(at.getTime()) || !isUUID(id)) invalidCursor();
-  return { at, id };
-}
 
 @Injectable()
 export class SharesService {
@@ -174,7 +165,7 @@ export class SharesService {
       .take(limit + 1);
 
     if (q.cursor) {
-      const cursor = decodeTimestampCursor(q.cursor);
+      const cursor = decodeTimestampIdCursor(q.cursor);
       qb.andWhere('(share.createdAt, share.id) < (:cursorCreatedAt, :cursorId)', {
         cursorCreatedAt: cursor.at,
         cursorId: cursor.id,
@@ -197,7 +188,7 @@ export class SharesService {
       items,
       total,
       nextCursor:
-        rows.length > limit && last ? encodeCursor([last.createdAt.toISOString(), last.id]) : null,
+        rows.length > limit && last ? encodeTimestampIdCursor(last.createdAt, last.id) : null,
     };
   }
 
@@ -241,50 +232,18 @@ export class SharesService {
     const limit = q.limit ?? 100;
 
     // anonymous capability URL: always a bounded page, never the whole album
-    const total = await this.albumAssetRepo
-      .createQueryBuilder('aa')
-      .innerJoin('assets', 'asset', 'asset.id = aa."assetId"')
-      .where('aa."albumId" = :albumId', { albumId: share.albumId })
-      .andWhere('asset.isTrashed = false')
-      .getCount();
+    const [{ assetIds, nextCursor }, total] = await Promise.all([
+      pageAlbumAssetIds(this.albumAssetRepo, { albumId: share.albumId!, limit, cursor: q.cursor }),
+      this.assets.countActiveInAlbum(share.albumId!),
+    ]);
+    if (assetIds.length === 0) return { items: [], total, nextCursor };
 
-    const qb = this.albumAssetRepo
-      .createQueryBuilder('aa')
-      .select('aa."assetId"', 'assetId')
-      .addSelect('aa."addedAt"', 'addedAt')
-      .innerJoin('assets', 'asset', 'asset.id = aa."assetId"')
-      .where('aa."albumId" = :albumId', { albumId: share.albumId })
-      .andWhere('asset.isTrashed = false')
-      // id completes the sort key so the keyset cursor compares a total order
-      .orderBy('aa."addedAt"', 'DESC')
-      .addOrderBy('aa."assetId"', 'DESC')
-      .limit(limit + 1);
-
-    if (q.cursor) {
-      const cursor = decodeTimestampCursor(q.cursor);
-      qb.andWhere('(aa."addedAt", aa."assetId") < (:cursorAddedAt, :cursorAssetId)', {
-        cursorAddedAt: cursor.at,
-        cursorAssetId: cursor.id,
-      });
-    }
-
-    const rows = await qb.getRawMany<{ assetId: string; addedAt: Date | string }>();
-    const page = rows.slice(0, limit);
-    const last = page.at(-1);
-    const nextCursor =
-      rows.length > limit && last
-        ? encodeCursor([new Date(last.addedAt).toISOString(), last.assetId])
-        : null;
-
-    if (page.length === 0) return { items: [], total, nextCursor };
-
-    const assets = await this.assetRepo.findBy({ id: In(page.map((row) => row.assetId)) });
+    const assets = await this.assetRepo.findBy({ id: In(assetIds) });
     const byId = new Map(assets.map((asset) => [asset.id, asset]));
-    const items: PublicShareAsset[] = [];
-    for (const row of page) {
-      const asset = byId.get(row.assetId);
-      if (asset) items.push(this.toPublicAsset(asset));
-    }
+    const items = assetIds.flatMap((id) => {
+      const asset = byId.get(id);
+      return asset ? [this.toPublicAsset(asset)] : [];
+    });
     return { items, total, nextCursor };
   }
 

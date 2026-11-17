@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { UnrecoverableError, type Job } from 'bullmq';
 import { randomUUID } from 'crypto';
 import { thumbnailProcessor } from './thumbnail.processor';
+import { assetFileRunner } from './asset-file-job';
 import type { ThumbnailJob } from './job-schemas';
 import type { CoreClient } from '../core/core-client.service';
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client';
@@ -17,12 +18,17 @@ describe('ThumbnailProcessor job guards', () => {
   function setup() {
     const fake = new FakeCoreClient();
     const enqueue = vi.fn().mockResolvedValue(undefined);
+    const storage = { pathFor: (key: string) => key } as never;
     const spec = thumbnailProcessor({
       bullMq: { enqueue } as never,
       core: fake as unknown as CoreClient,
-      storage: { pathFor: (key: string) => key } as never,
+      storage,
     });
-    return { run: spec.run, fake, bullMq: { enqueue } };
+    return {
+      run: assetFileRunner({ core: fake as unknown as CoreClient, storage }, spec.queue, spec.job),
+      fake,
+      bullMq: { enqueue },
+    };
   }
 
   it('rejects an invalid payload before any core call', async () => {

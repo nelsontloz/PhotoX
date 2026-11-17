@@ -10,9 +10,10 @@ import {
   getAsset,
   injectSession,
   registerUser,
+  requireAdmin,
   requireAuth,
+  scenarioState,
   signIn,
-  signInAdmin,
   startAndWaitForRun,
   uploadViaApi,
   type AlbumRef,
@@ -59,18 +60,8 @@ interface BackupOverviewRow {
   legacyBackups?: unknown;
 }
 
-interface BackupProgress {
-  userId: string;
-  inProgress: boolean;
-  total: number;
-  completed: number;
-  uploaded: number;
-  skipped: number;
-}
-
-/** Per-scenario backup state, keyed by the scenario ctx (support.ts Ctx untouched). */
+/** Per-scenario backup state (support.ts Ctx untouched). */
 interface BackupState {
-  admin?: AuthResponse;
   assetIds: string[];
   otherAuth?: AuthResponse;
   allUsers?: AuthResponse[];
@@ -87,30 +78,19 @@ interface BackupState {
   victimHiddenAlbum?: AlbumRef;
 }
 
-const states = new WeakMap<Ctx, BackupState>();
-
 function backupState(ctx: Ctx): BackupState {
-  let state = states.get(ctx);
-  if (!state) {
-    state = { assetIds: [], results: [] };
-    states.set(ctx, state);
-  }
-  return state;
-}
-
-async function requireAdmin(request: APIRequestContext, state: BackupState): Promise<AuthResponse> {
-  state.admin ??= await signInAdmin(request);
-  return state.admin;
+  return scenarioState<BackupState>(ctx, { assetIds: [], results: [] });
 }
 
 async function runBackup(
   request: APIRequestContext,
-  state: BackupState,
+  ctx: Ctx,
   emailOrId: string,
 ): Promise<BackupResult> {
+  const state = backupState(ctx);
   const result = await startAndWaitForRun<BackupResult>(
     request,
-    await requireAdmin(request, state),
+    await requireAdmin(ctx, request),
     '/api/v1/admin/backups',
     { emailOrId },
   );
@@ -146,19 +126,6 @@ async function fetchOverview(
   expect(response.status()).toBe(200);
   const body = (await response.json()) as { items: BackupOverviewRow[] };
   return body.items;
-}
-
-async function fetchProgress(
-  request: APIRequestContext,
-  admin: AuthResponse,
-  emailOrId: string,
-): Promise<BackupProgress> {
-  const response = await request.get(
-    `/api/v1/admin/backups/${encodeURIComponent(emailOrId)}/progress`,
-    { headers: authHeaders(admin) },
-  );
-  expect(response.status()).toBe(200);
-  return (await response.json()) as BackupProgress;
 }
 
 /** The overview is global (one row per user) — always filter to the scenario's own row. */
@@ -207,21 +174,21 @@ Given('two users each with one photo are registered', async ({ request, ctx }) =
 
 When('an administrator backs up my account', async ({ request, ctx }) => {
   const state = backupState(ctx);
-  const result = await runBackup(request, state, requireAuth(ctx).user.id);
+  const result = await runBackup(request, ctx, requireAuth(ctx).user.id);
   state.myBackedUpAt = result.backedUpAt;
 });
 
 When('an administrator backs up my account again', async ({ request, ctx, $testInfo }) => {
   // the incremental scenario chains three backups — allow room beyond the 120s default
   $testInfo.setTimeout(240_000);
-  await runBackup(request, backupState(ctx), requireAuth(ctx).user.id);
+  await runBackup(request, ctx, requireAuth(ctx).user.id);
 });
 
 When("an administrator backs up the other user's account", async ({ request, ctx }) => {
   const state = backupState(ctx);
   const other = state.otherAuth;
   if (!other) throw new Error('register the second user first');
-  await runBackup(request, state, other.user.id);
+  await runBackup(request, ctx, other.user.id);
 });
 
 When('an administrator backs up every user serially', async ({ request, ctx, $testInfo }) => {
@@ -231,7 +198,7 @@ When('an administrator backs up every user serially', async ({ request, ctx, $te
   if (!users) throw new Error('register the backup-all users first');
   // mirror the UI runAll for-loop: one user at a time, never concurrent
   for (const user of users) {
-    await runBackup(request, state, user.user.id);
+    await runBackup(request, ctx, user.user.id);
   }
 });
 
@@ -249,32 +216,19 @@ Then('the backup prefix contains my user id', ({ ctx }) => {
 });
 
 Then('my backup status reports {int} assets', async ({ request, ctx }, assets: number) => {
-  const state = backupState(ctx);
   const status = await fetchStatus(
     request,
-    await requireAdmin(request, state),
+    await requireAdmin(ctx, request),
     requireAuth(ctx).user.id,
   );
   expect(status.exists).toBe(true);
   expect(status.assets).toBe(assets);
 });
 
-Then('the backup progress for my account is idle', async ({ request, ctx }) => {
-  // liveness only: a known user with no running backup reports an idle zero snapshot
-  const state = backupState(ctx);
-  const progress = await fetchProgress(
-    request,
-    await requireAdmin(request, state),
-    requireAuth(ctx).user.id,
-  );
-  expect(progress.inProgress).toBe(false);
-});
-
 Then(
   'the backup overview shows my account as backed up with {int} assets',
   async ({ request, ctx }, assets: number) => {
-    const state = backupState(ctx);
-    const rows = await fetchOverview(request, await requireAdmin(request, state));
+    const rows = await fetchOverview(request, await requireAdmin(ctx, request));
     const row = overviewRow(rows, requireAuth(ctx).user.id);
     expect(row.exists).toBe(true);
     expect(row.backedUpAssets).toBe(assets);
@@ -285,7 +239,7 @@ Then("the other user's backup status shows no backup", async ({ request, ctx }) 
   const state = backupState(ctx);
   const other = state.otherAuth;
   if (!other) throw new Error('register the second user first');
-  const status = await fetchStatus(request, await requireAdmin(request, state), other.user.id);
+  const status = await fetchStatus(request, await requireAdmin(ctx, request), other.user.id);
   expect(status.exists).toBe(false);
 });
 
@@ -295,7 +249,7 @@ Then(
     const state = backupState(ctx);
     const other = state.otherAuth;
     if (!other) throw new Error('register the second user first');
-    const status = await fetchStatus(request, await requireAdmin(request, state), other.user.id);
+    const status = await fetchStatus(request, await requireAdmin(ctx, request), other.user.id);
     expect(status.exists).toBe(true);
     expect(status.assets).toBe(assets);
   },
@@ -307,7 +261,7 @@ Then('my backup status is unchanged since my backup', async ({ request, ctx }) =
   if (!stamped) throw new Error('back up my account first');
   const status = await fetchStatus(
     request,
-    await requireAdmin(request, state),
+    await requireAdmin(ctx, request),
     requireAuth(ctx).user.id,
   );
   expect(status.exists).toBe(true);
@@ -318,7 +272,7 @@ Then('both users show as backed up in the overview', async ({ request, ctx }) =>
   const state = backupState(ctx);
   const users = state.allUsers;
   if (!users) throw new Error('register the backup-all users first');
-  const rows = await fetchOverview(request, await requireAdmin(request, state));
+  const rows = await fetchOverview(request, await requireAdmin(ctx, request));
   const mine = rows.filter((row) => users.some((user) => user.user.id === row.userId));
   expect(mine).toHaveLength(users.length);
   for (const row of mine) {
@@ -330,7 +284,7 @@ Then('both users show as backed up in the overview', async ({ request, ctx }) =>
 Then(
   'an administrator sees the backups table with a Back up all button',
   async ({ request, page, baseURL, ctx }) => {
-    await injectSession(page, await requireAdmin(request, backupState(ctx)), baseURL);
+    await injectSession(page, await requireAdmin(ctx, request), baseURL);
     await page.goto('/admin?tab=backups');
     await expect(page.getByRole('heading', { name: 'User Backups' })).toBeVisible({
       timeout: 15_000,
@@ -397,9 +351,9 @@ async function openBackupsTab(
   page: Page,
   baseURL: string | undefined,
   request: APIRequestContext,
-  state: BackupState,
+  ctx: Ctx,
 ): Promise<void> {
-  await injectSession(page, await requireAdmin(request, state), baseURL);
+  await injectSession(page, await requireAdmin(ctx, request), baseURL);
   await page.goto('/admin?tab=backups');
   await expect(page.getByRole('heading', { name: 'User Backups' })).toBeVisible({
     timeout: 15_000,
@@ -439,7 +393,7 @@ Given(
     // one inline S3 backup plus an async user deletion — allow room past the 120s default
     $testInfo.setTimeout(240_000);
     const state = backupState(ctx);
-    const admin = await requireAdmin(request, state);
+    const admin = await requireAdmin(ctx, request);
     const victim = await registerUser(request, `victim-${randomUUID()}@photox.test`);
     state.victim = victim;
     const assetId = await uploadViaApi(request, victim, 'photo.jpg');
@@ -448,7 +402,7 @@ Given(
     const hiddenAlbum = await createAlbumViaApi(request, victim, 'Hidden Backup Album', true);
     state.victimHiddenAlbum = hiddenAlbum;
     expect(await addAssetsViaApi(request, victim, hiddenAlbum.id, [assetId])).toBe(201);
-    await runBackup(request, state, victim.user.id);
+    await runBackup(request, ctx, victim.user.id);
     await deleteUserViaApi(request, admin, victim.user.id);
   },
 );
@@ -461,7 +415,7 @@ Given(
     const user = await registerUser(request, `live-${randomUUID()}@photox.test`);
     state.liveUser = user;
     state.liveAssetId = await uploadViaApi(request, user, 'photo.jpg');
-    await runBackup(request, state, user.user.id);
+    await runBackup(request, ctx, user.user.id);
   },
 );
 
@@ -471,22 +425,22 @@ Given(
     // two inline S3 backups plus an async user deletion — allow room past the 120s default
     $testInfo.setTimeout(360_000);
     const state = backupState(ctx);
-    const admin = await requireAdmin(request, state);
+    const admin = await requireAdmin(ctx, request);
     const active = await registerUser(request, `active-${randomUUID()}@photox.test`);
     state.activeUser = active;
     await uploadViaApi(request, active, 'photo.jpg');
-    await runBackup(request, state, active.user.id);
+    await runBackup(request, ctx, active.user.id);
     // a different fixture from the active user's so a shared checksum can never alias the two
     const gone = await registerUser(request, `victim-${randomUUID()}@photox.test`);
     state.deletedVictim = gone;
     await uploadViaApi(request, gone, 'photo-text.jpg');
-    state.orphanBackupAt = (await runBackup(request, state, gone.user.id)).backedUpAt;
+    state.orphanBackupAt = (await runBackup(request, ctx, gone.user.id)).backedUpAt;
     await deleteUserViaApi(request, admin, gone.user.id);
   },
 );
 
 Given('an administrator opens the backups tab', async ({ request, page, baseURL, ctx }) => {
-  await openBackupsTab(page, baseURL, request, backupState(ctx));
+  await openBackupsTab(page, baseURL, request, ctx);
 });
 
 When('I filter backups by {string}', async ({ page }, which: string) => {
@@ -675,7 +629,7 @@ Then('the live account and library stay intact', async ({ request, ctx }) => {
   // the delete is S3-keys-only: the photo still reads and the account still lists
   expect((await getAsset(request, user, assetId)).id).toBe(assetId);
   const list = await request.get(`/api/v1/admin/users?q=${encodeURIComponent(user.user.email)}`, {
-    headers: authHeaders(await requireAdmin(request, state)),
+    headers: authHeaders(await requireAdmin(ctx, request)),
   });
   expect(list.status()).toBe(200);
   expect(((await list.json()) as { total: number }).total).toBe(1);
@@ -685,8 +639,8 @@ Then('a fresh backup recreates the live backup', async ({ request, ctx, $testInf
   $testInfo.setTimeout(240_000);
   const state = backupState(ctx);
   const user = requireLiveUser(state);
-  expect((await runBackup(request, state, user.user.id)).assets).toBe(1);
-  const status = await fetchStatus(request, await requireAdmin(request, state), user.user.id);
+  expect((await runBackup(request, ctx, user.user.id)).assets).toBe(1);
+  const status = await fetchStatus(request, await requireAdmin(ctx, request), user.user.id);
   expect(status.exists).toBe(true);
   expect(status.assets).toBe(1);
 });
@@ -716,7 +670,7 @@ Then('the orphan backup row is gone and its status is missing', async ({ page, r
   // the delete bumps the overview version and refetches: the manifest-less orphan drops out
   await expect(page.getByText(/No users match/)).toBeVisible({ timeout: 30_000 });
   const status = await request.get(`/api/v1/admin/backups/${encodeURIComponent(victim.user.id)}`, {
-    headers: authHeaders(await requireAdmin(request, state)),
+    headers: authHeaders(await requireAdmin(ctx, request)),
   });
   expect(status.status()).toBe(200);
   expect(((await status.json()) as { exists: boolean }).exists).toBe(false);
@@ -726,7 +680,7 @@ Then('the orphan victim account stays deleted', async ({ request, ctx }) => {
   const state = backupState(ctx);
   const victim = requireVictim(state);
   const list = await request.get(`/api/v1/admin/users?q=${encodeURIComponent(victim.user.email)}`, {
-    headers: authHeaders(await requireAdmin(request, state)),
+    headers: authHeaders(await requireAdmin(ctx, request)),
   });
   expect(list.status()).toBe(200);
   expect(((await list.json()) as { total: number }).total).toBe(0);
@@ -777,7 +731,7 @@ Then(
     // the orphan's manifest is untouched — same stamp as before backup-all ran
     const stamped = state.orphanBackupAt;
     if (!stamped) throw new Error('back up the deleted orphan first');
-    const status = await fetchStatus(request, await requireAdmin(request, state), gone.user.id);
+    const status = await fetchStatus(request, await requireAdmin(ctx, request), gone.user.id);
     expect(status.exists).toBe(true);
     expect(status.backedUpAt).toBe(stamped);
   },

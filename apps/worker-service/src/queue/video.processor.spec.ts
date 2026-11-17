@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { UnrecoverableError, type Job } from 'bullmq';
 import { LocalStorageService } from '@photox/shared-config';
 import { registerDerivative, transcodeOutputDir, videoProcessor } from './video.processor';
+import { assetFileRunner } from './asset-file-job';
 import type { CoreClient, RegisterFileInput } from '../core/core-client.service';
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client';
 import { signJob, useTestAuthEnv } from '../../test/sign-job';
@@ -92,7 +93,8 @@ describe('VideoProcessor disk paths', () => {
   });
 
   it('rejects a job whose asset belongs to another user before patching', async () => {
-    const run = videoProcessor(deps()).run;
+    const spec = videoProcessor(deps());
+    const run = assetFileRunner(deps(), spec.queue, spec.job);
 
     const base = { assetId: randomUUID(), fileId: randomUUID(), userId: randomUUID() };
     fake.files.set(base.fileId, makeFileRecord({ id: base.fileId, userId: base.userId }));

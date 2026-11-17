@@ -1,13 +1,12 @@
 import request from 'supertest';
-import { DEPRECATIONS } from '../../src/common/deprecations';
 import { apiServer, closeTestApp, createApiTestApp } from './helpers';
 import type { ApiTestApp } from './helpers';
 
 /**
- * Release 3 retired every operation the 2026-11 wave deprecated. The registry is empty now, so
- * nothing may still be announced as deprecated and the retired operations must be gone from the
- * contract. A leftover handler reappears in `/docs-json`, so the document — not the router — is
- * the thing worth asserting against.
+ * Release 3 retired every operation the 2026-11 wave deprecated, and the deprecation framework is
+ * gone with it. The retired operations must stay absent from the contract: a leftover handler
+ * reappears in `/docs-json`, so the document — not the router — is the thing worth asserting
+ * against.
  */
 const RETIRED: Readonly<{ method: string; path: string }>[] = [
   { method: 'post', path: '/api/v1/assets/bulk-trash' },
@@ -45,7 +44,7 @@ describe('API deprecations', () => {
   });
 
   interface Document {
-    paths: Record<string, Record<string, { deprecated?: boolean }>>;
+    paths: Record<string, Record<string, unknown>>;
   }
 
   async function document(): Promise<Document> {
@@ -57,17 +56,6 @@ describe('API deprecations', () => {
     for (const { method, path } of RETIRED) {
       expect(doc.paths[path]?.[method], `${method.toUpperCase()} ${path} is back`).toBeUndefined();
     }
-  });
-
-  it('announces no deprecation while the registry is empty', async () => {
-    expect(DEPRECATIONS).toEqual([]);
-    const doc = await document();
-    const flagged = Object.entries(doc.paths).flatMap(([path, item]) =>
-      Object.entries(item)
-        .filter(([, operation]) => operation?.deprecated === true)
-        .map(([method]) => `${method.toUpperCase()} ${path}`),
-    );
-    expect(flagged).toEqual([]);
   });
 
   it('answers 404 on the wire for a retired alias', async () => {

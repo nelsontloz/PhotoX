@@ -1,4 +1,13 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+
+/** Props for the rename `<input>`; spread onto it and pass the header's own className. */
+export interface InlineRenameInputProps {
+  autoFocus: true;
+  value: string;
+  onChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  onBlur: () => void;
+  onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
+}
 
 /**
  * Inline click-to-rename state machine shared by the album/person headers.
@@ -6,12 +15,12 @@ import { useRef, useState } from 'react';
  * `currentName` is the committed name from parent state (seed + revert target).
  * `commit` performs the mutation and updates parent state; on throw the value reverts.
  * `allowEmpty` lets `commit('')` through (person names are clearable); otherwise
- * empty input just closes without a call.
+ * empty input just closes without a call. `cancelOnEscape` adds Escape as a revert key.
  */
 export function useInlineRename(
   currentName: string,
   commit: (name: string) => Promise<void>,
-  opts?: { allowEmpty?: boolean },
+  opts?: { allowEmpty?: boolean; cancelOnEscape?: boolean },
 ): {
   editing: boolean;
   nameValue: string;
@@ -19,6 +28,7 @@ export function useInlineRename(
   start: () => void;
   save: () => Promise<void>;
   cancel: () => void;
+  inputProps: InlineRenameInputProps;
 } {
   const [editing, setEditing] = useState(false);
   const [nameValue, setNameValue] = useState(currentName);
@@ -53,5 +63,18 @@ export function useInlineRename(
     }
   };
 
-  return { editing, nameValue, setNameValue, start, save, cancel };
+  const inputProps: InlineRenameInputProps = {
+    autoFocus: true,
+    value: nameValue,
+    onChange: (e) => setNameValue(e.target.value),
+    onBlur: () => {
+      void save();
+    },
+    onKeyDown: (e) => {
+      if (e.key === 'Enter') void save();
+      if (e.key === 'Escape' && opts?.cancelOnEscape) cancel();
+    },
+  };
+
+  return { editing, nameValue, setNameValue, start, save, cancel, inputProps };
 }

@@ -24,17 +24,9 @@ services:
     environment:
       <<: *secrets
       NODE_ENV: production
-      API_PORT: 3000
       POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: photox
-      POSTGRES_PASSWORD: photox_dev
-      POSTGRES_DB: photox
       STORAGE_DIR: /data/storage
       REDIS_HOST: redis
-      REDIS_PORT: 6379
-      AUTH_ACCESS_TTL: 30m
-      AUTH_REFRESH_TTL: 1d
       # e2e registers many users from one IP; prod/dev keep the default of 10/hour
       RATE_LIMIT_REGISTER: 1000
       # seeded admin (open registration only mints 'user'): core inserts this admin on
@@ -45,9 +37,6 @@ services:
       # e2e-only bucket keeps dev/prod apart
       S3_ENDPOINT: http://floci:4566
       S3_BACKUP_BUCKET: photox-e2e-backups
-      AWS_REGION: us-east-1
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
     volumes:
       - storage-data:/data/storage
     depends_on:
@@ -75,7 +64,6 @@ services:
       CORE_URL: http://core:3000
       STORAGE_DIR: /data/storage
       REDIS_HOST: redis
-      REDIS_PORT: 6379
     volumes:
       - storage-data:/data/storage
       - ./data/storage/models:/data/storage/models:ro

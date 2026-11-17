@@ -23,12 +23,7 @@ import {
   type BackupDirLocation,
 } from './backup-overview.builder';
 import { BackupStorageIo } from './backup-storage-io';
-import {
-  type BackupOverviewRow,
-  type BackupProgress,
-  type BackupSnapshot,
-  type BackupStatus,
-} from './backup.types';
+import { type BackupOverviewRow, type BackupSnapshot, type BackupStatus } from './backup.types';
 import { isNotFound, S3BackupService } from './s3-backup.service';
 
 @Injectable()
@@ -324,44 +319,6 @@ export class BackupStatusService {
   }
 
   /**
-   * Live per-file snapshot of the latest backup run for one user. Unknown users throw like
-   * startBackup; known users with no run yet get an idle zero snapshot.
-   */
-  async getBackupProgress(emailOrId: string): Promise<BackupProgress> {
-    const user = await this.findUser(emailOrId);
-    if (!user) throw new NotFoundException(`No user for ${emailOrId}`);
-    const run = await this.runs.findOne({
-      where: { userId: user.id, kind: 'backup' },
-      order: { startedAt: 'DESC' },
-    });
-    if (!run) {
-      const now = new Date().toISOString();
-      return {
-        userId: user.id,
-        inProgress: false,
-        total: 0,
-        completed: 0,
-        uploaded: 0,
-        skipped: 0,
-        currentFile: undefined,
-        startedAt: now,
-        updatedAt: now,
-      };
-    }
-    return {
-      userId: user.id,
-      inProgress: run.state === 'running' || run.state === 'finalizing',
-      total: run.totalItems,
-      completed: run.completedItems,
-      uploaded: run.uploaded,
-      skipped: run.skipped,
-      currentFile: run.currentFile ?? undefined,
-      startedAt: run.startedAt.toISOString(),
-      updatedAt: run.updatedAt.toISOString(),
-    };
-  }
-
-  /**
    * Best-effort identity for a degraded (unreadable) manifest: the userId from
    * the located prefix plus the backup-time email parsed back out of the
    * `<email>__<userId>` folder segment. Counts are omitted — the body never
@@ -463,33 +420,31 @@ export class BackupStatusService {
       }
       const keys = await this.s3.listKeys(base);
       const wantedEmail = normalizeEmail(user.email);
-      const candidates: { dir: BackupDirLocation; status: BackupStatus }[] = [];
-      for (const dir of this.manifestDirs(keys, base)) {
-        if (dir.userId !== user.id && normalizeEmail(dir.email) !== wantedEmail) continue;
-        const status = await this.readBackupStatus(dir);
-        if (!status.exists) continue;
+      const candidates = (
+        await this.scanDirs(base, keys, (dir) => {
+          return dir.userId === user.id || normalizeEmail(dir.email) === wantedEmail;
+        })
+      ).filter(({ dir, status }) => {
         // Manifest emailAtBackup is authoritative; prefix email covers degraded.
-        if (dir.userId !== user.id) {
-          const backupEmail = normalizeEmail(status.emailAtBackup ?? dir.email);
-          if (backupEmail !== wantedEmail) continue;
-        }
-        candidates.push({ dir, status });
-      }
+        return (
+          status.exists &&
+          (dir.userId === user.id ||
+            normalizeEmail(status.emailAtBackup ?? dir.email) === wantedEmail)
+        );
+      });
       if (candidates.length === 0) return exact;
       return this.newestLocated(candidates);
     }
     if (emailOrId.includes('@')) {
-      const keys = await this.s3.listKeys(base);
       const wantEmail = normalizeEmail(emailOrId);
-      const emailCandidates: { dir: BackupDirLocation; status: BackupStatus }[] = [];
-      for (const dir of this.manifestDirs(keys, base)) {
-        // Manifest email is authoritative (a pending email-change rename can leave
-        // the prefix dir on the old address); fall back to the prefix email.
-        const status = await this.readBackupStatus(dir);
-        if (!status.exists) continue;
-        if (normalizeEmail(status.emailAtBackup ?? dir.email) !== wantEmail) continue;
-        emailCandidates.push({ dir, status });
-      }
+      const keys = await this.s3.listKeys(base);
+      const emailCandidates = (await this.scanDirs(base, keys, () => true)).filter(
+        ({ dir, status }) => {
+          // Manifest email is authoritative (a pending email-change rename can leave
+          // the prefix dir on the old address); fall back to the prefix email.
+          return status.exists && normalizeEmail(status.emailAtBackup ?? dir.email) === wantEmail;
+        },
+      );
       if (emailCandidates.length === 0) {
         throw new NotFoundException(`No backup found for ${emailOrId}`);
       }
@@ -516,12 +471,21 @@ export class BackupStatusService {
   ): Promise<{ dir: BackupDirLocation; status: BackupStatus }[]> {
     const base = resolveBackupPrefix();
     const keys = await this.s3.listKeys(base);
-    const candidates: { dir: BackupDirLocation; status: BackupStatus }[] = [];
+    return this.scanDirs(base, keys, (dir) => dir.userId === userId);
+  }
+
+  /** Every manifest-bearing dir under `base` its cheap predicate accepts, with its manifest status. */
+  private async scanDirs(
+    base: string,
+    keys: string[],
+    accept: (dir: BackupDirLocation) => boolean,
+  ): Promise<{ dir: BackupDirLocation; status: BackupStatus }[]> {
+    const out: { dir: BackupDirLocation; status: BackupStatus }[] = [];
     for (const dir of this.manifestDirs(keys, base)) {
-      if (dir.userId !== userId) continue;
-      candidates.push({ dir, status: await this.readBackupStatus(dir) });
+      if (!accept(dir)) continue;
+      out.push({ dir, status: await this.readBackupStatus(dir) });
     }
-    return candidates;
+    return out;
   }
 
   /** Every manifest-bearing backup dir under `base`, one per prefix. */

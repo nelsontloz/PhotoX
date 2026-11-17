@@ -10,14 +10,6 @@ import {
   type SemanticUpload,
 } from '../support';
 
-/** Code-matched subset of GET /api/v1/assets/:id. */
-interface FaceAsset {
-  id: string;
-  faceStatus?: 'pending' | 'ready' | 'failed' | null;
-  faceCount?: number | null;
-  faces?: { id: string }[];
-}
-
 interface RelatedAssets {
   items: { id: string }[];
   total: number;
@@ -83,31 +75,3 @@ Then('the uploaded photos are visually similar to each other', async ({ request,
   if (!a || !b) throw new Error('upload two photos for semantic processing first');
   await expectVisuallySimilar(request, auth, a.assetId, b.assetId);
 });
-
-Then(
-  'face detection on the uploaded photo settles with a detected face',
-  async ({ request, ctx }) => {
-    const auth = requireAuth(ctx);
-    const assetId = ctx.assetId;
-    if (!assetId) throw new Error('upload a photo first');
-    await expect
-      .poll(
-        async () => {
-          const response = await request.get(`/api/v1/assets/${assetId}`, {
-            headers: authHeaders(auth),
-          });
-          expect(response.status()).toBe(200);
-          const asset = (await response.json()) as FaceAsset;
-          if (asset.faceStatus === 'failed') {
-            throw new Error(`face detection failed on asset ${assetId}`);
-          }
-          return asset.faceStatus === 'ready' && (asset.faces ?? []).length >= 1;
-        },
-        {
-          timeout: 120_000,
-          message: 'face detection never reported a face on the portrait fixture',
-        },
-      )
-      .toBe(true);
-  },
-);

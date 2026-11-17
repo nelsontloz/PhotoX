@@ -5,8 +5,8 @@ import { randomUUID, createHash } from 'crypto';
 import { rm, mkdir, stat } from 'fs/promises';
 import { createReadStream } from 'fs';
 import { assetRefsJobSchema, bindingOf, type AssetRefsJob } from './job-schemas';
-import { patchStatusFailed, runAssetFileJob } from './asset-file-job';
-import type { ProcessorDeps, ProcessorSpec } from './processor-spec';
+import { patchStatusFailed } from './asset-file-job';
+import type { MediaProcessorSpec, ProcessorDeps } from './processor-spec';
 import { runFfmpeg, runFfprobeJson } from './ffmpeg';
 import { parseFps } from './metadata.extractor';
 
@@ -66,7 +66,7 @@ export function transcodeOutputDir(fileId: string): string {
 export function videoProcessor({
   core,
   storage,
-}: Pick<ProcessorDeps, 'core' | 'storage'>): ProcessorSpec<AssetRefsJob> {
+}: Pick<ProcessorDeps, 'core' | 'storage'>): MediaProcessorSpec<AssetRefsJob> {
   const logger = new Logger('VideoProcessor');
 
   return {
@@ -74,120 +74,115 @@ export function videoProcessor({
     // ponytail: concurrency 2 bounds poison-video stall without CPU oversubscribe on a
     // personal host; raise only with abuse evidence (bullmq's default is 1)
     workerOptions: { concurrency: 2 },
-    run: async (job) => {
-      await runAssetFileJob({ core, storage, logger }, job, {
-        queue: 'process-video',
-        schema: assetRefsJobSchema,
-        label: 'video transcode',
-        failureLabel: 'Video transcode',
-        onFailure: ({ userId, assetId, message, sig }) =>
-          patchStatusFailed(
-            core,
-            logger,
-            userId,
-            assetId,
-            { transcodeStatus: 'failed', metadata: { transcodeError: message } },
-            sig,
-          ),
-        body: async ({ data, filePath }) => {
-          const { assetId, userId, sig } = data;
-          const binding = bindingOf(data);
-          // only ffmpeg's output lives in tmp — the immutable original is read in place
-          const outDir = transcodeOutputDir(data.fileId);
+    job: {
+      schema: assetRefsJobSchema,
+      label: 'video transcode',
+      failureLabel: 'Video transcode',
+      onFailure: ({ userId, assetId, message, sig }) =>
+        patchStatusFailed(
+          core,
+          logger,
+          userId,
+          assetId,
+          { transcodeStatus: 'failed', metadata: { transcodeError: message } },
+          sig,
+        ),
+      body: async ({ data, filePath }) => {
+        const { assetId, userId, sig } = data;
+        const binding = bindingOf(data);
+        // only ffmpeg's output lives in tmp — the immutable original is read in place
+        const outDir = transcodeOutputDir(data.fileId);
 
-          try {
-            await core.patchMetadata(userId, assetId, { transcodeStatus: 'pending' }, binding);
+        try {
+          await core.patchMetadata(userId, assetId, { transcodeStatus: 'pending' }, binding);
 
-            const probe = await runFfprobeJson(filePath);
-            const duration = probe.format.duration ? Number.parseFloat(probe.format.duration) : 0;
-            const videoStream = probe.streams.find((s) => s.codec_type === 'video');
-            const width = videoStream?.width ?? 0;
-            const height = videoStream?.height ?? 0;
+          const probe = await runFfprobeJson(filePath);
+          const duration = probe.format.duration ? Number.parseFloat(probe.format.duration) : 0;
+          const videoStream = probe.streams.find((s) => s.codec_type === 'video');
+          const width = videoStream?.width ?? 0;
+          const height = videoStream?.height ?? 0;
 
-            if (duration > MAX_DURATION_SEC) {
-              throw new Error(`Video duration ${duration}s exceeds ${MAX_DURATION_SEC}s limit`);
-            }
-            if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-              throw new Error(`Video dimensions ${width}x${height} exceed ${MAX_DIMENSION} limit`);
-            }
+          if (duration > MAX_DURATION_SEC) {
+            throw new Error(`Video duration ${duration}s exceeds ${MAX_DURATION_SEC}s limit`);
+          }
+          if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+            throw new Error(`Video dimensions ${width}x${height} exceed ${MAX_DIMENSION} limit`);
+          }
 
-            const videoCodec = videoStream?.codec_name ?? '';
-            const audioStream = probe.streams.find((s) => s.codec_type === 'audio');
-            const audioCodec = audioStream?.codec_name ?? '';
-            const needsTranscode = videoCodec !== 'h264' || (audioStream && audioCodec !== 'aac');
+          const videoCodec = videoStream?.codec_name ?? '';
+          const audioStream = probe.streams.find((s) => s.codec_type === 'audio');
+          const audioCodec = audioStream?.codec_name ?? '';
+          const needsTranscode = videoCodec !== 'h264' || (audioStream && audioCodec !== 'aac');
 
-            if (!needsTranscode) {
-              await core.patchMetadata(
-                userId,
-                assetId,
-                {
-                  transcodeStatus: 'ready',
-                  transcodeFileId: null,
-                },
-                binding,
-              );
-              logger.log(`Video already browser-safe, skipping transcode: asset=${assetId}`);
-              return;
-            }
-
-            await mkdir(outDir, { recursive: true });
-            const outPath = join(outDir, 'output.webm');
-
-            const scaleFilter = height > 720 ? `scale=-2:min(720\\,ih)` : undefined;
-            const sourceFps = parseFps(videoStream?.avg_frame_rate);
-            // capping keeps the clip's duration/playback, only the frame count is resampled
-            const fpsCapArgs =
-              sourceFps !== null && sourceFps > MAX_ENCODE_FPS
-                ? ['-r', String(MAX_ENCODE_FPS)]
-                : [];
-
-            const ffmpegArgs = [
-              '-y',
-              '-i',
-              filePath,
-              '-c:v',
-              'libsvtav1',
-              '-preset',
-              '8',
-              '-crf',
-              '32',
-              '-pix_fmt',
-              'yuv420p',
-              ...fpsCapArgs,
-              ...(scaleFilter ? ['-vf', scaleFilter] : []),
-              ...(audioStream ? ['-c:a', 'libopus', '-b:a', '96k'] : []),
-              outPath,
-            ];
-
-            await runFfmpeg(ffmpegArgs, TRANSCODE_TIMEOUT_MS);
-
-            const derivativeFileId = await registerDerivative(
-              { core, storage },
-              assetId,
-              userId,
-              outPath,
-              sig,
-            );
-
+          if (!needsTranscode) {
             await core.patchMetadata(
               userId,
               assetId,
               {
                 transcodeStatus: 'ready',
-                transcodeFileId: derivativeFileId,
+                transcodeFileId: null,
               },
               binding,
             );
-            logger.log(`Video transcode complete: asset=${assetId}`);
-          } finally {
-            try {
-              await rm(outDir, { recursive: true, force: true });
-            } catch {
-              // ignore cleanup errors
-            }
+            logger.log(`Video already browser-safe, skipping transcode: asset=${assetId}`);
+            return;
           }
-        },
-      });
+
+          await mkdir(outDir, { recursive: true });
+          const outPath = join(outDir, 'output.webm');
+
+          const scaleFilter = height > 720 ? `scale=-2:min(720\\,ih)` : undefined;
+          const sourceFps = parseFps(videoStream?.avg_frame_rate);
+          // capping keeps the clip's duration/playback, only the frame count is resampled
+          const fpsCapArgs =
+            sourceFps !== null && sourceFps > MAX_ENCODE_FPS ? ['-r', String(MAX_ENCODE_FPS)] : [];
+
+          const ffmpegArgs = [
+            '-y',
+            '-i',
+            filePath,
+            '-c:v',
+            'libsvtav1',
+            '-preset',
+            '8',
+            '-crf',
+            '32',
+            '-pix_fmt',
+            'yuv420p',
+            ...fpsCapArgs,
+            ...(scaleFilter ? ['-vf', scaleFilter] : []),
+            ...(audioStream ? ['-c:a', 'libopus', '-b:a', '96k'] : []),
+            outPath,
+          ];
+
+          await runFfmpeg(ffmpegArgs, TRANSCODE_TIMEOUT_MS);
+
+          const derivativeFileId = await registerDerivative(
+            { core, storage },
+            assetId,
+            userId,
+            outPath,
+            sig,
+          );
+
+          await core.patchMetadata(
+            userId,
+            assetId,
+            {
+              transcodeStatus: 'ready',
+              transcodeFileId: derivativeFileId,
+            },
+            binding,
+          );
+          logger.log(`Video transcode complete: asset=${assetId}`);
+        } finally {
+          try {
+            await rm(outDir, { recursive: true, force: true });
+          } catch {
+            // ignore cleanup errors
+          }
+        }
+      },
     },
   };
 }

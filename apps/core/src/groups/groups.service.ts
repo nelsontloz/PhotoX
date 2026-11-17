@@ -62,13 +62,7 @@ export class GroupsService {
 
     const vector = toVectorSql(source.embedding);
     const options = { excludeAssetId: assetId };
-    const rows = await this.dataSource.transaction(async (em) => {
-      // same ef_search plumbing as search: HNSW scans cap at ef_search rows
-      await em.query(`SELECT set_config('hnsw.ef_search', $1, true)`, [
-        String(Math.min(limit + 1, 200)),
-      ]);
-      return neighbourRows(em, userId, vector, limit, options);
-    });
+    const rows = await neighbourRows(this.dataSource, userId, vector, limit, options);
     // The index spans every user and pgvector applies the owner filter after the scan, so other
     // users' near-identical photos can fill the ef_search window and short-change this owner (an
     // empty "More like this" tray, e2e-searchable only by luck). The graph never reached the

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart' show MethodCall;
 import 'package:photo_manager/photo_manager.dart';
 
+import 'file_name.dart';
 import 'media_filter.dart';
 import 'photo_observer.dart';
 
@@ -452,7 +453,7 @@ class PhotoManagerObserver implements PhotoObserver {
     final title = asset.title?.trim();
     final fileName = title != null && title.isNotEmpty
         ? title
-        : _basename(asset.relativePath ?? '');
+        : splitFileName(asset.relativePath ?? '').$1 ?? '';
 
     return AssetCandidate(
       localId: asset.id,
@@ -485,15 +486,6 @@ class PhotoManagerObserver implements PhotoObserver {
       return path.name.endsWith('Camera') || path.id.endsWith('Camera');
     }
     return path.isAll;
-  }
-
-  static String _basename(String path) {
-    final slash = path.lastIndexOf('/');
-    final backslash = path.lastIndexOf('\\');
-    final index = slash > backslash ? slash : backslash;
-    return index >= 0 && index < path.length - 1
-        ? path.substring(index + 1)
-        : path;
   }
 }
 

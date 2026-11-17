@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { join } from 'path';
-import { loadEnv } from '@photox/shared-config';
+import { resolveModelPath } from '@photox/shared-config';
 import { FACE_EMBEDDING_DIM, l2Normalize } from '@photox/shared-types';
 import { lazyOnce, loadNamedSession } from './model-loader';
 import { toNchw } from './nchw';
@@ -13,10 +12,7 @@ export const FACE_ALIGN_SIZE = 112;
 
 /** An empty `FACE_MODEL_PATH=` (a common way to leave an optional var unset) falls back too. */
 export function resolveFaceModelPath(): string {
-  // present-but-empty is the same as unset: `.env` keys left blank parse to ''
-  const configured = process.env.FACE_MODEL_PATH?.trim();
-  if (configured) return configured;
-  return join(loadEnv().STORAGE_DIR, 'models', FACE_MODEL_FILE);
+  return resolveModelPath('FACE_MODEL_PATH', FACE_MODEL_FILE);
 }
 
 // ponytail: standard ArcFace 112x112 reference template (leftEye, rightEye, nose, mouthL, mouthR)

@@ -1,14 +1,19 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:photox_mobile/app.dart';
 import 'package:photox_mobile/app_controller.dart';
+import 'package:photox_mobile/background/scheduler.dart';
+import 'package:photox_mobile/core/api_client.dart';
+import 'package:photox_mobile/core/auth_manager.dart';
 import 'package:photox_mobile/library/album_progress.dart';
 import 'package:photox_mobile/library/backup_status.dart';
 import 'package:photox_mobile/media/photo_observer.dart';
 import 'package:photox_mobile/server/album_client.dart';
 import 'package:photox_mobile/server/server_asset.dart';
+import 'package:photox_mobile/server/server_assets_client.dart';
 import 'package:photox_mobile/settings/settings_store.dart';
 import 'package:photox_mobile/sync/sync_coordinator.dart';
 import 'package:photox_mobile/sync/transfer_progress.dart';
@@ -16,7 +21,9 @@ import 'package:photox_mobile/upload/models.dart';
 import 'package:photox_mobile/upload/upload_queue.dart';
 
 /// Inert controller so the shell can be pumped without a real stack.
-class FakeAppController extends AppController {
+class FakeAppController extends ChangeNotifier
+    with WidgetsBindingObserver
+    implements PhotoXController {
   FakeAppController({
     this.signedIn = true,
     this.busyValue = false,
@@ -51,6 +58,38 @@ class FakeAppController extends AppController {
 
   /// Names of the controller actions the shell invoked, in order.
   final List<String> calls = <String>[];
+
+  /// The services behind [PhotoXController]; the shell reads none of them, so
+  /// a test that reaches for one fails loudly instead of building a real stack.
+  @override
+  AuthManager get auth => throw UnimplementedError();
+
+  @override
+  ApiClient get api => throw UnimplementedError();
+
+  @override
+  ServerAssetsClient get serverAssets => throw UnimplementedError();
+
+  @override
+  AlbumClient get albumClient => throw UnimplementedError();
+
+  @override
+  UploadQueue get queue => throw UnimplementedError();
+
+  @override
+  SyncCoordinator get coordinator => throw UnimplementedError();
+
+  @override
+  SettingsStore get settingsStore => throw UnimplementedError();
+
+  @override
+  BackgroundScheduler get scheduler => throw UnimplementedError();
+
+  @override
+  PhotoObserver get observer => throw UnimplementedError();
+
+  @override
+  Future<void> Function() get clearSpool => throw UnimplementedError();
 
   @override
   bool get isSignedIn => signedIn;
@@ -95,11 +134,8 @@ class FakeAppController extends AppController {
       const <String, UploadState>{};
 
   @override
-  Future<ServerAssetPage> serverPage({
-    DateTime? dateTo,
-    int offset = 0,
-    int limit = 100,
-  }) async => const ServerAssetPage(items: <ServerAsset>[], total: 0);
+  Future<ServerAssetPage> serverPage({int offset = 0, int limit = 100}) async =>
+      const ServerAssetPage(items: <ServerAsset>[], total: 0);
 
   @override
   Future<Map<String, String>> serverIds(List<String> localIds) async =>

@@ -111,18 +111,6 @@ When('I add my album photo to the album', async ({ request, ctx }) => {
   expect(status).toBe(201);
 });
 
-When(
-  'I list my albums with limit {int} and offset {int}',
-  async ({ request, ctx }, limit: number, offset: number) => {
-    const response = await request.get(`/api/v1/albums?limit=${limit}&offset=${offset}`, {
-      headers: authHeaders(requireAuth(ctx)),
-    });
-    expect(response.status()).toBe(200);
-    const body = (await response.json()) as { items: AlbumRef[] };
-    ctx.albumPage = body.items.map((album) => ({ id: album.id, name: album.name }));
-  },
-);
-
 // --- album API assertions ---------------------------------------------------
 
 Then('the album asset count is {int}', async ({ request, ctx }, count: number) => {
@@ -493,15 +481,3 @@ Then('the open photo is in the album {string}', async ({ request, ctx }, name: s
   const payload = await fetchAlbumAssets(request, auth, album.id);
   expect(payload.items.map((item) => item.id)).toContain(assetId);
 });
-
-Then(
-  'the album {string} contains exactly my album photos',
-  async ({ request, ctx }, name: string) => {
-    const auth = requireAuth(ctx);
-    const assetIds = ctx.albumAssets;
-    if (!assetIds?.length) throw new Error('upload album photos first');
-    const album = await findAlbumByName(request, auth, name);
-    const payload = await fetchAlbumAssets(request, auth, album.id);
-    expect(payload.items.map((item) => item.id).sort()).toEqual([...assetIds].sort());
-  },
-);

@@ -48,7 +48,6 @@ export async function runQueuedDelete(
     .set(workerAuth())
     .set('X-Job-Signature', data.sig)
     .send({
-      backupPrefix: data.backupPrefix,
       filesDeleted: sweep.deleted,
       filesFailed: sweep.failed,
       ...(sweep.firstError ? { firstError: sweep.firstError } : {}),

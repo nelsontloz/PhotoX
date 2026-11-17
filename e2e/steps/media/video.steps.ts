@@ -1,29 +1,14 @@
-import { expect, type APIRequestContext } from '@playwright/test';
+import { expect } from '@playwright/test';
 import {
   Then,
   When,
-  type AuthResponse,
   discoverAssetId,
   expectSingleTimelineItem,
   expectThumbnailLoaded,
   getAsset,
   waitForThumbnails,
+  waitForTranscodeStatus,
 } from '../support';
-
-/** Polls until transcode reaches a terminal state, so a 'failed' result fails fast. */
-async function waitForTranscodeStatus(
-  request: APIRequestContext,
-  auth: AuthResponse,
-  id: string,
-  status: string,
-): Promise<void> {
-  const terminal = async () => {
-    const current = (await getAsset(request, auth, id)).transcodeStatus;
-    return current === 'ready' || current === 'failed' ? current : 'pending';
-  };
-  await expect.poll(terminal, { timeout: 180_000 }).not.toBe('pending');
-  expect(await terminal()).toBe(status);
-}
 
 Then(
   'the video asset reaches transcode status {string} with a transcode file',

@@ -18,7 +18,7 @@ import { type AdminUserRow, type AdminUserSortField } from '@photox/shared-types
 import { LoadingState } from '../../components/StateViews';
 import { Dialog, formInputClass } from '../../components/Dialog';
 import { useAuthStore } from '../../store/auth-store';
-import { AdminCard, AdminSection, AdminToast, Button, StatusPill, cx } from './ui';
+import { AdminCard, AdminSection, AdminToast, Button, FormError, StatusPill, cx } from './ui';
 import {
   deleteAdminUser,
   getRegistrationSettings,
@@ -187,15 +187,7 @@ function DeleteUserDialog({
           </p>
         )}
 
-        {error && (
-          <p
-            role="alert"
-            className="flex items-start gap-2 rounded-lg bg-status-error/10 px-3 py-2.5 text-xs text-status-error"
-          >
-            <FaCircleExclamation className="mt-0.5 shrink-0" aria-hidden="true" />
-            <span>{error}</span>
-          </p>
-        )}
+        {error && <FormError>{error}</FormError>}
       </div>
 
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-6">

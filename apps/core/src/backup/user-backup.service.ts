@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { AdminUserBackupSync } from '@photox/shared-types';
 import { User } from '../database/entities/user.entity';
-import { BackupRun } from '../database/entities/backup-run.entity';
 import { TRANSFER_DISPATCH_BATCH_SIZE, type TransferKind } from './backup-transfer.constants';
 import { BackupStatusService } from './backup-status.service';
 import { BackupPrefixService } from './backup-prefix.service';
@@ -11,29 +10,17 @@ import { RunLifecycleService } from './run-lifecycle.service';
 import { TransferDispatchService } from './transfer-dispatch.service';
 import type {
   BackupOverviewRow,
-  BackupProgress,
   BackupRunStatus,
   BackupStatus,
   DeleteBackupResult,
   MergeBackupResult,
   MergeUserBackupInput,
   TransferJobLike,
-  UserBackupManifest,
 } from './backup.types';
 
 export * from './backup.types';
-export {
-  extOf,
-  isDerivativeStorageKey,
-  shouldSkipUpload,
-  unionBackupManifests,
-} from './backup-manifest';
-export {
-  buildBackupOverviewRow,
-  buildOrphanBackupOverviewRow,
-  buildFallbackEmail,
-  snapshotFromStatus,
-} from './backup-overview.builder';
+export { shouldSkipUpload, unionBackupManifests } from './backup-manifest';
+export { buildFallbackEmail } from './backup-overview.builder';
 
 /**
  * Per-user backup/restore: user-scoped rows + original bytes to S3 (Floci,
@@ -127,14 +114,6 @@ export class UserBackupService {
     return this.statusService.backupOverview();
   }
 
-  getBackupProgress(emailOrId: string): Promise<BackupProgress> {
-    return this.statusService.getBackupProgress(emailOrId);
-  }
-
-  toRunStatus(run: BackupRun): BackupRunStatus {
-    return this.finalizeService.toRunStatus(run);
-  }
-
   getRunStatus(runId: string): Promise<BackupRunStatus> {
     return this.finalizeService.getRunStatus(runId);
   }
@@ -150,23 +129,11 @@ export class UserBackupService {
     return this.dispatchService.dispatchPendingTransfers(kind, limit);
   }
 
-  requeueStaleQueued(): Promise<void> {
-    return this.dispatchService.requeueStaleQueued();
-  }
-
   reconcileTransfers(): Promise<void> {
     return this.dispatchService.reconcileTransfers();
   }
 
   consumeTransferJob(kind: TransferKind, job: TransferJobLike): Promise<void> {
     return this.dispatchService.consumeTransferJob(kind, job);
-  }
-
-  finalizeBackupRun(run: BackupRun, manifest: UserBackupManifest): Promise<void> {
-    return this.finalizeService.finalizeBackupRun(run, manifest);
-  }
-
-  assertNoLiveWipe(userId: string): Promise<void> {
-    return this.lifecycleService.assertNoLiveWipe(userId);
   }
 }

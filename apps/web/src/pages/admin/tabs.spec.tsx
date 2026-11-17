@@ -20,7 +20,6 @@ const api = vi.hoisted(() => {
     setRegistrationSettings: vi.fn(pending),
     createAdminUser: vi.fn(pending),
     getBackupOverview: vi.fn(pending),
-    getBackupProgress: vi.fn(pending),
     backupUser: vi.fn(pending),
     restoreUser: vi.fn(pending),
     deleteBackup: vi.fn(pending),

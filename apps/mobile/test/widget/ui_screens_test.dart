@@ -541,7 +541,8 @@ void main() {
         (
           PhotoPermission.notDetermined,
           'Photo access not set up',
-          'Tap the button below to let PhotoX read your camera roll.',
+          'PhotoX needs to read this device\'s photo library to back it up. '
+              'Nothing is uploaded until you allow access.',
         ),
       ];
 

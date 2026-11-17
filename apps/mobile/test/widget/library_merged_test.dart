@@ -39,24 +39,15 @@ ServerAsset _server(String id, {DateTime? takenAt, String? title}) {
 }
 
 /// One server page carrying exactly [items].
-typedef _ServerPage = Future<ServerAssetPage> Function({
-  DateTime? dateTo,
-  int offset,
-  int limit,
-});
+typedef _ServerPage = Future<ServerAssetPage> Function({int offset, int limit});
 
 _ServerPage _serve(List<ServerAsset> items) {
-  return ({DateTime? dateTo, int offset = 0, int limit = 100}) async =>
-      offset == 0
+  return ({int offset = 0, int limit = 100}) async => offset == 0
       ? ServerAssetPage(items: items, total: items.length)
       : const ServerAssetPage(items: <ServerAsset>[], total: 0);
 }
 
-Future<ServerAssetPage> _offline({
-  DateTime? dateTo,
-  int offset = 0,
-  int limit = 100,
-}) async {
+Future<ServerAssetPage> _offline({int offset = 0, int limit = 100}) async {
   throw StateError('server unreachable');
 }
 

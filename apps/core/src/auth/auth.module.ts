@@ -42,6 +42,6 @@ import { TokenService } from './token.service';
     // ponytail: admin routes enforced inline by JwtAuthGuard (isAdminRoute 403s non-admin)
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
-  exports: [AuthService, TokenService],
+  exports: [AuthService],
 })
 export class AuthModule {}

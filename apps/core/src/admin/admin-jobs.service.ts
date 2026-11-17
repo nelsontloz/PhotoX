@@ -4,6 +4,7 @@ import { SEARCH_EMBEDDING_MODEL, type AdminAssetReprocessRow } from '@photox/sha
 import { AdminAssetsService } from './admin-assets.service';
 import { BullMqService } from '../queue/bullmq.service';
 import { PlacesResolveService } from '../places/places-resolve.service';
+import { backfillPlaces as runPlacesBackfill } from '../places/places-backfill';
 import type { EnqueuedRun, LastRun } from '../settings/settings.service';
 import { SettingsService } from '../settings/settings.service';
 import { REPROCESS_PAGE_SIZE } from './reprocess.util';
@@ -199,24 +200,17 @@ export class AdminJobsService {
   async backfillPlaces(): Promise<{ updated: number; total: number }> {
     const startedAt = new Date().toISOString();
     const total = await this.admin.countUnresolvedPlaces();
-    let afterId: string | null = null;
     let updated = 0;
-    for (;;) {
-      const page = await this.admin.listUnresolvedPlaces(BACKFILL_PAGE_SIZE, afterId);
-      if (page.items.length === 0) break;
-      for (const item of page.items) {
-        try {
-          const place = await this.places.resolve(Number(item.latitude), Number(item.longitude));
-          if (place) {
-            await this.admin.applyPlaceFields(item.id, place);
-            updated++;
-          }
-        } catch (err) {
-          this.logger.warn(`place backfill failed for asset ${item.id}: ${String(err)}`);
-        }
-      }
-      afterId = page.items[page.items.length - 1]!.id;
-    }
+    await runPlacesBackfill({
+      readPage: async (afterId) =>
+        (await this.admin.listUnresolvedPlaces(BACKFILL_PAGE_SIZE, afterId)).items,
+      resolve: (latitude, longitude) => this.places.resolve(latitude, longitude),
+      apply: async (assetId, place) => {
+        await this.admin.applyPlaceFields(assetId, place);
+        updated++;
+      },
+      warn: (message) => this.logger.warn(message),
+    });
     await this.settings.setLastRun('places', { startedAt, total, updated });
     return { updated, total };
   }

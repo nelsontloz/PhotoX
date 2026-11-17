@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../../media/file_name.dart';
 import '../../sync/transfer_progress.dart';
 import 'count_format.dart';
 import 'panel.dart';
@@ -490,10 +491,7 @@ class _Thumbnail extends StatelessWidget {
 
   /// `JPG` for `IMG_4821.JPG`; null when the name carries no useful suffix.
   static String? _extension(String? name) {
-    if (name == null) return null;
-    final dot = name.lastIndexOf('.');
-    if (dot <= 0 || dot == name.length - 1) return null;
-    final suffix = name.substring(dot + 1);
-    return suffix.length <= 4 ? suffix.toUpperCase() : null;
+    final suffix = name == null ? null : splitFileName(name).$2;
+    return suffix != null && suffix.length <= 4 ? suffix.toUpperCase() : null;
   }
 }

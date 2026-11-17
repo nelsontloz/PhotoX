@@ -184,18 +184,6 @@ export interface BackupStatus {
   persons?: number;
 }
 
-export interface BackupProgress {
-  userId: string;
-  inProgress: boolean;
-  total: number;
-  completed: number;
-  uploaded: number;
-  skipped: number;
-  currentFile?: string;
-  startedAt: string;
-  updatedAt: string;
-}
-
 /** Per-run poller shape: counters plus the completed result (or the failure reason). */
 export interface BackupRunStatus {
   id: string;

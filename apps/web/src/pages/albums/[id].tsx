@@ -57,15 +57,16 @@ function AlbumDetail({ id }: { id: string }) {
 
   const {
     editing: editingName,
-    nameValue,
-    setNameValue,
     start,
-    save,
-    cancel,
-  } = useInlineRename(album?.name ?? '', async (name) => {
-    const updated = await updateAlbum(id, { name });
-    setAlbum(updated);
-  });
+    inputProps,
+  } = useInlineRename(
+    album?.name ?? '',
+    async (name) => {
+      const updated = await updateAlbum(id, { name });
+      setAlbum(updated);
+    },
+    { cancelOnEscape: true },
+  );
 
   const refreshAlbum = async () => {
     try {
@@ -218,16 +219,7 @@ function AlbumDetail({ id }: { id: string }) {
         </button>
         {editingName ? (
           <input
-            autoFocus
-            value={nameValue}
-            onChange={(e) => setNameValue(e.target.value)}
-            onBlur={() => {
-              void save();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void save();
-              if (e.key === 'Escape') cancel();
-            }}
+            {...inputProps}
             className="text-2xl font-bold text-white bg-transparent border-b border-primary outline-none flex-1 min-w-[12rem] py-1"
           />
         ) : (

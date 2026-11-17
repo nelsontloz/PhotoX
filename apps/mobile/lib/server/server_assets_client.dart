@@ -18,40 +18,26 @@ class ServerAssetsClient {
   static const int maxLimit = 100;
 
   /// One page of assets, newest first.
-  ///
-  /// [dateTo] is an exclusive upper bound on `COALESCE(takenAt, uploadedAt)`,
-  /// which is how the caller walks further back without a date window.
-  Future<ServerAssetPage> list({
-    DateTime? dateTo,
-    int limit = maxLimit,
-    int offset = 0,
-  }) async {
+  Future<ServerAssetPage> list({int limit = maxLimit, int offset = 0}) async {
     final json = await api.get<Map<String, dynamic>>(
       '/api/v1/assets',
-      queryParameters: <String, dynamic>{
-        'limit': limit,
-        'offset': offset,
-        if (dateTo != null) 'dateTo': dateTo.toUtc().toIso8601String(),
-      },
+      queryParameters: <String, dynamic>{'limit': limit, 'offset': offset},
     );
-    return ApiClient.parseResponse(
-      () {
-        final items = json['items'];
-        if (items is! List) {
-          throw const FormatException('AssetListResponse.items must be a list');
-        }
-        return ServerAssetPage(
-          items: <ServerAsset>[
-            for (final item in items)
-              ServerAsset.fromJson((item as Map).cast<String, dynamic>()),
-          ],
-          total: json['total'] is num
-              ? (json['total'] as num).toInt()
-              : items.length,
-        );
-      },
-      context: 'GET /api/v1/assets response',
-    );
+    return ApiClient.parseResponse(() {
+      final items = json['items'];
+      if (items is! List) {
+        throw const FormatException('AssetListResponse.items must be a list');
+      }
+      return ServerAssetPage(
+        items: <ServerAsset>[
+          for (final item in items)
+            ServerAsset.fromJson((item as Map).cast<String, dynamic>()),
+        ],
+        total: json['total'] is num
+            ? (json['total'] as num).toInt()
+            : items.length,
+      );
+    }, context: 'GET /api/v1/assets response');
   }
 
   /// Bytes of one server file (a thumbnail, for now), or null when the file is

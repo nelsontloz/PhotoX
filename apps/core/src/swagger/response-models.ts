@@ -1,7 +1,6 @@
 import { ApiExtraModels, ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger';
 import type {
   BackupOverviewRow,
-  BackupProgress,
   BackupRunStatus,
   BackupStatus,
   BackupResult,
@@ -106,11 +105,6 @@ export class AuthResponseModel implements AuthResponse {
 export class RegistrationSettingsModel implements RegistrationSettings {
   @ApiProperty({ type: Boolean })
   enabled!: boolean;
-}
-
-export class OkResponseModel {
-  @ApiProperty({ type: Boolean, example: true })
-  ok!: boolean;
 }
 
 export class RunIdResponseModel {
@@ -788,26 +782,8 @@ export class AdminUserRowModel implements AdminUserRow {
   createdAt!: string;
 }
 
-/** PATCH :id row: `AdminUserRow` plus the edit timestamp. */
-export class AdminUserProfileModel implements AdminUserRow {
-  @ApiProperty({ type: String })
-  id!: string;
-
-  @ApiProperty({ type: String })
-  displayName!: string;
-
-  @ApiProperty({ type: String, format: 'email' })
-  email!: string;
-
-  @ApiProperty({ enum: ['user', 'admin'] })
-  role!: 'user' | 'admin';
-
-  @ApiProperty({ type: String, format: 'date-time' })
-  createdAt!: string;
-
-  @ApiProperty({ type: String, format: 'date-time' })
-  updatedAt!: string;
-}
+/** PATCH :id row: identical to `UserModel` (`updatedAt` included), typed as `AdminUserRow`. */
+export class AdminUserProfileModel extends UserModel implements AdminUserRow {}
 
 export class AdminUserListResponseModel implements AdminUserListResponse {
   @ApiProperty({ type: [AdminUserRowModel] })
@@ -1016,35 +992,6 @@ export class BackupStatusModel implements BackupStatus {
 
   @ApiPropertyOptional({ type: Number })
   persons?: number;
-}
-
-export class BackupProgressModel implements BackupProgress {
-  @ApiProperty({ type: String })
-  userId!: string;
-
-  @ApiProperty({ type: Boolean })
-  inProgress!: boolean;
-
-  @ApiProperty({ type: Number })
-  total!: number;
-
-  @ApiProperty({ type: Number })
-  completed!: number;
-
-  @ApiProperty({ type: Number })
-  uploaded!: number;
-
-  @ApiProperty({ type: Number })
-  skipped!: number;
-
-  @ApiPropertyOptional({ type: String })
-  currentFile?: string;
-
-  @ApiProperty({ type: String, format: 'date-time' })
-  startedAt!: string;
-
-  @ApiProperty({ type: String, format: 'date-time' })
-  updatedAt!: string;
 }
 
 @ApiExtraModels(BackupResultModel, RestoreResultModel)

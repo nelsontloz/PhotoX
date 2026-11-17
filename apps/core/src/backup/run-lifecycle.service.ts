@@ -26,15 +26,10 @@ import { BackupRunItem } from '../database/entities/backup-run-item.entity';
 import { UserDelete } from '../database/entities/user-delete.entity';
 import { buildFallbackEmail } from './backup-overview.builder';
 import {
-  albumToManifestEntry,
-  assetToManifestEntry,
   extOf,
-  fileToManifestEntry,
   isDerivativeStorageKey,
-  personToManifestEntry,
-  shareToManifestEntry,
+  manifestFromRows,
   shouldSkipUpload,
-  userToManifest,
 } from './backup-manifest';
 import { BackupPrefixService } from './backup-prefix.service';
 import { BackupStatusService } from './backup-status.service';
@@ -42,8 +37,6 @@ import { BackupStorageIo } from './backup-storage-io';
 import { bulkInsert, bulkSave } from './bulk-io';
 import { RunFinalizeService } from './run-finalize.service';
 import { S3BackupService } from './s3-backup.service';
-import type { UserBackupManifest } from './backup.types';
-
 /**
  * 23505 from `UQ_backup_runs_active_user`: the real "one active run per user" guard. Two starts
  * that race `assertNoActiveRun` (a plain read) would share one fixed S3 prefix and prune each
@@ -128,19 +121,18 @@ export class RunLifecycleService {
         : [];
 
     const backedUpAt = new Date().toISOString();
-    const manifest: UserBackupManifest = {
-      manifestVersion: 1,
-      userId: user.id,
-      emailAtBackup: user.email,
+    const manifest = manifestFromRows(
+      user,
+      {
+        files: fileRows,
+        assets: assetRows,
+        albums: albumRows,
+        albumAssets: albumAssetRows,
+        shares: shareRows,
+        persons: personRows,
+      },
       backedUpAt,
-      user: userToManifest(user),
-      files: fileRows.map(fileToManifestEntry),
-      assets: assetRows.map(assetToManifestEntry),
-      albums: albumRows.map(albumToManifestEntry),
-      albumAssets: albumAssetRows.map((aa) => ({ albumId: aa.albumId, assetId: aa.assetId })),
-      shares: shareRows.map(shareToManifestEntry),
-      persons: personRows.map(personToManifestEntry),
-    };
+    );
 
     // one-backup-per-user: fixed keys, bytes first, manifest last (M3). The stale-prefix
     // rename stays in the start step — it is a rare, bounded set of server-side copies.

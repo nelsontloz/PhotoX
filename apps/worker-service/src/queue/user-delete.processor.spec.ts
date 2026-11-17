@@ -76,7 +76,7 @@ describe('UserDeleteProcessor', () => {
     expect(sweep).toHaveBeenCalledWith(expect.anything(), USER_ID);
     expect(purgeFinish).toHaveBeenCalledWith(
       USER_ID,
-      { backupPrefix: PREFIX, filesDeleted: 42, filesFailed: 0 },
+      { filesDeleted: 42, filesFailed: 0 },
       expect.anything(),
     );
     expect(purgeFinish.mock.calls[0]?.[2]?.sig).toBeTruthy();
@@ -102,7 +102,7 @@ describe('UserDeleteProcessor', () => {
 
     expect(purgeFinish).toHaveBeenCalledWith(
       USER_ID,
-      { backupPrefix: PREFIX, filesDeleted: 0, filesFailed: 0, error: 'core exploded' },
+      { filesDeleted: 0, filesFailed: 0, error: 'core exploded' },
       expect.anything(),
     );
     expect(purgeFinish.mock.calls[0]?.[2]?.sig).toBeTruthy();
@@ -128,7 +128,6 @@ describe('UserDeleteProcessor', () => {
     expect(purgeFinish).toHaveBeenCalledWith(
       USER_ID,
       {
-        backupPrefix: PREFIX,
         filesDeleted: 7,
         filesFailed: 2,
         firstError: 'originals/a: EACCES',

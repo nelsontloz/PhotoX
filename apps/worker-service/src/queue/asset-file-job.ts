@@ -9,39 +9,57 @@ import type { CoreClient, MetadataPatch } from '../core/core-client.service';
 
 export interface AssetFileJobContext<T> {
   data: T;
+  // the BullMQ job name, kept for re-enqueues (thumbnail's metadata wait)
+  name: string;
   record: FileRecord;
   asset: Asset;
   filePath: string;
 }
 
-export interface AssetFileJobSpec<
-  T extends { assetId: string; fileId: string; userId: string; sig?: string },
-> {
+// every media job payload: the three refs plus core's binding signature
+export interface AssetFileJobData {
+  assetId: string;
+  fileId: string;
+  userId: string;
+  sig?: string;
+}
+
+// method syntax on purpose: the init loop stores a spec under this base type, and method
+// parameters are checked bivariantly — a processor's narrower `data` still fits
+export interface AssetFileJobSpec<T extends AssetFileJobData> {
   queue: string;
   schema: z.ZodType<T>;
   // human label for the start/skip/failure logs, e.g. 'Embedding'
   label: string;
   // appended to the start log, e.g. ', size=sm'
-  detail?: (data: T) => string;
+  detail?(data: T): string;
   // failure-log prefix when it differs from `label` (metadata: 'Metadata failed')
   failureLabel?: string;
   // error substrings that mean "model weights not provisioned" — warn + no retry
   missingModelMarkers?: string[];
   // runs after the fetch + ownership check, before the body; true ends the job (thumbnail defer)
-  beforeBody?: (ctx: AssetFileJobContext<T>) => Promise<boolean>;
-  body: (ctx: AssetFileJobContext<T>) => Promise<void>;
+  beforeBody?(ctx: AssetFileJobContext<T>): Promise<boolean>;
+  body(ctx: AssetFileJobContext<T>): Promise<void>;
   // runs on both the missing-model skip and a real failure — e.g. patch a status to failed
-  onFailure?: (ctx: {
+  onFailure?(ctx: {
     userId: string;
     assetId: string;
     message: string;
     sig?: string;
-  }) => Promise<void>;
+  }): Promise<void>;
 }
 
-export async function runAssetFileJob<
-  T extends { assetId: string; fileId: string; userId: string; sig?: string },
->(
+/** runAssetFileJob bound to one queue: the BullMQ handler, with a logger named after `label`. */
+export function assetFileRunner<T extends AssetFileJobData>(
+  deps: { core: CoreClient; storage: LocalStorageService },
+  queue: string,
+  spec: Omit<AssetFileJobSpec<T>, 'queue'>,
+): (job: Job<T>) => Promise<void> {
+  const logger = new Logger(spec.label);
+  return (job) => runAssetFileJob({ ...deps, logger }, job, { queue, ...spec });
+}
+
+export async function runAssetFileJob<T extends AssetFileJobData>(
   deps: { core: CoreClient; storage: LocalStorageService; logger: Logger },
   job: Job<T>,
   spec: AssetFileJobSpec<T>,
@@ -61,7 +79,13 @@ export async function runAssetFileJob<
   assertOwnership({ assetId, fileId, userId }, { record, asset });
 
   // storage is local-disk only — read the original in place, no tmp staging copy
-  const ctx = { data, record, asset, filePath: storage.pathFor(record.storageKey) };
+  const ctx = {
+    data,
+    name: job.name,
+    record,
+    asset,
+    filePath: storage.pathFor(record.storageKey),
+  };
   if (await spec.beforeBody?.(ctx)) return;
   try {
     await spec.body(ctx);

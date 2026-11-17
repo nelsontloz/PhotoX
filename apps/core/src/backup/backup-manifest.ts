@@ -120,6 +120,44 @@ export function userToManifest(u: User): UserBackupManifest['user'] {
   };
 }
 
+/** The rows one manifest body is projected from. */
+export interface ManifestRows {
+  files: FileRecord[];
+  assets: Asset[];
+  albums: Album[];
+  albumAssets: { albumId: string; assetId: string }[];
+  shares: Share[];
+  persons: Person[];
+}
+
+/**
+ * Manifest body for one account from its rows: a backup and a backup adoption (merge) must emit
+ * the same projections, so both build it here. `backedUpAt` is the snapshot time — now for a
+ * backup, the source snapshot's for an adoption.
+ */
+export function manifestFromRows(
+  user: User,
+  rows: ManifestRows,
+  backedUpAt: string,
+): UserBackupManifest {
+  return {
+    manifestVersion: 1,
+    userId: user.id,
+    emailAtBackup: user.email,
+    backedUpAt,
+    user: userToManifest(user),
+    files: rows.files.map(fileToManifestEntry),
+    assets: rows.assets.map(assetToManifestEntry),
+    albums: rows.albums.map(albumToManifestEntry),
+    albumAssets: rows.albumAssets.map((link) => ({
+      albumId: link.albumId,
+      assetId: link.assetId,
+    })),
+    shares: rows.shares.map(shareToManifestEntry),
+    persons: rows.persons.map(personToManifestEntry),
+  };
+}
+
 /**
  * Pure incremental-upload gate: skip the S3 PUT only when all four hold —
  * the previous manifest has this file id, checksum matches, size matches, and

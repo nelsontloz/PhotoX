@@ -9,7 +9,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService, type JwtVerifyOptions } from '@nestjs/jwt';
-import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import type { Request, Response } from 'express';
 import { DataSource } from 'typeorm';
 import { loadAuthEnv, loadEnv } from '@photox/shared-config';
@@ -24,6 +24,7 @@ import {
   isWorkerRoute,
 } from './open-routes';
 import { ABSOLUTE_SESSION_MS } from './session.constants';
+import { TokenService } from './token.service';
 import { User } from '../database/entities/user.entity';
 import { RefreshToken } from '../database/entities/refresh-token.entity';
 
@@ -109,6 +110,7 @@ export class JwtAuthGuard implements CanActivate, OnModuleInit {
 
   constructor(
     private readonly jwt: JwtService,
+    private readonly tokens: TokenService,
     // optional at the DI level only so unit specs can build a guard without a database; the
     // lifecycle check below turns a lost DataSource into a boot failure instead of a silent
     // fail-open (without the row the guard trusts the claimed role and skips the account floor)
@@ -286,19 +288,11 @@ export class JwtAuthGuard implements CanActivate, OnModuleInit {
       const now = Date.now() / 1000;
       const ttl = payload.exp - payload.iat;
       if (payload.exp - now < ttl / 2) {
-        const renewed = await this.jwt.signAsync(
-          {
-            sub,
-            email: payload.email,
-            // carry the effective (stored) role, not the possibly-stale claim
-            role,
-            jti: randomUUID(),
-            // the session start must survive every renewal or the cap resets each time
-            ...(typeof payload.sst === 'number' ? { sst: payload.sst } : {}),
-            // the device session must survive too, or a renewed cookie would outlive logout
-            ...(typeof payload.sid === 'string' ? { sid: payload.sid } : {}),
-          },
-          { keyid: 'cur' },
+        // the effective (stored) role rides along, not the possibly-stale claim
+        const renewed = await this.tokens.signAccessToken(
+          { id: sub, email: payload.email, role },
+          typeof payload.sst === 'number' ? new Date(payload.sst * 1000) : undefined,
+          typeof payload.sid === 'string' ? payload.sid : undefined,
         );
         setAccessCookie(
           context.switchToHttp().getResponse<Response>(),

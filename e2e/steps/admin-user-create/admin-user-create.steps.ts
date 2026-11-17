@@ -7,11 +7,11 @@ import {
   Then,
   When,
   authHeaders,
-  injectSession,
   requireAdmin,
   scenarioState,
   searchUsersFor,
   signInAdmin,
+  signInAdminPage,
   type AuthResponse,
   type Ctx,
 } from '../support';
@@ -64,10 +64,7 @@ function createUserDialog(page: Page) {
 Given(
   'an administrator session is available for account creation',
   async ({ request, page, baseURL, ctx }) => {
-    const admin = await requireAdmin(ctx, request);
-    ctx.auth = admin;
-    await injectSession(page, admin, baseURL);
-    await page.goto('/');
+    await signInAdminPage(page, ctx, request, baseURL);
   },
 );
 

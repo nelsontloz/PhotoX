@@ -5,10 +5,10 @@ import {
   When,
   authHeaders,
   expectImageLoaded,
-  getAsset,
   requireAuth,
   uploadViaApi,
   waitForThumbnails,
+  waitForTranscodeStatus,
   workerHeaders,
   type AuthResponse,
 } from '../support';
@@ -49,21 +49,6 @@ function viewFromUrl(url: URL): { lat: number; lng: number; z: number } {
   if (lat === null || lng === null || z === null)
     throw new Error(`no map view parameters in ${url.pathname}${url.search}`);
   return { lat: Number(lat), lng: Number(lng), z: Number(z) };
-}
-
-/** Polls until transcode reaches a terminal state (same helper as steps/media/video.steps.ts). */
-async function waitForTranscodeStatus(
-  request: APIRequestContext,
-  auth: AuthResponse,
-  id: string,
-  status: string,
-): Promise<void> {
-  const terminal = async () => {
-    const current = (await getAsset(request, auth, id)).transcodeStatus;
-    return current === 'ready' || current === 'failed' ? current : 'pending';
-  };
-  await expect.poll(terminal, { timeout: 180_000 }).not.toBe('pending');
-  expect(await terminal()).toBe(status);
 }
 
 /**

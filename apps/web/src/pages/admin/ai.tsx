@@ -104,7 +104,7 @@ function useRunProgress<L extends PipelineRun>(status: ReprocessStatus<L> | null
   const runQueue = status ? status.queue.waiting + status.queue.active : 0;
   const running = runQueue > 0;
   const requested = lastRun?.enqueued ?? 0;
-  const done = Math.max(0, Math.min(requested, requested - runQueue));
+  const done = Math.max(0, requested - runQueue);
   const percent = requested > 0 ? Math.round((done / requested) * 100) : 0;
   return { lastRun, runQueue, running, requested, done, percent };
 }

@@ -9,6 +9,7 @@ import { UnrecoverableError, type Job } from 'bullmq';
 import { LocalStorageService } from '@photox/shared-config';
 import { FACE_EMBEDDING_DIM } from '@photox/shared-types';
 import { faceProcessor, FACE_MAX_DIM } from './face.processor';
+import { assetFileRunner } from './asset-file-job';
 import { FaceDetectorService } from './face.detector';
 import type { CoreClient } from '../core/core-client.service';
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client';
@@ -32,10 +33,9 @@ describe('FaceProcessor', () => {
     const spec = faceProcessor({
       bullMq: { enqueue: vi.fn().mockResolvedValue(true) } as never,
       core: fake as unknown as CoreClient,
-      storage,
       faceDetector: { detect } as unknown as FaceDetectorService,
     });
-    return spec.run;
+    return assetFileRunner({ core: fake as unknown as CoreClient, storage }, spec.queue, spec.job);
   }
 
   beforeEach(() => {

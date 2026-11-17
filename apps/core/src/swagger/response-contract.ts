@@ -4,6 +4,7 @@ import type {
   ParameterObject,
   ResponseObject,
 } from '@nestjs/swagger';
+import { METHODS } from './methods';
 
 /**
  * Stamps the response headers and byte-stream semantics the controllers already implement.
@@ -13,8 +14,6 @@ import type {
 
 type StatusRouteMap = Record<string, readonly string[]>;
 type HeaderSpec = NonNullable<ResponseObject['headers']>[string];
-
-const METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'] as const;
 
 /** Every route that calls `setResourceLocation()` — statuses it is called for. */
 const LOCATION_ROUTES: StatusRouteMap = {
