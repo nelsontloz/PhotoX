@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { sweepUserStorage } from '@photox/shared-config';
 import { USER_DELETE_QUEUE, type UserDeleteFinishRequest } from '@photox/shared-types';
 import { bindingOf, parseJobData, userDeleteJobSchema, type UserDeleteJob } from './job-schemas';
-import type { ProcessorDeps, ProcessorSpec } from './processor-spec';
+import type { GenericProcessorSpec, ProcessorDeps } from './processor-spec';
 
 // one bounded transaction per call, so a pause also gives core's DB room between batches
 const STEP_DELAY_MS = 150;
@@ -23,7 +23,7 @@ export function userDeleteProcessor({
   bullMq,
   core,
   storage,
-}: Pick<ProcessorDeps, 'bullMq' | 'core' | 'storage'>): ProcessorSpec<UserDeleteJob> {
+}: Pick<ProcessorDeps, 'bullMq' | 'core' | 'storage'>): GenericProcessorSpec<UserDeleteJob> {
   const logger = new Logger('UserDeleteProcessor');
 
   return {
@@ -52,7 +52,6 @@ export function userDeleteProcessor({
 
         const sweep = await sweepUserStorage(storage, data.userId);
         const report: UserDeleteFinishRequest = {
-          backupPrefix: data.backupPrefix,
           filesDeleted: sweep.deleted,
           filesFailed: sweep.failed,
           ...(sweep.firstError ? { firstError: clip(sweep.firstError) } : {}),
@@ -84,7 +83,6 @@ export function userDeleteProcessor({
             .purgeFinish(
               data.userId,
               {
-                backupPrefix: data.backupPrefix,
                 filesDeleted: 0,
                 filesFailed: 0,
                 error: clip(message),

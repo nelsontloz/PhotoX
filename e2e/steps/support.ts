@@ -14,9 +14,6 @@ import { createBdd, test as base } from 'playwright-bdd';
 import { FACE_EMBEDDING_DIM, type Asset, type AuthResponse } from '@photox/shared-types';
 
 export const PASSWORD = 'password123';
-/** Copy the register page shows in place of the form when public sign-ups are closed. */
-export const SIGNUPS_CLOSED_NOTICE =
-  'Public sign-ups are disabled. Ask an administrator for an account.';
 // apps/web is "type": "module" — steps load as ESM, so no __dirname
 export const FIXTURES_DIR = fileURLToPath(new URL('../fixtures', import.meta.url));
 
@@ -27,17 +24,6 @@ export type { AuthResponse };
 export interface AlbumRef {
   id: string;
   name: string;
-}
-
-/** Trimmed favorites list response cached by the favorites steps. */
-export interface FavoriteAsset {
-  id: string;
-  favorite: boolean;
-}
-
-export interface FavoriteList {
-  items: FavoriteAsset[];
-  total: number;
 }
 
 /** A fixture tracked by the semantic steps. */
@@ -71,17 +57,9 @@ export interface Ctx {
   // albums
   albums?: AlbumRef[];
   albumAssets?: string[];
-  albumPage?: AlbumRef[];
-  // isolation users shared by albums/favorites/sharing
-  otherAuth?: AuthResponse;
-  otherAssetId?: string;
   // faces
   faceReprocess?: ReprocessRun;
   reclusterEnqueued?: number;
-  // favorites
-  favoriteIds?: string[];
-  listResponses?: FavoriteList[];
-  otherListResponse?: FavoriteList;
   // people
   personId?: string;
   personFaceId?: string;
@@ -96,7 +74,6 @@ export interface Ctx {
   reprocessRuns?: Partial<Record<ReprocessKind, ReprocessRun>>;
   // sharing
   assetShare?: ShareState;
-  assetShareAgain?: ShareState;
   albumShare?: ShareState;
   videoShare?: ShareState;
   lastShare?: ShareState;
@@ -104,8 +81,6 @@ export interface Ctx {
   albumId?: string;
   albumName?: string;
   albumMemberId?: string;
-  otherShare?: ShareState;
-  streamContentRange?: string | null;
   // trash
   trashAssetIds?: string[];
   openTrashedId?: string;
@@ -314,15 +289,12 @@ export async function signInAdmin(request: APIRequestContext): Promise<AuthRespo
 
 // e2e seeding hits the act-required worker routes (#156 moved extraction writes there), so the
 // suite mints its own delegated tokens with node:crypto (no new deps). Same HS256 shape as the
-// worker's CoreClient; the secret mirrors docker-compose.e2e.yml (override with
-// E2E_AUTH_TOKEN_SECRET when it diverges).
-export const E2E_AUTH_TOKEN_SECRET =
-  process.env.E2E_AUTH_TOKEN_SECRET ?? 'dev-auth-secret-32-characters-minimum!!';
+// worker's CoreClient; the secret mirrors docker-compose.e2e.yml.
+export const E2E_AUTH_TOKEN_SECRET = 'dev-auth-secret-32-characters-minimum!!';
 // The job binding is verified with the worker secret even for a user-secret act token.
-const E2E_WORKER_JWT_SECRET =
-  process.env.E2E_WORKER_JWT_SECRET ?? 'dev-worker-secret-32-characters-minimum!!';
+const E2E_WORKER_JWT_SECRET = 'dev-worker-secret-32-characters-minimum!!';
 
-export function base64url(input: string | Buffer): string {
+function base64url(input: string | Buffer): string {
   return (typeof input === 'string' ? Buffer.from(input) : input).toString('base64url');
 }
 
@@ -368,10 +340,16 @@ export async function requireAdmin(ctx: Ctx, request: APIRequestContext): Promis
   return state.admin;
 }
 
-/** The second user a scenario registered for isolation checks. */
-export function requireOtherAuth(ctx: Ctx): AuthResponse {
-  if (!ctx.otherAuth) throw new Error('register the other user first');
-  return ctx.otherAuth;
+/** Signs the seeded admin into the browser; the opening Given of every admin feature. */
+export async function signInAdminPage(
+  page: Page,
+  ctx: Ctx,
+  request: APIRequestContext,
+  baseURL: string | undefined,
+): Promise<void> {
+  ctx.auth = await requireAdmin(ctx, request);
+  await injectSession(page, ctx.auth, baseURL);
+  await page.goto('/');
 }
 
 export function requireAssetId(ctx: Ctx): string {
@@ -571,6 +549,21 @@ export async function waitForThumbnails(
       { timeout: 60_000 },
     )
     .toBe(true);
+}
+
+/** Polls until transcode reaches a terminal state, so a 'failed' result fails fast. */
+export async function waitForTranscodeStatus(
+  request: APIRequestContext,
+  auth: AuthResponse,
+  id: string,
+  status: string,
+): Promise<void> {
+  const terminal = async () => {
+    const current = (await getAsset(request, auth, id)).transcodeStatus;
+    return current === 'ready' || current === 'failed' ? current : 'pending';
+  };
+  await expect.poll(terminal, { timeout: 180_000 }).not.toBe('pending');
+  expect(await terminal()).toBe(status);
 }
 
 /** Clicks the first tile, waits for the viewer URL, then caches and returns the ?asset= id. */

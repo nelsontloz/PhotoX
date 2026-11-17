@@ -115,20 +115,6 @@ Then(
   },
 );
 
-Then(
-  'two persons with {int} faces each appear through the API',
-  async ({ request, ctx }, faceCount: number) => {
-    const auth = requireAuth(ctx);
-    const persons = await waitForPersons(
-      request,
-      auth,
-      (person) => person.faceCount >= faceCount,
-      2,
-    );
-    expect(new Set(persons.map((person) => person.id)).size).toBe(2);
-  },
-);
-
 Then('the people page shows the empty state', async ({ page }) => {
   await expect(page.getByText('No people found')).toBeVisible();
   await expect(page.locator('a[href^="/people/"]')).toHaveCount(0);

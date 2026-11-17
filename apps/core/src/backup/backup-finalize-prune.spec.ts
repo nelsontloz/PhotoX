@@ -7,7 +7,7 @@ import { BackupStorageIo } from './backup-storage-io';
 import { BackupStatusService } from './backup-status.service';
 import { BackupPrefixService } from './backup-prefix.service';
 import { RunFinalizeService } from './run-finalize.service';
-import { UserBackupService, type UserBackupManifest } from './user-backup.service';
+import type { UserBackupManifest } from './backup.types';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const EMAIL = 'ada@example.com';
@@ -134,9 +134,8 @@ function makeService(
     prefix,
     storageIo,
   );
-  const svc = new UserBackupService(status, prefix, finalizeService, nil, nil, nil);
-  type Finalize = (run: BackupRun, manifest: UserBackupManifest) => Promise<void>;
-  const finalize = (svc as unknown as { finalizeBackupRun: Finalize }).finalizeBackupRun.bind(svc);
+  // the prune ordering lives in the finalize phase; the facade never forwards it
+  const finalize = finalizeService.finalizeBackupRun.bind(finalizeService);
   return { finalize, s3, runs, runItems };
 }
 

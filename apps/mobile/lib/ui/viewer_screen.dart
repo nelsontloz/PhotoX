@@ -895,7 +895,7 @@ class _StatusBar extends StatelessWidget {
       ),
       Provenance.deviceOnly => (
         value == null ? null : StatusBadge(status: value.status),
-        value == null ? '' : _sentence(value.status),
+        value == null ? '' : StatusBadge.labelFor(value.status),
         _hintFor(value),
       ),
     };
@@ -949,17 +949,6 @@ class _StatusBar extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  static String _sentence(BackupStatus status) {
-    return switch (status) {
-      BackupStatus.backedUp => 'Backed up from this phone',
-      BackupStatus.uploading => 'Uploading now',
-      BackupStatus.queued => 'Waiting to back up',
-      BackupStatus.failed => 'Backup failed',
-      BackupStatus.excluded => 'Not in backup scope',
-      BackupStatus.unknown => 'Not backed up yet',
-    };
   }
 
   /// One quiet line under the label, only when there is something to explain.

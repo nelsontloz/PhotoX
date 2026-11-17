@@ -24,15 +24,10 @@ import {
 import { Album, AlbumAsset, Asset, FileRecord, Person, Share, User } from '../database/entities';
 import { BackupMerge } from '../database/entities/backup-merge.entity';
 import {
-  albumToManifestEntry,
-  assetToManifestEntry,
   extOf,
-  fileToManifestEntry,
   isDerivativeStorageKey,
-  personToManifestEntry,
-  shareToManifestEntry,
+  manifestFromRows,
   unionBackupManifests,
-  userToManifest,
 } from './backup-manifest';
 import { pickNewest, type BackupDirLocation } from './backup-overview.builder';
 import { bulkSave, chunked } from './bulk-io';
@@ -772,22 +767,18 @@ export class BackupMergeService {
             .getMany()
         : [];
 
-    const adopted: UserBackupManifest = {
-      manifestVersion: 1,
-      userId: target.id,
-      emailAtBackup: target.email,
-      backedUpAt: sourceManifest.backedUpAt,
-      user: userToManifest(target),
-      files: adoptedFiles.map(fileToManifestEntry),
-      assets: adoptedAssets.map(assetToManifestEntry),
-      albums: adoptedAlbums.map(albumToManifestEntry),
-      albumAssets: adoptedAlbumAssets.map((link) => ({
-        albumId: link.albumId,
-        assetId: link.assetId,
-      })),
-      shares: adoptedShares.map(shareToManifestEntry),
-      persons: adoptedPersons.map(personToManifestEntry),
-    };
+    const adopted = manifestFromRows(
+      target,
+      {
+        files: adoptedFiles,
+        assets: adoptedAssets,
+        albums: adoptedAlbums,
+        albumAssets: adoptedAlbumAssets,
+        shares: adoptedShares,
+        persons: adoptedPersons,
+      },
+      sourceManifest.backedUpAt,
+    );
 
     // Never overwrite a live manifest we could not read: a missing one is a
     // first adoption (null), any other read/parse failure aborts the adoption.

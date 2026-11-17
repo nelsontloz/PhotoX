@@ -1,3 +1,4 @@
+import { isUUID } from 'class-validator';
 import { apiError } from './api-error';
 
 /**
@@ -25,4 +26,19 @@ export function decodeCursor(raw: string, expectedLength: number): string[] {
   if (!Array.isArray(parsed) || parsed.length !== expectedLength) invalidCursor();
   if (parsed.some((part) => typeof part !== 'string')) invalidCursor();
   return parsed as string[];
+}
+
+/**
+ * The ("<timestamp>", "<uuid>") tuple the album-asset and share lists page on. A non-uuid id
+ * would reach SQL as an invalid cast, so it is a 400 here like any malformed cursor.
+ */
+export function encodeTimestampIdCursor(at: Date | string, id: string): string {
+  return encodeCursor([new Date(at).toISOString(), id]);
+}
+
+export function decodeTimestampIdCursor(raw: string): { at: Date; id: string } {
+  const [rawAt = '', id = ''] = decodeCursor(raw, 2);
+  const at = new Date(rawAt);
+  if (Number.isNaN(at.getTime()) || !isUUID(id)) invalidCursor();
+  return { at, id };
 }

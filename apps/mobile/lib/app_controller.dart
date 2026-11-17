@@ -26,190 +26,13 @@ import 'upload/models.dart';
 import 'upload/upload_queue.dart';
 import 'upload/uploader.dart';
 
-/// State and actions the app shell needs from the sync stack.
-///
-/// The interface exists so widget tests can drive the screens without a
-/// database, network or platform plugins; [PhotoXController] is the real
-/// implementation wired by the app services graph.
-abstract class AppController extends ChangeNotifier {
-  /// Whether a token pair is held (the access token may be expired).
-  bool get isSignedIn;
-
-  /// True while an account action (sign-in, sign-out, settings write) runs.
-  bool get busy;
-
-  /// True while a sync pass is running.
-  bool get syncing;
-
-  /// True while a pass is scanning the library, before its first upload.
-  bool get discovering;
-
-  /// True when the last pass found the stored session unusable.
-  bool get authRequired;
-
-  /// Photo-library permission observed by the most recent pass.
-  PhotoPermission get permission;
-
-  /// Reads the photo-library permission without running a backup pass.
-  ///
-  /// The library grid needs the current answer even while backups are paused or
-  /// a long pass is still uploading, which is before any pass report exists.
-  Future<void> refreshPermission();
-
-  /// Albums the device exposes, so the user can choose the backup scope.
-  Future<List<MediaFolder>> folders();
-
-  /// Encoded preview of [localId] at roughly [size] pixels, or null when none
-  /// is available. The grid asks for its own tile size; callers that draw
-  /// something small keep the default.
-  Future<Uint8List?> thumbnail(String localId, {int size = 128});
-
-  /// Display-resolution preview for the full-screen viewer.
-  ///
-  /// Larger than [thumbnail] because it fills the screen, still a platform
-  /// thumbnail: the original bytes are never exported just to look at a photo.
-  Future<Uint8List?> preview(String localId);
-
-  /// Badge and last failure for one asset, read fresh from the queue.
-  Future<BackupDetail> backupDetail(AssetCandidate asset);
-
-  /// Playable bytes for a video, or null when the platform cannot produce them.
-  ///
-  /// [onProgress] reports `0`..`1` while an iCloud-only video downloads.
-  Future<File?> playableVideo(
-    String localId, {
-    void Function(double progress)? onProgress,
-  });
-
-  /// Newest-first page of the device library, for the on-device browser.
-  ///
-  /// [folderId] limits the page to that album; null pages the whole library.
-  Future<List<AssetCandidate>> libraryPage({
-    required int offset,
-    int limit = 200,
-    String? folderId,
-  });
-
-  /// Assets the platform counts in [folderId], or the whole library when null.
-  Future<int> libraryCount({String? folderId});
-
-  /// Backed-up tally for one device album, read from the device and the queue.
-  ///
-  /// Side-effect free: it never queues, notifies or bumps the revision. A
-  /// platform read that throws propagates to the caller.
-  Future<AlbumProgress> albumProgress(String folderId);
-
-  /// Queue state of the listed device assets, keyed by platform id.
-  ///
-  /// Ids with no row are absent: this phone never queued those assets.
-  Future<Map<String, UploadState>> backupStates(List<String> localIds);
-
-  /// Newest-first page of the server's library, for the merged grid.
-  ///
-  /// [dateTo] is an exclusive upper bound on the date a tile sorts by, which is
-  /// how the caller walks further back without a date window.
-  Future<ServerAssetPage> serverPage({
-    DateTime? dateTo,
-    int offset = 0,
-    int limit = ServerAssetsClient.maxLimit,
-  });
-
-  /// Server asset id of every listed device asset the server already holds.
-  ///
-  /// Ids with no server copy are absent: the row uploaded nowhere yet, or its
-  /// bytes failed to reach the server.
-  Future<Map<String, String>> serverIds(List<String> localIds);
-
-  /// Encoded thumbnail of one server file, or null when that file is gone.
-  ///
-  /// Memoised for the session: flipping through the grid asks for the same
-  /// tiles again, and the bytes never change once written.
-  Future<Uint8List?> serverThumb(String fileId);
-
-  /// Server albums a device folder can be mapped to; empty until loaded.
-  List<ServerAlbum> get serverAlbums;
-
-  /// True once [serverAlbums] came back from the server at least once, so an
-  /// empty list can be told apart from "not read yet".
-  bool get serverAlbumsLoaded;
-
-  /// Re-reads [serverAlbums]. A failure reaches the caller, which shows it.
-  Future<void> refreshServerAlbums();
-
-  /// Creates one album and adds it to [serverAlbums].
-  Future<ServerAlbum> createServerAlbum(
-    String name, {
-    required bool hiddenFromTimeline,
-  });
-
-  /// Points [folderId]'s uploads at [albumId], or clears the mapping when null.
-  Future<void> setFolderAlbum(String folderId, String? albumId);
-
-  /// Bumped whenever queued assets changed state, so the grid re-reads its page
-  /// instead of holding the whole queue in memory.
-  int get queueRevision;
-
-  /// Queues [assets] ahead of the scan scope and starts a pass.
-  ///
-  /// Assets the server would reject (unsupported containers, videos while
-  /// videos are off) are dropped rather than queued to fail. Assets that
-  /// already gave up, or are waiting out a backoff, are retried right away.
-  Future<void> backUpNow(List<AssetCandidate> assets);
-
-  /// Aggregate queue counts.
-  QueueStats get stats;
-
-  /// Live progress of the asset currently being prepared or uploaded.
-  TransferProgress get progress;
-
-  /// Summary of the most recent pass, or null before the first one.
-  SyncReport? get lastReport;
-
-  /// Last unexpected error, already phrased for the user.
-  String? get error;
-
-  /// Current persisted preferences.
-  AppSettings get settings;
-
-  /// True when backups are stopped by the user; passes hold until [resume].
-  bool get paused;
-
-  /// Stops backups after the asset currently in flight.
-  Future<void> pause();
-
-  /// Clears the pause and starts a pass immediately.
-  Future<void> resume();
-
-  /// Restores auth, loads settings and queue counts, then starts a pass when
-  /// the user is already signed in.
-  Future<void> initialize();
-
-  /// Signs in and, on success, starts an immediate sync pass.
-  ///
-  /// [serverUrl] is the address the user confirmed on the sign-in form; an
-  /// empty or unchanged value keeps the stored one.
-  Future<void> signIn(String email, String password, String serverUrl);
-
-  /// Revokes the session, cancels background work and resets counters.
-  Future<void> signOut();
-
-  /// Starts a sync pass; joins one that is already running instead of queueing.
-  Future<void> syncNow();
-
-  /// Puts every failed or quota-skipped asset back in the queue and syncs.
-  Future<void> retryFailed();
-
-  /// Persists [settings] and re-registers background work with the new
-  /// constraints.
-  Future<void> updateSettings(AppSettings settings);
-}
-
-/// [AppController] backed by the real auth, queue and scheduler stack.
+/// State and actions the app shell needs, backed by the real auth, queue and
+/// scheduler stack.
 ///
 /// Owns no widgets: the shell rebuilds from [notifyListeners], and resume
 /// passes are driven by [WidgetsBindingObserver] so a foreground app syncs
 /// without waiting for the next OS window.
-class PhotoXController extends AppController with WidgetsBindingObserver {
+class PhotoXController extends ChangeNotifier with WidgetsBindingObserver {
   PhotoXController({
     required this.auth,
     required this.api,
@@ -259,7 +82,6 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   final PhotoObserver observer;
 
   /// Live progress of the asset currently in flight.
-  @override
   final TransferProgress progress;
 
   /// Deletes spooled asset bytes; swappable so tests never touch the real
@@ -321,25 +143,18 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
   bool _observing = false;
   bool _disposed = false;
 
-  @override
   bool get isSignedIn => auth.isSignedIn;
 
-  @override
   bool get busy => _busy;
 
-  @override
   bool get syncing => _syncing;
 
-  @override
   bool get discovering => _discovering;
 
-  @override
   bool get authRequired => _authRequired;
 
-  @override
   PhotoPermission get permission => _permission;
 
-  @override
   Future<void> refreshPermission() async {
     if (!auth.isSignedIn) return;
     final PhotoPermission permission;
@@ -354,18 +169,14 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _notify();
   }
 
-  @override
   Future<List<MediaFolder>> folders() => observer.folders();
 
-  @override
   Future<Uint8List?> thumbnail(String localId, {int size = 128}) =>
       observer.thumbnailFor(localId, size: size);
 
-  @override
   Future<Uint8List?> preview(String localId) =>
       observer.thumbnailFor(localId, size: 1024);
 
-  @override
   Future<BackupDetail> backupDetail(AssetCandidate asset) async {
     final row = await queue.byLocalId(asset.localId);
     return BackupDetail(
@@ -379,24 +190,20 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     );
   }
 
-  @override
   Future<File?> playableVideo(
     String localId, {
     void Function(double progress)? onProgress,
   }) => observer.playableVideo(localId, onProgress: onProgress);
 
-  @override
   Future<List<AssetCandidate>> libraryPage({
     required int offset,
     int limit = 200,
     String? folderId,
   }) => observer.page(offset: offset, limit: limit, folderId: folderId);
 
-  @override
   Future<int> libraryCount({String? folderId}) =>
       observer.libraryCount(folderId: folderId);
 
-  @override
   Future<AlbumProgress> albumProgress(String folderId) => tallyAlbumProgress(
     count: () => observer.libraryCount(folderId: folderId),
     page: (offset, limit) =>
@@ -405,22 +212,20 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     settings: _settings,
   );
 
-  @override
   Future<Map<String, UploadState>> backupStates(List<String> localIds) =>
       queue.statesFor(localIds);
 
-  @override
+  /// One newest-first page of the server's library, for the merged grid.
+  ///
+  /// The grid walks further back by [offset].
   Future<ServerAssetPage> serverPage({
-    DateTime? dateTo,
     int offset = 0,
     int limit = ServerAssetsClient.maxLimit,
-  }) => serverAssets.list(dateTo: dateTo, offset: offset, limit: limit);
+  }) => serverAssets.list(offset: offset, limit: limit);
 
-  @override
   Future<Map<String, String>> serverIds(List<String> localIds) =>
       queue.serverIdsFor(localIds);
 
-  @override
   Future<Uint8List?> serverThumb(String fileId) async {
     if (_serverThumbs.containsKey(fileId)) return _serverThumbs[fileId];
     final bytes = await serverAssets.thumbnail(fileId);
@@ -431,16 +236,12 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     return bytes;
   }
 
-  @override
   int get queueRevision => _revision;
 
-  @override
   List<ServerAlbum> get serverAlbums => _serverAlbums;
 
-  @override
   bool get serverAlbumsLoaded => _serverAlbumsLoaded;
 
-  @override
   Future<void> refreshServerAlbums() async {
     final albums = await albumClient.list();
     _serverAlbums = List<ServerAlbum>.unmodifiable(albums);
@@ -450,7 +251,6 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _notify();
   }
 
-  @override
   Future<ServerAlbum> createServerAlbum(
     String name, {
     required bool hiddenFromTimeline,
@@ -467,7 +267,6 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     return album;
   }
 
-  @override
   Future<void> setFolderAlbum(String folderId, String? albumId) async {
     // updateSettings drops a write while another one is in flight, so a mapping
     // asked for now would vanish while the sheet closed as if it was saved.
@@ -494,22 +293,16 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     unawaited(_syncAfterCurrent());
   }
 
-  @override
   QueueStats get stats => _stats;
 
-  @override
   SyncReport? get lastReport => _lastReport;
 
-  @override
   String? get error => _error;
 
-  @override
   AppSettings get settings => _settings;
 
-  @override
   bool get paused => _settings.paused;
 
-  @override
   Future<void> pause() async {
     if (_settings.paused) return;
     // Persisted first: the running pass reads the flag between assets.
@@ -519,7 +312,6 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _notify();
   }
 
-  @override
   Future<void> resume() async {
     if (_settings.paused) {
       final next = _settings.copyWith(paused: false);
@@ -545,7 +337,6 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     _settings = next;
   }
 
-  @override
   Future<void> initialize() async {
     if (!_observing) {
       _observing = true;
@@ -577,7 +368,6 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     if (!_settings.paused) unawaited(syncNow());
   }
 
-  @override
   Future<void> syncNow() {
     final inFlight = _pass;
     if (inFlight != null) return inFlight;
@@ -587,7 +377,6 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     return future;
   }
 
-  @override
   Future<void> retryFailed() async {
     if (_busy) return;
     try {
@@ -603,7 +392,6 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     await syncNow();
   }
 
-  @override
   Future<void> backUpNow(List<AssetCandidate> assets) async {
     final eligible = assets
         .where(
@@ -632,7 +420,6 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     await _syncAfterCurrent();
   }
 
-  @override
   Future<void> signIn(String email, String password, String serverUrl) async {
     if (_busy) return;
     _busy = true;
@@ -681,7 +468,6 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     }
   }
 
-  @override
   Future<void> signOut() async {
     if (_busy) return;
     _busy = true;
@@ -747,7 +533,6 @@ class PhotoXController extends AppController with WidgetsBindingObserver {
     }
   }
 
-  @override
   Future<void> updateSettings(AppSettings next) async {
     if (_busy) return;
     final scopeChanged = _scopeChanged(next);

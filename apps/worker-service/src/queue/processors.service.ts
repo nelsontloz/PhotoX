@@ -14,6 +14,7 @@ import { faceProcessor } from './face.processor';
 import { embeddingProcessor } from './embed.processor';
 import { detectProcessor } from './detect.processor';
 import { userDeleteProcessor } from './user-delete.processor';
+import { assetFileRunner } from './asset-file-job';
 import type { ProcessorDeps, ProcessorSpec } from './processor-spec';
 
 // every queue consumer, in the order the old per-processor OnModuleInit hooks ran
@@ -67,9 +68,18 @@ export class ProcessorsService implements OnModuleInit {
 
     for (const make of PROCESSORS) {
       const spec = make(this.deps);
+      // media queues declare a runAssetFileJob spec, so the handler is built once here
+      const run =
+        'job' in spec
+          ? assetFileRunner(
+              { core: this.deps.core, storage: this.deps.storage },
+              spec.queue,
+              spec.job,
+            )
+          : spec.run;
       // one queue failing to start (e.g. a Redis hiccup) must not take the other seven down
       try {
-        this.deps.bullMq.createWorker(spec.queue, spec.run, spec.workerOptions);
+        this.deps.bullMq.createWorker(spec.queue, run, spec.workerOptions);
         this.logger.log(`${spec.queue} worker listening`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

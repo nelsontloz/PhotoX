@@ -24,6 +24,7 @@ import 'widgets/month_rail.dart';
 import 'widgets/rows_sliver.dart';
 import 'widgets/panel.dart';
 import 'widgets/pill.dart';
+import 'widgets/permission_copy.dart';
 import 'widgets/status_banner.dart';
 
 /// The library, newest first, one column-page at a time.
@@ -138,16 +139,8 @@ class LibraryScreen extends StatefulWidget {
   final List<Widget> appBarActions;
 
   /// One newest-first page of the server's library, or null for a device-only
-  /// grid (the album screen).
-  ///
-  /// [dateTo] is an exclusive upper bound on the date a row sorts by; the grid
-  /// passes none and walks further back by [offset].
-  final Future<ServerAssetPage> Function({
-    DateTime? dateTo,
-    int offset,
-    int limit,
-  })?
-  serverPage;
+  /// grid (the album screen). The grid walks further back by [offset].
+  final Future<ServerAssetPage> Function({int offset, int limit})? serverPage;
 
   /// Server asset id of every listed device asset the server already holds.
   ///
@@ -411,7 +404,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
 
     final pixels = _scroll.position.pixels;
-    var index = _rowIndexAt(pixels);
+    var index = _layout.rowAt(pixels);
     if (_rows[index].items == null) {
       if (_stickyDay.value != null) _stickyDay.value = null;
       return;
@@ -421,7 +414,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
     final header = _rows[index];
 
-    var next = _rowIndexAt(pixels) + 1;
+    var next = _layout.rowAt(pixels) + 1;
     while (next < _rows.length && _rows[next].items != null) {
       next++;
     }
@@ -478,8 +471,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     // From the row model, not `maxScrollExtent`: a lazy sliver only estimates
     // its extent until it has laid the rows out, and an estimate rescales the
     // rail while it is being looked at.
-    final contentHeight =
-        frozen?.contentHeight ?? (_rowTops.last + _footerExtent);
+    final contentHeight = frozen?.contentHeight ?? (_layout.totalExtent + _footerExtent);
     final months = frozen?.months ?? _months;
     if (frozen == null && contentHeight <= position.viewportDimension) {
       if (_rail.value != null) _rail.value = null;
@@ -629,20 +621,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
   /// Pages one seek may load before giving up; a new drag resets the target.
   static const int _seekPages = 25;
 
-  /// Row covering [offset]; rows tile the list, so a binary search is exact.
-  int _rowIndexAt(double offset) {
-    var low = 0;
-    var high = _rows.length - 1;
-    while (low < high) {
-      final mid = (low + high + 1) >> 1;
-      if (_rowTops[mid] <= offset) {
-        low = mid;
-      } else {
-        high = mid - 1;
-      }
-    }
-    return low;
-  }
+  /// The row table: rows tile the list, so an offset lookup and the extent are
+  /// facts rather than estimates.
+  RowsLayout get _layout => RowsLayout(_rowTops);
 
   /// Clears the grid and reads the first page again; also pull-to-refresh.
   Future<void> _refresh() async {
@@ -1258,20 +1239,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   /// The grant that would bring the device half back, said above the grid.
   Widget _permissionBanner() {
-    final (String title, _, String action, IconData icon) = _permissionCopy;
+    final copy = permissionCopy(widget.permission);
     return StatusBanner(
       key: const Key('library-permission-banner'),
-      tone: widget.permission == PhotoPermission.notDetermined
-          ? StatusTone.warning
-          : StatusTone.danger,
-      icon: icon,
-      title: title,
+      tone: copy.tone,
+      icon: copy.icon,
+      title: copy.title,
       message:
           'Server photos are shown. Allow photo access to see and back up '
           'this phone\'s photos.',
       action: TextButton(
         onPressed: () => unawaited(widget.onRequestAccess()),
-        child: Text(action),
+        child: Text(copy.action),
       ),
     );
   }
@@ -1567,54 +1546,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return _grid(context);
   }
 
-  /// Headline, default message, action label and icon for the current grant.
-  (String, String, String, IconData) get _permissionCopy =>
-      switch (widget.permission) {
-        PhotoPermission.notDetermined => (
-          'Photo access not set up',
-          'PhotoX needs to read this device\'s photo library to back it up. '
-              'Nothing is uploaded until you allow access.',
-          'Allow photo access',
-          Icons.photo_library_outlined,
-        ),
-        PhotoPermission.denied => (
-          'Photo access is off',
-          'Allow photo access in your device settings, then try again.',
-          'Try again',
-          Icons.block_rounded,
-        ),
-        PhotoPermission.restricted => (
-          'Photo access is restricted',
-          'Device restrictions are blocking access to your photos. Change '
-              'that in your device settings, then try again.',
-          'Try again',
-          Icons.block_rounded,
-        ),
-        PhotoPermission.authorized ||
-        PhotoPermission.limited => ('', '', '', Icons.photo_library_outlined),
-      };
-
   /// Everything the grid needs to know about a blocked library, or null.
   Widget? _permissionState(BuildContext context) {
-    final (String title, String message, String action, IconData icon) =
-        _permissionCopy;
-    if (title.isEmpty) return null;
+    final copy = permissionCopy(widget.permission);
+    if (copy.title.isEmpty) return null;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: <Widget>[
         StatusBanner(
-          tone: widget.permission == PhotoPermission.notDetermined
-              ? StatusTone.warning
-              : StatusTone.danger,
-          icon: icon,
-          title: title,
-          message: message,
+          tone: copy.tone,
+          icon: copy.icon,
+          title: copy.title,
+          message: copy.message,
           action: TextButton(
             // ponytail: no deep link into OS settings without a permission
             // plugin; this re-reads the grant after the user changes it by hand.
             onPressed: () => unawaited(widget.onRequestAccess()),
-            child: Text(action),
+            child: Text(copy.action),
           ),
         ),
       ],
@@ -1705,7 +1654,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 )
               else ...<Widget>[
                 SliverRows(
-                  layout: RowsLayout(_rowTops),
+                  layout: _layout,
                   delegate: SliverChildBuilderDelegate(
                     (context, index) => _buildRow(context, index, columns),
                     childCount: _rows.length,

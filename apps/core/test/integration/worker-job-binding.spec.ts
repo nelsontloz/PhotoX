@@ -52,7 +52,7 @@ describe('worker job binding (H1)', () => {
       { act: true },
     );
     const res = await request(apiServer(t))
-      .delete(`/worker/assets/${asset.id}/faces`)
+      .patch(`/worker/assets/${asset.id}/metadata`)
       .set(t.authHeader(forged));
     expect(res.status).toBe(403);
   });

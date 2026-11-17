@@ -31,6 +31,13 @@ export default tseslint.config(
   },
   prettier,
   {
+    rules: {
+      // `const { a, b, ...wire } = row` is how the wire projections drop non-contract columns;
+      // the dropped siblings are intentionally unread.
+      '@typescript-eslint/no-unused-vars': ['error', { ignoreRestSiblings: true }],
+    },
+  },
+  {
     // Structure rules — the long form is docs/core-structure.md.
     // The data layer owns the schema and may not reach back into a feature: a helper that the
     // database bootstrap or an entity needs lives in common/ or shared-config, not in a module.

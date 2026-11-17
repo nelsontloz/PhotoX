@@ -31,7 +31,6 @@ import { setResourceLocation } from '../common/resource-headers';
 import {
   UserBackupService,
   type BackupOverviewRow,
-  type BackupProgress,
   type BackupRunStatus,
   type BackupStatus,
   type DeleteBackupResult,
@@ -39,7 +38,6 @@ import {
 } from './user-backup.service';
 import {
   BackupOverviewPageModel,
-  BackupProgressModel,
   BackupRunStatusModel,
   BackupStatusModel,
   DeleteBackupResultModel,
@@ -187,18 +185,6 @@ export class BackupController {
   @ApiResponse({ status: 503, description: 'Backup storage (S3) unreachable' })
   async statusByKey(@Param('key') key: string): Promise<BackupStatus> {
     return this.backups.backupStatus(key);
-  }
-
-  @Get('backups/:key/progress')
-  @ApiOperation({ summary: 'Live per-file backup progress for one account (admin-only)' })
-  @ApiResponse({
-    status: 200,
-    description: 'In-progress flag plus per-file counters',
-    type: BackupProgressModel,
-  })
-  @ApiResponse({ status: 404, description: 'No account for key' })
-  async progressByKey(@Param('key') key: string): Promise<BackupProgress> {
-    return this.backups.getBackupProgress(key);
   }
 
   @Post('backups/:key/restores')

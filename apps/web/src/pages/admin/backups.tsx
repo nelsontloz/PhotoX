@@ -9,10 +9,18 @@ import {
   FaTriangleExclamation,
 } from 'react-icons/fa6';
 import { isAxiosError } from 'axios';
-import { AdminSection, AdminToast, Button, ProgressBar, StatusPill, cx } from './ui';
+import {
+  AdminSection,
+  AdminToast,
+  Button,
+  ProgressBar,
+  SnapshotSummary,
+  StatusPill,
+  cx,
+  stamp,
+} from './ui';
 import {
   getBackupOverview,
-  getBackupProgress,
   getBackupRunStatus,
   backupUser,
   restoreUser,
@@ -21,7 +29,6 @@ import {
   backupPrefixPreview,
   type BackupOverviewRow,
   type BackupResult,
-  type BackupProgress,
   type BackupRunStatus,
   type RestoreResult,
   type BackupSnapshot,
@@ -136,13 +143,6 @@ function isStoreDown(message: string | null): boolean {
   return message === S3_DOWN_BODY || message === BACKUP_TIMEOUT_MESSAGE;
 }
 
-/** Formats an ISO timestamp the way the rest of the admin console does, tolerating absence. */
-function stamp(value: string | null | undefined): string {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
-}
-
 /** Deleted rows have no live library, so nothing is pending however big the manifest is. */
 function pendingOf(row: BackupOverviewRow): number {
   if (row.deleted) return 0;
@@ -183,8 +183,8 @@ interface RowState {
   merging?: boolean;
   /** Set for a run adopted from the overview after a reload; drives the run-status poll. */
   runId?: string;
-  progress?: BackupProgress | null;
-  progressUnsupported?: boolean;
+  /** Counters of the run the poller is watching, shaped from its `BackupRunStatus`. */
+  progress?: Pick<BackupRunStatus, 'total' | 'completed' | 'uploaded' | 'skipped'> | null;
   error?: string | null;
   lastResult?: BackupResult;
 }
@@ -363,15 +363,7 @@ function MergeBackupDialog({
         Rebuilds this previous account&apos;s library inside the live account {row.email}. The live
         account keeps its email, password, role and display name.
       </p>
-      <code className="block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 mt-2 break-all">
-        {snapshot.prefix}
-      </code>
-      <p className="text-sm text-slate-400 mt-2">
-        This backup holds {snapshot.assets.toLocaleString()} assets,{' '}
-        {snapshot.files.toLocaleString()} files, {snapshot.albums.toLocaleString()} albums,{' '}
-        {snapshot.shares.toLocaleString()} shares and {snapshot.persons.toLocaleString()} people
-        {snapshot.backedUpAt ? `, last backed up ${stamp(snapshot.backedUpAt)}.` : '.'}
-      </p>
+      <SnapshotSummary snapshot={snapshot} full className="mt-2" />
       <p className="text-sm text-slate-400 mt-2">
         On success the snapshot is moved into the live account&apos;s own S3 backup: the live backup
         is updated (or created if it had none) and this previous-account entry disappears.
@@ -417,14 +409,7 @@ function RestoreSnapshotDialog({
           ? 'Brings this deleted account back from its S3 backup — same files, albums, shares and people — then re-queues thumbnails and other processing. The restore runs now, in the API process, so large libraries take a while.'
           : 'Brings this previous account back from its S3 backup — same files, albums, shares and people — then re-queues thumbnails and other processing. It creates a separate account and does not change the live account.'}
       </p>
-      <code className="block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 mt-2 break-all">
-        {snapshot.prefix}
-      </code>
-      <p className="text-sm text-slate-400 mt-2">
-        This backup holds {snapshot.assets.toLocaleString()} assets and{' '}
-        {snapshot.files.toLocaleString()} files
-        {snapshot.backedUpAt ? `, last backed up ${stamp(snapshot.backedUpAt)}.` : '.'}
-      </p>
+      <SnapshotSummary snapshot={snapshot} className="mt-2" />
       {snapshot.mergedAt && (
         <p className="text-sm text-amber-300 mt-2">
           This backup was already merged into the live account — restoring it duplicates the
@@ -508,14 +493,7 @@ function DeleteBackupDialog({
         <p className="text-sm text-slate-300">
           This permanently removes this snapshot&apos;s S3 backup. This can&apos;t be undone.
         </p>
-        <code className="block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 break-all">
-          {snapshot.prefix}
-        </code>
-        <p className="text-sm text-slate-400">
-          This backup holds {snapshot.assets.toLocaleString()} assets and{' '}
-          {snapshot.files.toLocaleString()} files
-          {snapshot.backedUpAt ? `, last backed up ${stamp(snapshot.backedUpAt)}.` : '.'}
-        </p>
+        <SnapshotSummary snapshot={snapshot} />
         <p className="text-sm text-slate-400">
           {row.deleted
             ? 'The deleted account stays deleted.'
@@ -697,7 +675,6 @@ export function BackupSection() {
           runId: run.id,
           error: null,
           progress: null,
-          progressUnsupported: false,
         };
         changed = true;
       }
@@ -705,23 +682,22 @@ export function BackupSection() {
     });
   }, [rows]);
 
-  // Per-row progress: poll the run status for a run adopted after a reload, and the progress
-  // endpoint for a live action (whose POST is already waiting on the run). A 404 on the live
-  // path means the core predates the endpoint — fall back to the indeterminate bar.
-  const pollEntries = Object.entries(rowState)
-    .filter(([, state]) => state.busy && !state.progressUnsupported)
-    .map(([id, state]) => `${id}:${state.runId ?? ''}`)
-    .sort();
+  // Per-row progress: the run-status endpoint is the one poller. A run started in this tab and a
+  // run adopted from the overview after a reload are both watched through their ledger row.
   // A stable string key keeps the interval alive across progress updates (only the set of
   // in-flight rows or their runs restarts it). UUIDs contain no ':', so the split is safe.
-  const pollKey = pollEntries.join('|');
+  const pollKey = Object.entries(rowState)
+    .filter(([, state]) => state.busy && state.runId)
+    .map(([id, state]) => `${id}:${state.runId}`)
+    .sort()
+    .join('|');
   useEffect(() => {
     const entries =
       pollKey === ''
         ? []
         : pollKey.split('|').map((entry) => {
             const sep = entry.indexOf(':');
-            return { id: entry.slice(0, sep), runId: entry.slice(sep + 1) || null };
+            return { id: entry.slice(0, sep), runId: entry.slice(sep + 1) };
           });
     if (entries.length === 0) return;
     let cancelled = false;
@@ -742,62 +718,48 @@ export function BackupSection() {
       patchRow(id, { busy: false, progress: null, runId: undefined });
       setVersion((v) => v + 1);
     };
-    const poll = async (id: string, runId: string | null) => {
+    const poll = async (id: string, runId: string) => {
       try {
-        if (runId !== null) {
-          const run: BackupRunStatus = await getBackupRunStatus(runId);
-          if (cancelled) return;
-          noteSuccess(id);
-          if (run.state !== 'running' && run.state !== 'finalizing') {
-            const email = rowsRef.current?.find((row) => row.userId === id)?.email ?? id;
-            finish(id);
-            if (run.state === 'completed') {
-              const res = run.result;
-              notify(
-                `Backed up ${email} — ${
-                  res
-                    ? `${res.files.toLocaleString()} files (${res.uploaded.toLocaleString()} new, ${res.skipped.toLocaleString()} unchanged)`
-                    : 'finished'
-                }`,
-              );
-            } else if (run.state === 'paused') {
-              patchRow(id, { error: run.error ?? 'Backup paused' });
-              notify(
-                `Backup of ${email} paused — ${run.error ?? 'check disk space and retry'}`,
-                'error',
-              );
-            } else if (run.state === 'failed') {
-              patchRow(id, { error: run.error ?? 'Backup failed' });
-              notify(`Backup of ${email} failed — ${run.error ?? 'run failed'}`, 'error');
-            }
-            return;
+        const run: BackupRunStatus = await getBackupRunStatus(runId);
+        if (cancelled) return;
+        noteSuccess(id);
+        if (run.state !== 'running' && run.state !== 'finalizing') {
+          const email = rowsRef.current?.find((row) => row.userId === id)?.email ?? id;
+          finish(id);
+          if (run.state === 'completed') {
+            const res = run.result;
+            notify(
+              `Backed up ${email} — ${
+                res
+                  ? `${res.files.toLocaleString()} files (${res.uploaded.toLocaleString()} new, ${res.skipped.toLocaleString()} unchanged)`
+                  : 'finished'
+              }`,
+            );
+          } else if (run.state === 'paused') {
+            patchRow(id, { error: run.error ?? 'Backup paused' });
+            notify(
+              `Backup of ${email} paused — ${run.error ?? 'check disk space and retry'}`,
+              'error',
+            );
+          } else if (run.state === 'failed') {
+            patchRow(id, { error: run.error ?? 'Backup failed' });
+            notify(`Backup of ${email} failed — ${run.error ?? 'run failed'}`, 'error');
           }
-          patchRow(id, {
-            progress: {
-              userId: run.userId,
-              inProgress: true,
-              total: run.total,
-              completed: run.completed,
-              uploaded: run.uploaded,
-              skipped: run.skipped,
-              ...(run.currentFile ? { currentFile: run.currentFile } : {}),
-            },
-          });
           return;
         }
-        const snapshot = await getBackupProgress(id);
-        if (!cancelled) {
-          noteSuccess(id);
-          patchRow(id, { progress: snapshot });
-        }
+        patchRow(id, {
+          progress: {
+            total: run.total,
+            completed: run.completed,
+            uploaded: run.uploaded,
+            skipped: run.skipped,
+          },
+        });
       } catch (err: unknown) {
         if (cancelled) return;
-        if (isAxiosError(err) && err.response?.status === 404) {
-          if (runId !== null) finish(id);
-          else patchRow(id, { progressUnsupported: true });
-        } else {
-          noteFailure(id);
-        }
+        // A 404 means the run row is gone — the overview refresh is the recovery.
+        if (isAxiosError(err) && err.response?.status === 404) finish(id);
+        else noteFailure(id);
       }
     };
     entries.forEach((entry) => void poll(entry.id, entry.runId));
@@ -811,7 +773,7 @@ export function BackupSection() {
   }, [pollKey, patchRow, notify]);
 
   const runOne = async (row: BackupOverviewRow): Promise<boolean> => {
-    patchRow(row.userId, { busy: true, error: null, progress: null, progressUnsupported: false });
+    patchRow(row.userId, { busy: true, error: null, progress: null });
     try {
       const res = await backupUser(row.userId);
       // A rerun can re-derive a row carrying previous-account snapshots, so re-read the
@@ -1123,8 +1085,7 @@ export function BackupSection() {
                     // rows never carry them and keep their action shape exactly as before.
                     const legacySnapshots = row.deleted ? [] : (row.legacyBackups ?? []);
                     const progress = state?.progress ?? null;
-                    const showDeterminate =
-                      progress && !state?.progressUnsupported && progress.total > 0;
+                    const showDeterminate = progress && progress.total > 0;
                     const pill = pillFor(row, state?.error ?? null);
                     const last = state?.lastResult;
                     const allSkipped = last && last.files > 0 && (last.skipped ?? 0) === last.files;
@@ -1266,9 +1227,7 @@ export function BackupSection() {
                                   </>
                                 ) : (
                                   <>
-                                    <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
-                                      <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
-                                    </div>
+                                    <ProgressBar indeterminate />
                                     <p className="mt-1 text-[11px] text-on-surface-variant">
                                       Backing up {row.email}…
                                     </p>
@@ -1282,9 +1241,7 @@ export function BackupSection() {
                                 role="status"
                                 aria-live="polite"
                               >
-                                <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
-                                  <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
-                                </div>
+                                <ProgressBar indeterminate />
                                 <p className="mt-1 text-[11px] text-on-surface-variant">
                                   Restoring {row.email}…
                                 </p>

@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { FaCircleExclamation, FaSpinner, FaUserPlus } from 'react-icons/fa6';
+import { FaSpinner, FaUserPlus } from 'react-icons/fa6';
 import type { AdminUserCreateRequest, AdminUserRow, Role } from '@photox/shared-types';
 import { Dialog, formInputClass } from '../../components/Dialog';
 import { createAdminUser } from '../../api/admin';
-import { cx } from './ui';
+import { DialogFooter, FormError, cx } from './ui';
 import { emailLooksValid } from './shared';
 import { httpErrorMessage, type HttpErrorMessages } from './http-error';
 
@@ -185,36 +185,17 @@ export function CreateUserDialog({
           </p>
         )}
 
-        {error && (
-          <p
-            role="alert"
-            className="flex items-start gap-2 rounded-lg bg-status-error/10 px-3 py-2.5 text-xs text-status-error"
-          >
-            <FaCircleExclamation className="mt-0.5 shrink-0" aria-hidden="true" />
-            <span>{error}</span>
-          </p>
-        )}
+        {error && <FormError>{error}</FormError>}
       </div>
 
-      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-6">
-        <button
-          type="button"
-          onClick={close}
-          disabled={working}
-          className="text-sm font-medium text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={() => void onSubmit()}
-          disabled={!canSubmit}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-container px-3 py-2 text-sm font-medium text-on-primary-container shadow-sm transition-colors hover:bg-primary-container/90 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {working && <FaSpinner className="animate-spin" aria-hidden="true" />}
-          {working ? 'Creating…' : 'Create user'}
-        </button>
-      </div>
+      <DialogFooter
+        onCancel={close}
+        onSubmit={() => void onSubmit()}
+        busy={working}
+        disabled={!canSubmit}
+        idleLabel="Create user"
+        busyLabel="Creating…"
+      />
     </Dialog>
   );
 }

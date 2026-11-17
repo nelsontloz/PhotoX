@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { FaCircleCheck, FaCircleExclamation } from 'react-icons/fa6';
+import { FaCircleCheck, FaCircleExclamation, FaSpinner } from 'react-icons/fa6';
+import type { BackupSnapshot } from '../../api/admin';
 
 /**
  * Shared admin-console primitives. Every admin section used to copy-paste the same header/card
@@ -313,7 +314,25 @@ export function StatusPill({
   );
 }
 
-export function ProgressBar({ value, max, label }: { value: number; max: number; label: string }) {
+export function ProgressBar({
+  value = 0,
+  max = 0,
+  label = '',
+  indeterminate = false,
+}: {
+  value?: number;
+  max?: number;
+  label?: string;
+  /** Work with no known total: an animated third-width bar instead of a measured fill. */
+  indeterminate?: boolean;
+}) {
+  if (indeterminate) {
+    return (
+      <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
+        <div className="h-full w-1/3 rounded-full bg-primary animate-pulse" />
+      </div>
+    );
+  }
   const percent = max > 0 && value > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
     <div
@@ -329,6 +348,105 @@ export function ProgressBar({ value, max, label }: { value: number; max: number;
         style={{ width: `${percent}%` }}
       />
     </div>
+  );
+}
+
+/** The inline error box every admin form shows above its actions. */
+export function FormError({ children }: { children: ReactNode }) {
+  return (
+    <p
+      role="alert"
+      className="flex items-start gap-2 rounded-lg bg-status-error/10 px-3 py-2.5 text-xs text-status-error"
+    >
+      <FaCircleExclamation className="mt-0.5 shrink-0" aria-hidden="true" />
+      <span>{children}</span>
+    </p>
+  );
+}
+
+/** Cancel + primary submit row shared by the admin dialogs; the submit spinners while `busy`. */
+export function DialogFooter({
+  onCancel,
+  onSubmit,
+  busy,
+  disabled,
+  idleLabel,
+  busyLabel,
+}: {
+  onCancel: () => void;
+  onSubmit: () => void;
+  busy: boolean;
+  disabled: boolean;
+  idleLabel: string;
+  busyLabel: string;
+}) {
+  return (
+    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-6">
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={busy}
+        className="text-sm font-medium text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        onClick={onSubmit}
+        disabled={disabled}
+        className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-container px-3 py-2 text-sm font-medium text-on-primary-container shadow-sm transition-colors hover:bg-primary-container/90 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {busy && <FaSpinner className="animate-spin" aria-hidden="true" />}
+        {busy ? busyLabel : idleLabel}
+      </button>
+    </div>
+  );
+}
+
+/** "Mar 1, 2024, 10:04:00 AM" for a stored instant; tolerates a missing or invalid one. */
+export function stamp(value: string | null | undefined): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+}
+
+/**
+ * S3 prefix + manifest counts shown by every backup confirm dialog. `full` adds the
+ * albums/shares/people counts; `className` lands on the prefix line, whose top spacing depends
+ * on the dialog's own layout.
+ */
+export function SnapshotSummary({
+  snapshot,
+  full = false,
+  className,
+}: {
+  snapshot: BackupSnapshot;
+  full?: boolean;
+  className?: string;
+}) {
+  return (
+    <>
+      <code
+        className={cx(
+          'block text-xs font-mono text-slate-300 bg-slate-900/60 border border-border-dark rounded px-2 py-1.5 break-all',
+          className,
+        )}
+      >
+        {snapshot.prefix}
+      </code>
+      <p className="text-sm text-slate-400 mt-2">
+        This backup holds {snapshot.assets.toLocaleString()} assets
+        {full ? (
+          <>
+            , {snapshot.files.toLocaleString()} files, {snapshot.albums.toLocaleString()} albums,{' '}
+            {snapshot.shares.toLocaleString()} shares and {snapshot.persons.toLocaleString()} people
+          </>
+        ) : (
+          <> and {snapshot.files.toLocaleString()} files</>
+        )}
+        {snapshot.backedUpAt ? `, last backed up ${stamp(snapshot.backedUpAt)}.` : '.'}
+      </p>
+    </>
   );
 }
 

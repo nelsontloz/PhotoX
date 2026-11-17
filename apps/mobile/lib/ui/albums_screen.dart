@@ -12,6 +12,7 @@ import 'widgets/app_background.dart';
 import 'widgets/count_format.dart';
 import 'widgets/folder_album_sheet.dart';
 import 'widgets/panel.dart';
+import 'widgets/permission_copy.dart';
 import 'widgets/pill.dart';
 import 'widgets/section_label.dart';
 import 'widgets/status_banner.dart';
@@ -427,14 +428,13 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
     final scheme = theme.colorScheme;
 
     if (!_canRead) {
-      return const <Widget>[
+      final copy = permissionCopy(widget.permission);
+      return <Widget>[
         StatusBanner(
-          tone: StatusTone.warning,
-          icon: Icons.photo_library_outlined,
-          title: 'Photo access is off',
-          message:
-              'Allow photo access in the Library tab or your device settings '
-              'to see the albums on this phone.',
+          tone: copy.tone,
+          icon: copy.icon,
+          title: copy.title,
+          message: copy.message,
         ),
       ];
     }

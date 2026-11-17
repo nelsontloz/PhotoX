@@ -5,6 +5,7 @@ import type { Request } from 'express';
 import type { DataSource } from 'typeorm';
 import { ACCESS_COOKIE } from './auth-cookie';
 import { JwtAuthGuard, requireUserId } from './jwt-auth.guard';
+import { TokenService } from './token.service';
 
 const TEST_SECRET = 'test-secret-0123456789abcdef0123456789';
 // real subjects are uuids: a non-uuid sub cannot identify an account, so the guard
@@ -17,7 +18,8 @@ process.env.AUTH_TOKEN_SECRET = TEST_SECRET;
 const WORKER_SECRET = 'worker-unit-test-secret-9f8e7d6c5b4a3210';
 process.env.WORKER_JWT_SECRET = WORKER_SECRET;
 const jwt = new JwtService({ secret: TEST_SECRET });
-const guard = new JwtAuthGuard(jwt);
+const tokens = new TokenService(jwt);
+const guard = new JwtAuthGuard(jwt, tokens);
 
 const jobSig = (sub: string, scope: string): string =>
   createHmac('sha256', WORKER_SECRET).update(`${sub}:${scope}`).digest('hex');
@@ -448,7 +450,7 @@ describe('constructor wiring', () => {
     const prev = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
     try {
-      expect(() => new JwtAuthGuard(jwt).onModuleInit()).toThrow(/DataSource/);
+      expect(() => new JwtAuthGuard(jwt, tokens).onModuleInit()).toThrow(/DataSource/);
     } finally {
       process.env.NODE_ENV = prev;
     }
@@ -456,7 +458,7 @@ describe('constructor wiring', () => {
 
   it('starts normally with the DataSource present', () => {
     const dataSource = { getRepository: () => ({}) } as unknown as DataSource;
-    expect(() => new JwtAuthGuard(jwt, dataSource).onModuleInit()).not.toThrow();
+    expect(() => new JwtAuthGuard(jwt, tokens, dataSource).onModuleInit()).not.toThrow();
   });
 });
 
@@ -471,7 +473,7 @@ describe('admin authorisation uses the stored account row', () => {
         exists: vi.fn().mockResolvedValue(true),
       }),
     } as unknown as DataSource;
-    return new JwtAuthGuard(jwt, dataSource);
+    return new JwtAuthGuard(jwt, tokens, dataSource);
   }
 
   it('rejects an admin claim when the stored account is a user', async () => {

@@ -46,12 +46,7 @@ describe('admin backup HTTP surface', () => {
     const ghost = randomUUID();
     await adminAuthHarness(t, {
       post: [BACKUPS, `${BACKUPS}/${ghost}/restores`, '/api/v1/admin/restores/merge'],
-      get: [
-        `${BACKUPS}/overview`,
-        `${BACKUPS}/${ghost}`,
-        `${BACKUPS}/${ghost}/progress`,
-        `${BACKUPS}/runs/${ghost}`,
-      ],
+      get: [`${BACKUPS}/overview`, `${BACKUPS}/${ghost}`, `${BACKUPS}/runs/${ghost}`],
     });
 
     // adminAuthHarness only drives POST/GET — DELETE needs the same 401/403 pair inline.
@@ -69,14 +64,11 @@ describe('admin backup HTTP surface', () => {
     const server = apiServer(t);
 
     // A status read for a target with no manifest is a 200 {exists:false} by design
-    // (backupStatus swallows locateBackup's 404); progress and delete resolve the
-    // target first and 404 instead.
+    // (backupStatus swallows locateBackup's 404); delete resolves the target first
+    // and 404s instead.
     const status = await request(server).get(`${BACKUPS}/${ghost}`).set(auth);
     expect(status.status).toBe(200);
     expect(status.body).toEqual({ exists: false });
-
-    const progress = await request(server).get(`${BACKUPS}/${ghost}/progress`).set(auth);
-    expect(progress.status).toBe(404);
 
     const deleted = await request(server).delete(`${BACKUPS}/${ghost}`).set(auth);
     expect(deleted.status).toBe(404);

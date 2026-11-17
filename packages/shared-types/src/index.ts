@@ -253,11 +253,6 @@ export interface AdminAssetCountsResponse {
   videos: AssetFailureCounts;
 }
 
-export interface AdminReprocessThumbnailsResponse {
-  enqueued: number;
-  totalAssets: number;
-}
-
 export interface AdminAssetReprocessRow {
   id: string;
   userId: string;
@@ -607,7 +602,6 @@ export interface UserDeleteStepResult {
 }
 
 export interface UserDeleteFinishRequest {
-  backupPrefix: string;
   filesDeleted: number;
   filesFailed: number;
   /** First file error, reported verbatim on a `partial` run. */

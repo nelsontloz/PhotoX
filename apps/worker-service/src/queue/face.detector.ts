@@ -91,26 +91,19 @@ export class FaceDetectorService implements OnModuleInit {
     const scale = Math.min(SCRFD_INPUT_SIZE / meta.width, SCRFD_INPUT_SIZE / meta.height);
     const newW = Math.round(meta.width * scale);
     const newH = Math.round(meta.height * scale);
-    const scaled = await sharp(buffer)
+    // resize + extend in one pipeline (same shape as detect.service): the pad is top-left, and
+    // 'fill' makes the resized dims exact, so the decoder scale-back is meta/newW and meta/newH
+    const letterboxed = await sharp(buffer)
       .removeAlpha()
       .toColourspace('srgb')
-      .resize(newW, newH, { fit: 'inside' })
+      .resize(newW, newH, { fit: 'fill' })
+      .extend({
+        right: SCRFD_INPUT_SIZE - newW,
+        bottom: SCRFD_INPUT_SIZE - newH,
+        background: { r: 0, g: 0, b: 0 },
+      })
       .raw()
-      .toBuffer({ resolveWithObject: true });
-    // fit:'inside' can land 1px short of the requested box on odd aspect ratios, so copy the
-    // actual pixels row by row into a black 640x640 letterbox (top-left pad) instead of extending
-    // from the requested dims
-    const channels = scaled.info.channels;
-    const letterboxed = Buffer.alloc(SCRFD_INPUT_SIZE * SCRFD_INPUT_SIZE * channels);
-    const rowBytes = scaled.info.width * channels;
-    for (let y = 0; y < scaled.info.height; y++) {
-      scaled.data.copy(
-        letterboxed,
-        y * SCRFD_INPUT_SIZE * channels,
-        y * rowBytes,
-        (y + 1) * rowBytes,
-      );
-    }
+      .toBuffer();
 
     const { Tensor } = await import('onnxruntime-node');
     const tensor = new Tensor(
@@ -126,10 +119,10 @@ export class FaceDetectorService implements OnModuleInit {
       return { dims: output.dims, data: output.data as Float32Array };
     });
 
-    // pad is top-left, so source coords are a pure scale back from the actual resized dims
+    // pad is top-left, so source coords are a pure scale back from the resized dims
     return decodeScrfdOutputs(tensors, {
-      scaleX: meta.width / scaled.info.width,
-      scaleY: meta.height / scaled.info.height,
+      scaleX: meta.width / newW,
+      scaleY: meta.height / newH,
     }).map((det) => ({
       box: det.box,
       score: det.score,

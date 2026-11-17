@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   ForbiddenException,
   Get,
   HttpCode,
@@ -92,12 +91,6 @@ export class WorkerController {
     @CurrentUserId() userId: string,
   ) {
     return this.faces.replaceForAsset(userId, id, dto.faces);
-  }
-
-  @Delete('assets/:id/faces')
-  @ApiOperation({ summary: 'Worker delete of all detected faces for an asset (idempotent)' })
-  async deleteFaces(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUserId() userId: string) {
-    return this.faces.deleteForAsset(userId, id);
   }
 
   @Post('assets/:id/embedding')

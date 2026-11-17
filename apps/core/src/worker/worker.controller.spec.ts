@@ -70,7 +70,7 @@ describe('WorkerController purge', () => {
     await expect(
       controller.purgeUserFinish(
         USER_ID,
-        { backupPrefix: 'p/', filesDeleted: 3, filesFailed: 1, firstError: 'EACCES' },
+        { filesDeleted: 3, filesFailed: 1, firstError: 'EACCES' },
         USER_ID,
       ),
     ).resolves.toEqual({ state: 'partial' });
@@ -86,7 +86,7 @@ describe('WorkerController purge', () => {
     await expect(
       controller.purgeUserFinish(
         '44444444-4444-4444-8444-444444444444',
-        { backupPrefix: 'p/', filesDeleted: 0, filesFailed: 0 },
+        { filesDeleted: 0, filesFailed: 0 },
         USER_ID,
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);

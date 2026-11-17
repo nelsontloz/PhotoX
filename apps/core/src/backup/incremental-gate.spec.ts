@@ -1,9 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
-import type { Repository } from 'typeorm';
-import { User } from '../database/entities/user.entity';
-import { BackupStatusService } from './backup-status.service';
-import { shouldSkipUpload, UserBackupService } from './user-backup.service';
+import { describe, expect, it } from 'vitest';
+import { shouldSkipUpload } from './user-backup.service';
 
 const file = { id: 'file-1', checksumSha256: 'abc', sizeBytes: 10 };
 const key = 'backups/a__u1/originals/file-1.bin';
@@ -44,65 +40,5 @@ describe('shouldSkipUpload', () => {
 
   it('uploads when every conjunct fails at once', () => {
     expect(shouldSkipUpload(null, new Set(), { ...file, id: 'ghost' }, 'missing')).toBe(false);
-  });
-});
-
-function makeProgressService(user: User | null, run: unknown = null) {
-  const findOne = vi.fn().mockResolvedValue(user);
-  const users = { findOne } as unknown as Repository<User>;
-  const runs = { findOne: vi.fn().mockResolvedValue(run) };
-  // ponytail: progress transitions need no S3/DB — every other dep is nil and
-  // only the users/runs repos are faked, so this stays a pure unit spec (no
-  // testcontainers); full backup runs stay in test/integration/user-backup
-  const nil = undefined as never;
-  const status = new BackupStatusService(nil, nil, users, nil, nil, runs as never);
-  const svc = new UserBackupService(status, nil, nil, nil, nil, nil);
-  return { svc, findOne };
-}
-
-describe('getBackupProgress', () => {
-  it('throws NotFoundException for an unknown user', async () => {
-    const { svc } = makeProgressService(null);
-    await expect(svc.getBackupProgress('ghost@example.com')).rejects.toThrow(NotFoundException);
-  });
-
-  it('returns an idle zero snapshot when no run ever started', async () => {
-    const { svc } = makeProgressService({ id: 'user-1' } as User);
-    const progress = await svc.getBackupProgress('someone@example.com');
-    expect(progress).toMatchObject({
-      userId: 'user-1',
-      inProgress: false,
-      total: 0,
-      completed: 0,
-      uploaded: 0,
-      skipped: 0,
-    });
-  });
-
-  it('maps the latest run row to the progress snapshot', async () => {
-    const run = {
-      userId: 'user-1',
-      state: 'running',
-      totalItems: 3,
-      completedItems: 1,
-      uploaded: 1,
-      skipped: 0,
-      currentFile: 'a.jpg',
-      startedAt: new Date('2026-01-01T00:00:00.000Z'),
-      updatedAt: new Date('2026-01-01T00:00:01.000Z'),
-    };
-    const { svc } = makeProgressService({ id: 'user-1' } as User, run);
-    const progress = await svc.getBackupProgress('someone@example.com');
-    expect(progress).toEqual({
-      userId: 'user-1',
-      inProgress: true,
-      total: 3,
-      completed: 1,
-      uploaded: 1,
-      skipped: 0,
-      currentFile: 'a.jpg',
-      startedAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:01.000Z',
-    });
   });
 });

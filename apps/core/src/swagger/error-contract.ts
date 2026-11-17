@@ -8,6 +8,7 @@ import type {
 } from '@nestjs/swagger';
 import { API_ERROR_CODES } from '@photox/shared-types';
 import { isAdminRoute, isOpenRoute, isWorkerRoute } from '../auth/open-routes';
+import { METHODS } from './methods';
 
 /**
  * Post-processes the Swagger document the same way `main.ts` post-processes the response
@@ -15,19 +16,6 @@ import { isAdminRoute, isOpenRoute, isWorkerRoute } from '../auth/open-routes';
  * access rules from `open-routes.ts`, and the statuses the transport itself can produce.
  * Kept out of the per-route decorators so a new controller cannot forget the contract.
  */
-
-type HttpMethod = 'get' | 'put' | 'post' | 'delete' | 'options' | 'head' | 'patch' | 'trace';
-
-const OPERATIONS: readonly HttpMethod[] = [
-  'get',
-  'put',
-  'post',
-  'delete',
-  'options',
-  'head',
-  'patch',
-  'trace',
-];
 
 /** The only rate-limited routes (`RATE_LIMITS` in auth/rate-limit.service.ts). */
 const RATE_LIMITED_ROUTES = new Set([
@@ -114,7 +102,7 @@ export function applyErrorContract(document: OpenAPIObject): void {
     const open = isOpenRoute(path);
     const admin = isAdminRoute(path);
 
-    for (const method of OPERATIONS) {
+    for (const method of METHODS) {
       const operation = item[method];
       if (!operation) continue;
       operation.responses ??= {};

@@ -33,7 +33,6 @@ export interface FfprobeResult {
 }
 
 const DEFAULT_TIMEOUT_MS = 120_000;
-const SIGKILL_DELAY_MS = 5_000;
 // stdout holds at most the frames runFfmpeg is asked to pipe (a few MB each); stderr only matters
 // for the last 2000 chars of the error
 const MAX_BUFFER = 64 * 1024 * 1024;
@@ -55,28 +54,9 @@ export function killLiveChildren(): number {
   return count;
 }
 
-// ffmpeg can ignore SIGTERM mid-mux, and a stuck 1h transcode would hold CPU and a BullMQ slot —
-// escalate to SIGKILL after a grace period
-function killWithDelay(proc: ChildProcess) {
-  const killTimer = setTimeout(() => {
-    try {
-      proc.kill('SIGKILL');
-    } catch {
-      // process already gone
-    }
-  }, SIGKILL_DELAY_MS);
-
-  proc.once('exit', () => clearTimeout(killTimer));
-
-  try {
-    proc.kill('SIGTERM');
-  } catch {
-    // process already gone
-  }
-}
-
-// execFile buffers stdout/stderr itself; the callback form (not promisify) keeps the child handle
-// the timeout needs to escalate SIGTERM -> SIGKILL. label keeps the two error texts exact.
+// execFile buffers stdout/stderr itself and owns the timeout kill. SIGKILL, not its SIGTERM
+// default: ffmpeg can ignore SIGTERM mid-mux, and a stuck 1h transcode would hold CPU and a
+// BullMQ slot. label keeps the two error texts exact.
 function runBin(
   bin: string,
   args: string[],
@@ -84,16 +64,17 @@ function runBin(
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    let timedOut = false;
     const proc = execFile(
       bin,
       args,
-      { encoding: 'buffer', maxBuffer: MAX_BUFFER },
+      { encoding: 'buffer', maxBuffer: MAX_BUFFER, timeout: timeoutMs, killSignal: 'SIGKILL' },
       (err, stdout, stderr) => {
-        if (timedOut) return;
-        clearTimeout(timer);
         if (!err) {
           resolve(stdout);
+          return;
+        }
+        if (err.killed) {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
           return;
         }
         // spawn failures (ENOENT etc.) carry no numeric exit code — keep the original error
@@ -106,12 +87,6 @@ function runBin(
         );
       },
     );
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      killWithDelay(proc);
-      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
 
     liveChildren.add(proc);
     proc.once('exit', () => liveChildren.delete(proc));

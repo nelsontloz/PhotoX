@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   FaArrowsRotate,
   FaCamera,
@@ -13,10 +13,10 @@ import { getAdminAssetCounts, getAdminLibraryStats } from '../../api/admin';
 import { formatBytes } from '../../lib/format';
 import { formatIsoDate } from '../../lib/dateFormat';
 import { AdminCard, AdminSection, Button, MetricTile, cx } from './ui';
+import { useAsyncFetch } from '../../hooks/useAsyncFetch';
 import type {
   AdminAssetCountsResponse,
   AdminLibraryCounts,
-  AdminLibraryStatsResponse,
   AdminLibraryStorageMonth,
   AssetFailureCounts,
 } from '@photox/shared-types';
@@ -136,41 +136,25 @@ function StatsSkeleton() {
 }
 
 export function LibraryStatsSection() {
-  const [data, setData] = useState<AdminLibraryStatsResponse | null>(null);
   const [assetCounts, setAssetCounts] = useState<AdminAssetCountsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setAssetCounts(null);
-    getAdminLibraryStats()
-      .then((res) => {
-        if (cancelled) return;
-        setData(res);
-      })
-      .catch((err: Error) => {
-        if (cancelled) return;
-        setError(err.message ?? 'Failed to load library stats');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    // Optional enrichment (photos tile meta + bar); a failure here must never affect the stats.
-    getAdminAssetCounts()
-      .then((res) => {
-        if (!cancelled) setAssetCounts(res);
-      })
-      .catch(() => {
-        // leave assetCounts null: the photos tile falls back to no meta and a 0 bar
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [version]);
+  const {
+    data: stats,
+    loading,
+    error,
+  } = useAsyncFetch(
+    async () => {
+      setAssetCounts(null);
+      // Optional enrichment (photos tile meta + bar); a failure here must never affect the stats.
+      const counts = getAdminAssetCounts().catch(() => null);
+      const [next, nextCounts] = await Promise.all([getAdminLibraryStats(), counts]);
+      setAssetCounts(nextCounts);
+      return next;
+    },
+    { refreshKey: version, errorMessage: 'Failed to load library stats', loadingMode: 'always' },
+  );
+  const data = stats ?? null;
 
   const retry = () => setVersion((v) => v + 1);
 

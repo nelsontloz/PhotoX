@@ -1,3 +1,4 @@
+import 'file_name.dart';
 import 'photo_observer.dart';
 
 /// Decides which platform library assets the backup pipeline accepts.
@@ -47,7 +48,7 @@ class MediaFilter {
   /// [PhotoManagerObserver] can describe candidates; [isSupported] still gates
   /// videos behind the user preference.
   String? inferMimeType(String fileName) {
-    final extension = _extensionOf(fileName);
+    final extension = splitFileName(fileName).$2?.toLowerCase();
     if (extension == null) return null;
     return photoMimeTypes[extension] ?? videoMimeTypes[extension];
   }
@@ -74,12 +75,5 @@ class MediaFilter {
         supportedVideoMimes.contains(reported);
     if (supported) return reported;
     return inferMimeType(candidate.fileName);
-  }
-
-  static String? _extensionOf(String fileName) {
-    final slash = fileName.lastIndexOf('/');
-    final dot = fileName.lastIndexOf('.');
-    if (dot <= slash || dot == fileName.length - 1) return null;
-    return fileName.substring(dot + 1).toLowerCase();
   }
 }

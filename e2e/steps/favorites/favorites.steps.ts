@@ -5,18 +5,8 @@ import {
   authHeaders,
   expectThumbnailLoaded,
   requireAuth,
-  requireOtherAuth,
-  uploadViaApi,
   type AuthResponse,
-  type Ctx,
-  type FavoriteList,
 } from '../support';
-
-function lastFavoritesList(ctx: Ctx): FavoriteList {
-  const last = ctx.listResponses?.at(-1);
-  if (!last) throw new Error('list favorites first');
-  return last;
-}
 
 /** The favorite control lives in the desktop top bar AND the mobile action row (hidden `sm:hidden`). */
 const favoriteButton = (page: Page) =>
@@ -25,13 +15,6 @@ const favoriteButton = (page: Page) =>
 // An ancient fixed instant keeps the day-group label in the calendar-format branch ("Jan 2, 2020"),
 // stable in any timezone — today/yesterday would flake when a test straddles midnight.
 const PINNED_FAVORITES_DATE = '2020-01-02T12:00:00.000Z';
-
-When(
-  'the other user uploads {string} via the favorites API',
-  async ({ request, ctx }, name: string) => {
-    ctx.otherAssetId = await uploadViaApi(request, requireOtherAuth(ctx), name);
-  },
-);
 
 function patchFavorite(
   request: APIRequestContext,
@@ -48,47 +31,7 @@ When('I favorite the uploaded asset through the favorites API', async ({ request
   if (!ctx.assetId) throw new Error('upload an asset first');
   const status = await patchFavorite(request, requireAuth(ctx), ctx.assetId, true);
   expect(status).toBe(200);
-  ctx.favoriteIds = [...(ctx.favoriteIds ?? []), ctx.assetId];
 });
-
-When(
-  'the other user favorites their uploaded asset through the favorites API',
-  async ({ request, ctx }) => {
-    const assetId = ctx.otherAssetId;
-    if (!assetId) throw new Error('the other user must upload an asset first');
-    const status = await patchFavorite(request, requireOtherAuth(ctx), assetId, true);
-    expect(status).toBe(200);
-  },
-);
-
-When(
-  'the other user tries to favorite my uploaded asset through the favorites API',
-  async ({ request, ctx }) => {
-    if (!ctx.assetId) throw new Error('upload an asset first');
-    ctx.lastStatus = await patchFavorite(request, requireOtherAuth(ctx), ctx.assetId, true);
-  },
-);
-
-When(
-  'I list my favorites with limit {int} and offset {int}',
-  async ({ request, ctx }, limit: number, offset: number) => {
-    const response = await request.get(
-      `/api/v1/assets?favorite=true&limit=${limit}&offset=${offset}`,
-      { headers: authHeaders(requireAuth(ctx)) },
-    );
-    expect(response.status()).toBe(200);
-    ctx.listResponses = [...(ctx.listResponses ?? []), (await response.json()) as FavoriteList];
-  },
-);
-
-Then(
-  'the last favorites list holds {int} of {int} items',
-  ({ ctx }, items: number, total: number) => {
-    const list = lastFavoritesList(ctx);
-    expect(list.items).toHaveLength(items);
-    expect(list.total).toBe(total);
-  },
-);
 
 When('I set the uploaded asset date for favorites grouping', async ({ request, ctx }) => {
   if (!ctx.assetId) throw new Error('upload an asset first');

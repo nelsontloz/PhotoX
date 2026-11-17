@@ -76,20 +76,6 @@ export class FacesService {
     });
   }
 
-  // ponytail: transactional delete companion to the atomic replace route — kept for the worker's
-  // explicit clear/repair calls; the face job itself no longer does DELETE then POST
-  async deleteForAsset(userId: string, assetId: string): Promise<{ deleted: number }> {
-    await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset');
-    return this.dataSource.transaction(async (em) => {
-      const existing = await em.find(Face, { where: { assetId, userId } });
-      if (existing.length === 0) return { deleted: 0 };
-
-      await em.delete(Face, { assetId, userId });
-      await refreshPersonsAfterFaceDelete(em, existing, userId);
-      return { deleted: existing.length };
-    });
-  }
-
   async getForAsset(userId: string, assetId: string): Promise<FaceDto[]> {
     await findOwnedOr404(this.assetRepo, assetId, userId, 'Asset');
     const faces = await this.repo.find({ where: { assetId } });

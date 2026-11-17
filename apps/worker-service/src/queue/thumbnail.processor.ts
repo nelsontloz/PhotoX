@@ -5,8 +5,8 @@ import { join } from 'path';
 import { randomUUID, createHash } from 'crypto';
 import { writeFile } from 'fs/promises';
 import { thumbnailJobSchema, type ThumbnailJob } from './job-schemas';
-import { patchStatusFailed, runAssetFileJob } from './asset-file-job';
-import type { ProcessorDeps, ProcessorSpec } from './processor-spec';
+import { patchStatusFailed } from './asset-file-job';
+import type { MediaProcessorSpec, ProcessorDeps } from './processor-spec';
 import type { Asset, FileRecord } from '@photox/shared-types';
 import { runFfmpeg } from './ffmpeg';
 
@@ -30,7 +30,7 @@ export function thumbnailProcessor({
   bullMq,
   core,
   storage,
-}: Pick<ProcessorDeps, 'bullMq' | 'core' | 'storage'>): ProcessorSpec<ThumbnailJob> {
+}: Pick<ProcessorDeps, 'bullMq' | 'core' | 'storage'>): MediaProcessorSpec<ThumbnailJob> {
   const logger = new Logger('ThumbnailProcessor');
 
   async function generateThumbnail(
@@ -176,50 +176,47 @@ export function thumbnailProcessor({
 
   return {
     queue: 'process-thumbnail',
-    run: async (job) => {
-      await runAssetFileJob({ core, storage, logger }, job, {
-        queue: 'process-thumbnail',
-        schema: thumbnailJobSchema,
-        label: 'thumbnail',
-        failureLabel: 'Thumbnail',
-        detail: (data) => `size=${data.size}`,
-        // video thumbs wait for the metadata job's orientation/duration
-        beforeBody: async ({ data, record, asset }) => {
-          if (
-            !record.mimeType?.startsWith('video/') ||
-            asset.metadataStatus !== 'pending' ||
-            (data.metadataWaits ?? 0) >= MAX_METADATA_WAITS
-          ) {
-            return false;
-          }
-          // ponytail: no jobId — the current job is active, BullMQ would dedupe the re-add away; the
-          // deferred copy re-fetches the asset itself, which is the ordering point. Ceiling: if this
-          // add fails the whole job throws so BullMQ retries it (bounded by attempts:3)
-          await bullMq.enqueue(
-            'process-thumbnail',
-            job.name,
-            { ...job.data, metadataWaits: (data.metadataWaits ?? 0) + 1 },
-            {
-              delay: METADATA_WAIT_DELAY_MS,
-              attempts: 3,
-              backoff: { type: 'exponential' },
-              removeOnComplete: true,
-              removeOnFail: true,
-            },
-          );
-          logger.log(
-            `Thumbnail deferred (metadata pending): asset=${data.assetId}, size=${data.size}, wait=${(data.metadataWaits ?? 0) + 1}`,
-          );
-          return true;
-        },
-        onFailure: ({ userId, assetId, sig }) =>
-          patchStatusFailed(core, logger, userId, assetId, { thumbnailStatus: 'failed' }, sig),
-        body: async ({ data, record, asset, filePath }) => {
-          await generateThumbnail(record, asset, data.size, data.userId, filePath, data.sig);
+    job: {
+      schema: thumbnailJobSchema,
+      label: 'thumbnail',
+      failureLabel: 'Thumbnail',
+      detail: (data) => `size=${data.size}`,
+      // video thumbs wait for the metadata job's orientation/duration
+      beforeBody: async ({ data, name, record, asset }) => {
+        if (
+          !record.mimeType?.startsWith('video/') ||
+          asset.metadataStatus !== 'pending' ||
+          (data.metadataWaits ?? 0) >= MAX_METADATA_WAITS
+        ) {
+          return false;
+        }
+        // ponytail: no jobId — the current job is active, BullMQ would dedupe the re-add away; the
+        // deferred copy re-fetches the asset itself, which is the ordering point. Ceiling: if this
+        // add fails the whole job throws so BullMQ retries it (bounded by attempts:3)
+        await bullMq.enqueue(
+          'process-thumbnail',
+          name,
+          { ...data, metadataWaits: (data.metadataWaits ?? 0) + 1 },
+          {
+            delay: METADATA_WAIT_DELAY_MS,
+            attempts: 3,
+            backoff: { type: 'exponential' },
+            removeOnComplete: true,
+            removeOnFail: true,
+          },
+        );
+        logger.log(
+          `Thumbnail deferred (metadata pending): asset=${data.assetId}, size=${data.size}, wait=${(data.metadataWaits ?? 0) + 1}`,
+        );
+        return true;
+      },
+      onFailure: ({ userId, assetId, sig }) =>
+        patchStatusFailed(core, logger, userId, assetId, { thumbnailStatus: 'failed' }, sig),
+      body: async ({ data, record, asset, filePath }) => {
+        await generateThumbnail(record, asset, data.size, data.userId, filePath, data.sig);
 
-          logger.log(`Thumbnail complete: asset=${data.assetId}, size=${data.size}`);
-        },
-      });
+        logger.log(`Thumbnail complete: asset=${data.assetId}, size=${data.size}`);
+      },
     },
   };
 }

@@ -2,7 +2,6 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { INestApplication } from '@nestjs/common';
 import { applyErrorContract } from './error-contract';
 import { applyResponseContract } from './response-contract';
-import { applyDeprecations } from './deprecations';
 
 /**
  * The API-level policy clients can rely on. Kept here (not in a prose doc) so it ships with the
@@ -13,11 +12,6 @@ const API_DESCRIPTION = `Photo hosting API.
 **Versioning.** The path version (\`/api/v1\`) is additive-only: new routes, fields, optional
 parameters and error codes may appear at any time. Removing or renaming a field, route or error
 code, or changing a status code's meaning, is breaking and needs a new path version.
-
-**Deprecation.** A route that will be removed is marked \`deprecated\` here, answers with
-\`Deprecation\` (RFC 9745), \`Sunset\` (RFC 8594, see \`x-sunset\`) and a \`Link: rel="successor-version"\`
-header, and keeps working for at least one release. Nothing is removed silently and nothing is
-deprecated without a named replacement.
 
 **Frozen surfaces.** \`/api/share/:token/*\` is permanent — share tokens are embedded in links
 that outlive any deploy, so that namespace never changes shape. \`/worker/*\` and \`/health\` are
@@ -72,6 +66,5 @@ export function setupSwagger(app: INestApplication): void {
   });
   applyErrorContract(document);
   applyResponseContract(document);
-  applyDeprecations(document);
   SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' });
 }

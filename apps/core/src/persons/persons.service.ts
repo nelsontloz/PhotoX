@@ -19,17 +19,13 @@ export class PersonsService {
   ) {}
 
   async list(userId: string, limit = 20, offset = 0): Promise<PersonListResponse> {
-    const total = await this.personRepo
-      .createQueryBuilder('p')
-      .where('p.userId = :userId', { userId })
-      .getCount();
-
     // shortcut: ordering reads the stored faceCount, which refreshPersonFaceCount updates on face
     // changes but not on asset trash/restore/purge — the order can lag the live counts in that one
     // case. Upgrade: refresh the counters from those asset paths.
-    const rows = await this.personRepo.query<Person[]>(
+    const rows = await this.personRepo.query<(Person & { totalCount?: number })[]>(
       `SELECT p.id, p."userId", p.name, p."coverFaceId", p."clusterLabel",
-              p."faceCount", p."createdAt", p."updatedAt"
+              p."faceCount", p."createdAt", p."updatedAt",
+              COUNT(*) OVER () AS "totalCount"
        FROM persons p
        WHERE p."userId" = $1
        ORDER BY p."faceCount" DESC, p."updatedAt" DESC, p.id
@@ -48,14 +44,17 @@ export class PersonsService {
     );
     const liveCounts = new Map(counts.map((c): [string, number] => [c.pid, c.cnt]));
 
-    const persons = rows.map((row) =>
+    // the window count rides the page query; an offset past the end still needs the real total
+    const total =
+      rows.length > 0
+        ? Number(rows[0]!.totalCount)
+        : await this.personRepo.count({ where: { userId } });
+
+    const persons = rows.map(({ totalCount: _totalCount, ...row }) =>
       this.toListItem({ ...row, faceCount: liveCounts.get(row.id) ?? 0 }),
     );
 
-    return {
-      items: persons,
-      total,
-    };
+    return { items: persons, total };
   }
 
   async getOne(userId: string, id: string): Promise<PersonDto> {
@@ -189,12 +188,7 @@ export class PersonsService {
     updatedAt: Date | string;
   }): PersonDto {
     return {
-      id: person.id,
-      userId: person.userId,
-      name: person.name,
-      coverFaceId: person.coverFaceId,
-      clusterLabel: person.clusterLabel,
-      faceCount: person.faceCount,
+      ...person,
       createdAt:
         person.createdAt instanceof Date
           ? person.createdAt.toISOString()

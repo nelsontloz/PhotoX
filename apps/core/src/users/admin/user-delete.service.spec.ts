@@ -303,14 +303,13 @@ describe('UserDeleteService.step', () => {
 describe('UserDeleteService.finish', () => {
   it('completes when every byte was removed', async () => {
     const { service, currentRun } = makeService({ run: { state: 'active' } });
-    await service.finish(USER_ID, { backupPrefix: 'p/', filesDeleted: 12, filesFailed: 0 });
+    await service.finish(USER_ID, { filesDeleted: 12, filesFailed: 0 });
     expect(currentRun()).toMatchObject({ state: 'completed', deletedFiles: 12, failedFiles: 0 });
   });
 
   it('reports partial (not completed) when files were left behind', async () => {
     const { service, currentRun } = makeService({ run: { state: 'active' } });
     await service.finish(USER_ID, {
-      backupPrefix: 'p/',
       filesDeleted: 11,
       filesFailed: 1,
       firstError: 'originals/x.jpg: EACCES',
@@ -325,7 +324,6 @@ describe('UserDeleteService.finish', () => {
   it('fails the run when the rows half never finished', async () => {
     const { service, currentRun } = makeService({ run: { state: 'active' } });
     await service.finish(USER_ID, {
-      backupPrefix: 'p/',
       filesDeleted: 0,
       filesFailed: 0,
       error: 'database is gone',

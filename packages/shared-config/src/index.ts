@@ -1,4 +1,10 @@
-export { loadEnv, loadAuthEnv, loadRootEnvFile, resolveFaceDetectorModelPath } from './env';
+export {
+  loadEnv,
+  loadAuthEnv,
+  loadRootEnvFile,
+  resolveFaceDetectorModelPath,
+  resolveModelPath,
+} from './env';
 export { LocalStorageService } from './storage';
 export { sweepUserStorage } from './user-storage-sweep';
 export {

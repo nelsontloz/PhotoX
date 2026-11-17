@@ -126,7 +126,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Not backed up yet'), findsOneWidget);
+    expect(find.text('Not backed up'), findsOneWidget);
     expect(
       find.text('This phone has not uploaded these bytes.'),
       findsOneWidget,
@@ -151,7 +151,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Backed up from this phone'), findsOneWidget);
+    expect(find.text('Backed up'), findsOneWidget);
     expect(find.byKey(const Key('viewer-back-up-now')), findsNothing);
   });
 
@@ -298,13 +298,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Not backed up yet'), findsOneWidget);
+    expect(find.text('Not backed up'), findsOneWidget);
 
     await tester.drag(find.byType(PageView), const Offset(-600, 0));
     await tester.pumpAndSettle();
 
     expect(find.text('Waiting to back up'), findsOneWidget);
-    expect(find.text('Not backed up yet'), findsNothing);
+    expect(find.text('Not backed up'), findsNothing);
     // The page moved: the swipe was not mistaken for a pan.
     expect(find.text('11 May 2025 · 09:05'), findsOneWidget);
   });

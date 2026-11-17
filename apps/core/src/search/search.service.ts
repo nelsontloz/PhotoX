@@ -60,14 +60,7 @@ export class SearchService {
   }
 
   private async annIds(userId: string, vector: number[], limit: number): Promise<string[]> {
-    // HNSW returns ~ef_search rows per scan (iterative scans off in pgvector 0.8.x), so LIMIT
-    // under-delivers once 2N > 40 — raise it locally for this transaction, capped at 200.
-    const rows = await this.dataSource.transaction(async (em) => {
-      await em.query(`SELECT set_config('hnsw.ef_search', $1, true)`, [
-        String(Math.min(limit, 200)),
-      ]);
-      return neighbourRows(em, userId, toVectorSql(vector), limit);
-    });
+    const rows = await neighbourRows(this.dataSource, userId, toVectorSql(vector), limit);
     if (rows.length === 0) return [];
     const best = Math.min(...rows.map((r) => r.dist));
     return rows.filter((r) => r.dist <= best + ANN_MARGIN).map((r) => r.id);

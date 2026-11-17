@@ -5,6 +5,7 @@ import { unlink, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { branchFor, metadataProcessor } from './metadata.processor';
+import { assetFileRunner } from './asset-file-job';
 import type { AssetRefsJob } from './job-schemas';
 import type { CoreClient } from '../core/core-client.service';
 import { FakeCoreClient, makeAsset, makeFileRecord } from '../../test/fake-core-client';
@@ -43,13 +44,16 @@ describe('MetadataProcessor job guards', () => {
     } = {},
   ) {
     const fake = new FakeCoreClient();
+    const storage = (opts.storage ?? {}) as never;
     const spec = metadataProcessor({
       core: fake as unknown as CoreClient,
-      storage: (opts.storage ?? {}) as never,
       metadataExtractor: (opts.metadataExtractor ?? {}) as never,
       videoMetadataExtractor: (opts.videoMetadataExtractor ?? {}) as never,
     });
-    return { run: spec.run, fake };
+    return {
+      run: assetFileRunner({ core: fake as unknown as CoreClient, storage }, spec.queue, spec.job),
+      fake,
+    };
   }
 
   it('rejects an invalid payload before any core call', async () => {

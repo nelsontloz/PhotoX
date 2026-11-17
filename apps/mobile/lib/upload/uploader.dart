@@ -5,6 +5,7 @@ import 'dart:math';
 import '../core/api_client.dart';
 import '../core/app_config.dart';
 import '../core/auth_models.dart';
+import '../media/file_name.dart';
 import '../media/hasher.dart';
 import '../media/photo_observer.dart';
 import '../sync/transfer_progress.dart';
@@ -848,14 +849,7 @@ class Uploader {
   String _fileName(QueuedAsset item) {
     final stored = item.fileName;
     if (stored != null && stored.trim().isNotEmpty) return stored;
-    final spoolName = item.spoolPath;
-    if (spoolName != null) {
-      final slash = spoolName.lastIndexOf('/');
-      if (slash >= 0 && slash < spoolName.length - 1) {
-        return spoolName.substring(slash + 1);
-      }
-    }
-    return item.localId;
+    return splitFileName(item.spoolPath ?? '').$1 ?? item.localId;
   }
 
   String? _mimeType(QueuedAsset item) {

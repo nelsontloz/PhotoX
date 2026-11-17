@@ -420,11 +420,8 @@ export class AssetsService {
   async getOne(userId: string, id: string): Promise<AssetResponse> {
     const asset = await findOwnedOr404(this.repo, id, userId, 'Asset');
     const faces = await this.facesService.getForAsset(asset.userId, id);
-    const thumbRows = await this.thumbRepo.find({
-      where: { assetId: id },
-      order: { createdAt: 'ASC' },
-    });
-    return { ...this.toResponse(asset, thumbRows), faces };
+    const thumbs = (await this.fetchThumbs([id])).get(id) ?? [];
+    return { ...this.toResponse(asset, thumbs), faces };
   }
 
   async update(userId: string, id: string, dto: UpdateAssetDto): Promise<AssetResponse> {
@@ -490,9 +487,8 @@ export class AssetsService {
 
   private async hardDelete(assetIds: string[]): Promise<void> {
     await this.dataSource.transaction(async (em) => {
-      // C4: mirror FacesService.deleteForAsset — collect deleted face ids, null matching
-      // person covers, and refresh live counts inside the same txn so hard-deleted assets
-      // can't leave dangling coverFaceUrl thumbs behind.
+      // C4: collect deleted face ids, null matching person covers, and refresh live counts
+      // inside the same txn so hard-deleted assets can't leave dangling coverFaceUrl thumbs.
       const existingFaces: Pick<Face, 'id' | 'personId'>[] = [];
       // bounded batches: one giant IN (...) list would exceed Postgres's 65,535 bind parameters
       for (let i = 0; i < assetIds.length; i += 500) {
@@ -815,6 +811,7 @@ export class AssetsService {
   }
 
   private toResponse(asset: Asset, thumbnails?: AssetThumbnail[]): AssetResponse {
+    // non-wire columns are destructured out so the rest spread is exactly the wire projection
     const {
       placeCity,
       placeAdmin1,
@@ -827,18 +824,6 @@ export class AssetsService {
       thumbnails: _thumbnails,
       ...wire
     } = asset;
-    // non-wire columns are destructured out so the rest spread is exactly the wire projection
-    void [
-      placeCity,
-      placeAdmin1,
-      placeCountryCode,
-      placeTimezone,
-      placeDistanceKm,
-      phash,
-      embeddingStatus,
-      updatedAt,
-      _thumbnails,
-    ];
     return {
       ...wire,
       contentVersion: asset.transcodeFileId ?? asset.fileId,

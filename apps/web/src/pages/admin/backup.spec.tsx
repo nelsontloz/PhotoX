@@ -10,7 +10,6 @@ import type {
 
 const api = vi.hoisted(() => ({
   getBackupOverview: vi.fn(),
-  getBackupProgress: vi.fn(),
   getBackupRunStatus: vi.fn(),
   backupUser: vi.fn(),
   restoreUser: vi.fn(),
@@ -173,7 +172,6 @@ const notFound = () => ({ isAxiosError: true, response: { status: 404 }, message
 
 beforeEach(() => {
   api.getBackupOverview.mockResolvedValue([ada, grace]);
-  api.getBackupProgress.mockRejectedValue(notFound());
   api.getBackupRunStatus.mockRejectedValue(notFound());
   api.backupUser.mockResolvedValue(result);
   api.restoreUser.mockResolvedValue(restoreResult);
@@ -252,7 +250,7 @@ describe('BackupSection table', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() => expect(api.backupUser).toHaveBeenCalledWith('u-2'));
 
-    // disabled while the inline backup runs + indeterminate progress (old core, no progress endpoint)
+    // disabled while the inline backup runs + indeterminate progress (the POST is waiting on the run)
     expect(await screen.findByText('Backing up grace@example.com…')).toBeTruthy();
     expect(
       screen.getByRole<HTMLButtonElement>('button', { name: 'Back up all users' }).disabled,
@@ -348,38 +346,6 @@ describe('BackupSection table', () => {
     expect(screen.getByText('Nothing new — already backed up.')).toBeTruthy();
   });
 
-  it('polls progress per row and renders the determinate bar', async () => {
-    let finish: (value: BackupResult) => void = () => undefined;
-    api.backupUser.mockReturnValue(
-      new Promise<BackupResult>((resolve) => {
-        finish = resolve;
-      }),
-    );
-    api.getBackupProgress.mockResolvedValue({
-      userId: 'u-1',
-      inProgress: true,
-      total: 10,
-      completed: 4,
-      uploaded: 1,
-      skipped: 3,
-    });
-
-    render(<BackupSection />);
-    await rowsReady();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Back up ada@example.com' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-
-    expect(await screen.findByLabelText('Backup progress for ada@example.com')).toBeTruthy();
-    expect(screen.getByText('4/10 (1 new, 3 unchanged)')).toBeTruthy();
-    expect(api.getBackupProgress).toHaveBeenCalledWith('u-1');
-
-    await act(async () => {
-      finish(result);
-      await Promise.resolve();
-    });
-  });
-
   it('resumes a running backup from the overview after a reload', async () => {
     api.getBackupOverview.mockResolvedValue([
       { ...ada, activeRun: { id: 'run-1', kind: 'backup', state: 'running' } },
@@ -404,7 +370,6 @@ describe('BackupSection table', () => {
     expect(await screen.findByLabelText('Backup progress for ada@example.com')).toBeTruthy();
     expect(screen.getByText('4/10 (1 new, 3 unchanged)')).toBeTruthy();
     expect(api.getBackupRunStatus).toHaveBeenCalledWith('run-1');
-    expect(api.getBackupProgress).not.toHaveBeenCalled();
   });
 
   it('finishes an adopted run, refreshes the list and toasts the result', async () => {

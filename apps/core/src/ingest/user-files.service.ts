@@ -38,7 +38,7 @@ export interface OriginalFileInput {
   size: number;
 }
 
-// meta accepted by createAssetAndEnqueue — title/description/takenAt plus the file-derived
+// meta accepted by createAsset — title/description/takenAt plus the file-derived
 // originalName/sizeBytes the asset row records
 export interface AssetUploadMeta {
   title?: string;
@@ -82,13 +82,14 @@ export class UserFilesService {
       this.logger.log(
         `[UserFilesService] file saved user=${userId} file=${record.id} deduplicated=${!created}`,
       );
-      const asset = await this.createAssetAndEnqueue(userId, record, kind, {
+      const asset = await this.createAsset(userId, record, kind, {
         title: meta.title,
         description: meta.description,
         takenAt: meta.takenAt,
         originalName: file.originalname,
         sizeBytes: file.size,
       });
+      await this.enqueueAssetJobs(userId, record, kind, asset.id);
       this.logger.log(`[UserFilesService] upload finished user=${userId} asset=${asset.id}`);
       // `created` is the durable-bytes flag, not the asset flag: a re-linking upload of owned
       // bytes answers 200 with its (possibly pre-existing) asset.
@@ -100,20 +101,9 @@ export class UserFilesService {
     }
   }
 
-  // shared by legacy upload and upload-session complete: create the asset row, then enqueue its
-  // processing jobs. The two halves are separately public so a complete() whose enqueues failed
-  // can persist the asset id and re-run only the enqueue half on retry.
-  async createAssetAndEnqueue(
-    userId: string,
-    record: FileRecord,
-    kind: 'photo' | 'video',
-    meta: AssetUploadMeta,
-  ): Promise<AssetResponse> {
-    const asset = await this.createAsset(userId, record, kind, meta);
-    await this.enqueueAssetJobs(userId, record, kind, asset.id);
-    return asset;
-  }
-
+  // shared by legacy upload and upload-session complete: the asset row and its processing jobs
+  // are separately public so a complete() whose enqueues failed can persist the asset id and
+  // re-run only the enqueue half on retry.
   /** Asset row only — no jobs. Callers must follow with enqueueAssetJobs for a usable asset. */
   async createAsset(
     userId: string,
@@ -358,17 +348,11 @@ export class UserFilesService {
     }
   }
 
-  private async getRecord(fileId: string): Promise<FileRecord> {
+  private async getOwnedRecord(userId: string, fileId: string): Promise<FileRecord> {
     // malformed ids must read as missing — the uuid cast below would 500 them instead
     if (!isUUID(fileId)) throw new NotFoundException('File not found');
     const record = await this.fileRepo.findOne({ where: { id: fileId } });
-    if (!record) throw new NotFoundException('File not found');
-    return record;
-  }
-
-  private async getOwnedRecord(userId: string, fileId: string): Promise<FileRecord> {
-    const record = await this.getRecord(fileId);
-    if (record.userId !== userId) throw new NotFoundException('File not found');
+    if (record?.userId !== userId) throw new NotFoundException('File not found');
     return record;
   }
 

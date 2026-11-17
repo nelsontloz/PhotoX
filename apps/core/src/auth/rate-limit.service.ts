@@ -74,32 +74,25 @@ export class RateLimitService {
 
   /** Remaining window in whole seconds; the route's configured window when Redis cannot say. */
   private async retryAfterSec(key: string, windowSec: number): Promise<number> {
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      const redis: Redis | undefined = this.bullMq.redis;
-      if (!redis) return windowSec;
-      const pttl = await Promise.race([
-        redis.pttl(key),
-        new Promise<null>((resolve) => {
-          timer = setTimeout(() => resolve(null), RATE_LIMIT_TIMEOUT_MS);
-        }),
-      ]);
-      return pttl === null || pttl < 0 ? windowSec : Math.max(1, Math.ceil(pttl / 1000));
-    } catch {
-      return windowSec;
-    } finally {
-      clearTimeout(timer);
-    }
+    const pttl = await this.withTimeout((redis) => redis.pttl(key));
+    return pttl === null || pttl < 0 ? windowSec : Math.max(1, Math.ceil(pttl / 1000));
   }
 
   /** null = Redis unavailable/timed out (caller fails closed with 503). */
   private async countHit(key: string, windowSec: number): Promise<number | null> {
+    return this.withTimeout(
+      (redis) => redis.eval(RATE_LIMIT_SCRIPT, 1, key, windowSec) as Promise<number>,
+    );
+  }
+
+  /** Runs one Redis call under the fixed budget; null when Redis is absent, slow or throws. */
+  private async withTimeout<T>(call: (redis: Redis) => Promise<T>): Promise<T | null> {
     let timer: NodeJS.Timeout | undefined;
     try {
       const redis: Redis | undefined = this.bullMq.redis;
       if (!redis) return null; // undefined until BullMqService.onModuleInit
       return await Promise.race([
-        redis.eval(RATE_LIMIT_SCRIPT, 1, key, windowSec) as Promise<number>,
+        call(redis),
         new Promise<null>((resolve) => {
           timer = setTimeout(() => resolve(null), RATE_LIMIT_TIMEOUT_MS);
         }),

@@ -4,11 +4,11 @@ import {
   Then,
   When,
   authHeaders,
-  injectSession,
   registerUser,
   requireAdmin,
   scenarioState,
   searchUsersFor,
+  signInAdminPage,
   startAndWaitForRun,
   type AuthResponse,
   type Ctx,
@@ -48,12 +48,10 @@ interface AdminUserUpdateBody {
 
 /** Per-scenario edit state (support.ts Ctx untouched). */
 interface UserEditState {
-  admin?: AuthResponse;
   account?: AuthResponse;
   newName?: string;
   newEmail?: string;
   updateBody?: AdminUserUpdateBody;
-  roleChangeStatus?: number;
 }
 
 function requireAccount(ctx: Ctx): AuthResponse {
@@ -88,10 +86,7 @@ async function openEditDialog(page: Page, displayName: string) {
 Given(
   'an administrator session is available for account editing',
   async ({ request, page, baseURL, ctx }) => {
-    const admin = await requireAdmin(ctx, request);
-    ctx.auth = admin;
-    await injectSession(page, admin, baseURL);
-    await page.goto('/');
+    await signInAdminPage(page, ctx, request, baseURL);
   },
 );
 
@@ -191,28 +186,6 @@ Then('the users list shows the updated name and email', async ({ page, ctx }) =>
   await expect(row.getByText(state.newName, { exact: true })).toBeVisible();
   await expect(row.getByText(state.newEmail, { exact: true })).toBeVisible();
 });
-
-When(
-  "the account-editing admin changes that account's email through the admin API",
-  async ({ request, ctx }) => {
-    const admin = await requireAdmin(ctx, request);
-    const account = requireAccount(ctx);
-    const state = scenarioState<UserEditState>(ctx);
-    const newEmail = editedEmail(account.user.email);
-    state.newEmail = newEmail;
-    // the admin-set address is stored normalized: send mixed case, expect the lowercase form
-    const mixedCase = newEmail.charAt(0).toUpperCase() + newEmail.slice(1);
-    const response = await request.patch(`/api/v1/admin/users/${account.user.id}`, {
-      headers: authHeaders(admin),
-      data: { email: mixedCase },
-    });
-    expect(response.status()).toBe(200);
-    const body = (await response.json()) as AdminUserUpdateBody;
-    state.updateBody = body;
-    expect(body.user.id).toBe(account.user.id);
-    expect(body.user.email).toBe(newEmail);
-  },
-);
 
 When(
   "the account-editing admin changes that account's email through the edit dialog",
@@ -334,16 +307,3 @@ Then('the backup warning box is cleared', async ({ page }) => {
   await expect(page.getByRole('alert').filter({ hasText: STORAGE_ERROR })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Retry move' })).toHaveCount(0);
 });
-
-When(
-  'the account-editing admin attempts a role change through the admin API',
-  async ({ request, ctx }) => {
-    const admin = await requireAdmin(ctx, request);
-    const account = requireAccount(ctx);
-    const response = await request.patch(`/api/v1/admin/users/${account.user.id}`, {
-      headers: authHeaders(admin),
-      data: { role: 'admin' },
-    });
-    scenarioState<UserEditState>(ctx).roleChangeStatus = response.status();
-  },
-);

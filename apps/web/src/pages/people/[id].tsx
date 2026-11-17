@@ -25,7 +25,7 @@ function PersonDetail({ id }: { id: string }) {
   // Same lazy pipeline as the home timeline, scoped to this person (layout + per-month fetches).
   const view = useTimelineView({ personId: id });
   const { timeline, loadedAssets } = view;
-  const { editing, nameValue, setNameValue, start, save } = useInlineRename(
+  const { editing, start, inputProps } = useInlineRename(
     person?.name ?? '',
     async (name) => {
       const updated = await renamePerson(id, name || null);
@@ -62,15 +62,7 @@ function PersonDetail({ id }: { id: string }) {
           </button>
           {editing ? (
             <input
-              autoFocus
-              value={nameValue}
-              onChange={(e) => setNameValue(e.target.value)}
-              onBlur={() => {
-                void save();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void save();
-              }}
+              {...inputProps}
               className="text-2xl font-bold text-white bg-transparent border-b border-primary outline-none"
             />
           ) : (

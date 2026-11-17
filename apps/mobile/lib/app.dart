@@ -72,7 +72,7 @@ class PhotoXApp extends StatefulWidget {
   const PhotoXApp({super.key, required this.controller});
 
   /// Live app state; every notification rebuilds the shell.
-  final AppController controller;
+  final PhotoXController controller;
 
   @override
   State<PhotoXApp> createState() => _PhotoXAppState();
@@ -186,7 +186,7 @@ class _SignedInShell extends StatefulWidget {
     required this.onOpenSettings,
   });
 
-  final AppController controller;
+  final PhotoXController controller;
   final VoidCallback onOpenSettings;
 
   @override
@@ -264,7 +264,7 @@ class _SignedInShellState extends State<_SignedInShell> {
   /// [album] is set when the grid was opened from the Albums tab: it titles the
   /// screen and lets the grid say whether that album is inside the scope.
   Widget _library(
-    AppController controller, {
+    PhotoXController controller, {
     MediaFolder? album,
     VoidCallback? onOpenAlbums,
   }) {
@@ -309,7 +309,7 @@ class _SignedInShellState extends State<_SignedInShell> {
 
   /// Pushes one album's grid over the shell; its scope action can retarget the
   /// backup without leaving the album.
-  void _openAlbum(AppController controller, MediaFolder album) {
+  void _openAlbum(PhotoXController controller, MediaFolder album) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (routeContext) => ListenableBuilder(
@@ -330,7 +330,7 @@ class _SignedInShellState extends State<_SignedInShell> {
   }
 
   /// The album list, with the scope written on every card.
-  Widget _albums(AppController controller) {
+  Widget _albums(PhotoXController controller) {
     if (!_albumsOpened) return const SizedBox.shrink();
     return AlbumsScreen(
       settings: controller.settings,
@@ -365,7 +365,7 @@ class _SignedInShellState extends State<_SignedInShell> {
   }
 
   /// The sync dashboard.
-  Widget _backup(AppController controller) {
+  Widget _backup(PhotoXController controller) {
     return HomeScreen(
       stats: controller.stats,
       progress: controller.progress,

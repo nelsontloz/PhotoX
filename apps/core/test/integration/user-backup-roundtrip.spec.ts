@@ -550,12 +550,6 @@ describe('user backup round-trip', () => {
     expect(status.state).toBe('completed');
     expect(status.result).toMatchObject({ files: 2, uploaded: 2, skipped: 0 });
     expectManifestLast();
-    // the progress endpoint maps the same run row
-    expect(await t.svc.getBackupProgress(email)).toMatchObject({
-      inProgress: false,
-      total: 2,
-      completed: 2,
-    });
   });
 
   it('retries a transient file failure alone without failing the run', async () => {

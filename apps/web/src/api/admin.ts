@@ -166,22 +166,6 @@ export interface BackupResult {
   persons: number;
 }
 
-/**
- * GET /v1/admin/backups/:key/progress response: per-file progress of the running backup.
- * total/completed cover original files; uploaded/skipped split the completed ones.
- */
-export interface BackupProgress {
-  userId: string;
-  inProgress: boolean;
-  total: number;
-  completed: number;
-  uploaded: number;
-  skipped: number;
-  currentFile?: string;
-  startedAt?: string;
-  updatedAt?: string;
-}
-
 /** GET /v1/admin/backups/runs/:runId response: counters plus the final result. */
 export interface BackupRunStatus {
   id: string;
@@ -257,16 +241,6 @@ export async function getBackupRunStatus(runId: string): Promise<BackupRunStatus
 export async function backupUser(emailOrId: string): Promise<BackupResult> {
   const { data } = await api.post<{ runId: string }>('/v1/admin/backups', { emailOrId });
   return waitForRun<BackupResult>(data.runId);
-}
-
-// The backup key is a user id or an email, so the path segment must be encoded (an `@` is fine,
-// a `/` would otherwise escape it). Signature stays emailOrId so callers don't change.
-export async function getBackupProgress(emailOrId: string): Promise<BackupProgress> {
-  const { data } = await api.get<BackupProgress>(
-    `/v1/admin/backups/${encodeURIComponent(emailOrId)}/progress`,
-    { timeout: BACKUP_STATUS_TIMEOUT_MS },
-  );
-  return data;
 }
 
 /**

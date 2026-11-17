@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { expect, type APIRequestContext, type APIResponse, type Response } from '@playwright/test';
 import {
   Given,
@@ -10,7 +9,6 @@ import {
   registerUser,
   requireAssetId,
   requireAuth,
-  requireOtherAuth,
   uploadViaApi,
   type AuthResponse,
   type Ctx,
@@ -241,38 +239,6 @@ Then('the share list shows only the album share', async ({ page }) => {
   await expect(page.getByText('Photo', { exact: true })).toHaveCount(0);
 });
 
-Then(
-  'the second share request rotated the token and killed the old URL',
-  async ({ request, ctx }) => {
-    const first = requireShare(ctx.assetShare, 'first asset');
-    const second = requireShare(ctx.assetShareAgain, 'second asset');
-    expect(second.id).not.toBe(first.id);
-    expect(second.token).not.toBe(first.token);
-    expect((await request.get(`/api/share/${first.token}`)).status()).toBe(404);
-    expect((await request.get(`/api/share/${second.token}`)).status()).toBe(200);
-  },
-);
-
-When(
-  'the second user creates an asset share for their own uploaded photo',
-  async ({ request, ctx }) => {
-    const other = requireOtherAuth(ctx);
-    const assetId = await uploadViaApi(request, other, 'photo.jpg');
-    const share = await expectShareCreated(await postShare(request, other, { assetId }));
-    ctx.otherShare = share;
-  },
-);
-
-When(
-  "the second user requests a share of the first user's album target",
-  async ({ request, ctx }) => {
-    const albumId = ctx.albumId;
-    if (!albumId) throw new Error('prepare an album share target first');
-    const response = await postShare(request, requireOtherAuth(ctx), { albumId });
-    ctx.lastStatus = response.status();
-  },
-);
-
 // --- Public share pages and APIs (anonymous) ---------------------------------------------
 
 When('an anonymous client calls the public share API for that share', async ({ request, ctx }) => {
@@ -348,37 +314,3 @@ When('that share is revoked through the API', async ({ request, ctx }) => {
   });
   expect(response.status()).toBe(204);
 });
-
-When(
-  'an anonymous client requests the public share member stream for the share photo',
-  async ({ request, ctx }) => {
-    const share = requireShare(ctx.albumShare ?? ctx.lastShare, 'album');
-    const memberId = ctx.albumMemberId;
-    if (!memberId) throw new Error('seed an album share first');
-    ctx.lastStatus = (
-      await request.get(`/api/share/${share.token}/assets/${memberId}/content?size=sm`)
-    ).status();
-  },
-);
-
-When(
-  'an anonymous client requests the public share member stream for an unrelated asset',
-  async ({ request, ctx }) => {
-    const share = requireShare(ctx.albumShare ?? ctx.lastShare, 'album');
-    ctx.lastStatus = (
-      await request.get(`/api/share/${share.token}/assets/${randomUUID()}/content?size=sm`)
-    ).status();
-  },
-);
-
-When(
-  'an anonymous client requests the share stream with Range {string}',
-  async ({ request, ctx }, range: string) => {
-    const share = requireShare(ctx.videoShare ?? ctx.lastShare, 'video');
-    const response = await request.get(`/api/share/${share.token}/content`, {
-      headers: { Range: range },
-    });
-    ctx.lastStatus = response.status();
-    ctx.streamContentRange = response.headers()['content-range'] ?? null;
-  },
-);

@@ -8,32 +8,13 @@ source "$(dirname "$0")/lib.sh"
 
 MODELS_DIR="$(resolve_storage_dir)/models"
 
-# --- recognition: w600k_r50.onnx (official buffalo_l bundle) ---
-WK_URL="${FACE_MODEL_URL:-https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip}"
+# --- recognition: w600k_r50.onnx (single file out of the buffalo_l bundle) ---
+WK_URL="${FACE_MODEL_URL:-https://huggingface.co/deepghs/insightface/resolve/main/buffalo_l/w600k_r50.onnx}"
 WK_DEST="${FACE_MODEL_PATH:-$MODELS_DIR/w600k_r50.onnx}"
 
 if [ -n "$FORCE" ] || [ ! -s "$WK_DEST" ]; then
-  mkdir -p "$(dirname "$WK_DEST")"
-  TMP="$(mktemp -t buffalo_l.XXXXXX.zip)"
-  trap 'rm -f "$TMP"' EXIT
-
-  echo "Downloading buffalo_l bundle..."
-  fetch_file "$WK_URL" "$TMP"
-
-  echo "Extracting w600k_r50.onnx to $WK_DEST..."
-  if command -v unzip >/dev/null 2>&1; then
-    unzip -j -o "$TMP" 'w600k_r50.onnx' -d "$(dirname "$WK_DEST")"
-  else
-    python3 - "$TMP" "$WK_DEST" <<'EOF'
-import sys, zipfile
-with zipfile.ZipFile(sys.argv[1]) as z:
-    with z.open('w600k_r50.onnx') as src, open(sys.argv[2], 'wb') as dst:
-        dst.write(src.read())
-EOF
-  fi
-
-  trap - EXIT
-  rm -f "$TMP"
+  echo "Downloading w600k_r50.onnx to $WK_DEST..."
+  fetch_file "$WK_URL" "$WK_DEST"
 else
   echo "Recognition model already present at $WK_DEST (use --force to re-fetch)"
 fi
